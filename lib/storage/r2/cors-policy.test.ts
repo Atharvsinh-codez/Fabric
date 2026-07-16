@@ -28,7 +28,7 @@ describe("production R2 CORS policy", () => {
     expect(policy.rules).toHaveLength(1);
     expect(policy.rules[0]).toEqual({
       allowed: {
-        origins: ["https://fabric-rose-iota.vercel.app"],
+        origins: ["https://fabric-s9rn.vercel.app"],
         methods: ["PUT"],
         headers: [
           "Content-Type",

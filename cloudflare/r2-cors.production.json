@@ -2,7 +2,7 @@
   "rules": [
     {
       "allowed": {
-        "origins": ["https://fabric-rose-iota.vercel.app"],
+        "origins": ["https://fabric-s9rn.vercel.app"],
         "methods": ["PUT"],
         "headers": [
           "Content-Type",

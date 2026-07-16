@@ -11,7 +11,7 @@ head_sampling_rate = 0.1
 
 [vars]
 FABRIC_ENV = "production"
-REALTIME_ALLOWED_ORIGINS = "https://fabric-rose-iota.vercel.app"
+REALTIME_ALLOWED_ORIGINS = "https://fabric-s9rn.vercel.app"
 REALTIME_ISSUER = "fabric-web"
 REALTIME_AUDIENCE = "fabric-realtime"
 
