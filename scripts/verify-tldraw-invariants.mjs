@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 
 const EXPECTED_VERSION = "4.2.0";
 const EXPECTED_PATCH_SHA256 =
-  "51f77b50cb74ec075a1cfba5199eec408d01256cf90e61f9016866a25379964e";
+  "e6ba0b5776bcb208b71fc4580187627a6516a537677f713fe418292eb9d1819d";
 
 const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 const declaredVersion = packageJson.dependencies?.tldraw;
@@ -25,8 +25,13 @@ if (installedPackage.version !== EXPECTED_VERSION) {
 
 const patch = await readFile(
   new URL("../patches/@tldraw+editor+4.2.0.patch", import.meta.url),
+  "utf8",
 );
-const patchSha256 = createHash("sha256").update(patch).digest("hex");
+// Git may materialize this reviewed text patch with CRLF on Windows and LF on
+// Linux. Hash canonical LF content so the invariant checks the patch itself,
+// not the runner's checkout convention.
+const canonicalPatch = patch.replace(/\r\n/gu, "\n");
+const patchSha256 = createHash("sha256").update(canonicalPatch).digest("hex");
 if (patchSha256 !== EXPECTED_PATCH_SHA256) {
   throw new Error(
     "The pinned tldraw editor patch changed or disappeared. Obtain explicit approval and update the reviewed hash deliberately.",

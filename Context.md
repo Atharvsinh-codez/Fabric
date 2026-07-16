@@ -115,3 +115,23 @@ Rules:
   - The repository has no pre-commit configuration; its npm verification and GitHub Actions workflow remain the enforced gates.
 - Next Steps:
   - Commit and push this isolated CI fix, then continue the approved Fabric agent sidebar/loading milestone.
+
+### [2026-07-16 14:08 IST] - Make the locked tldraw verifier cross-platform
+- Request: Continue fixing the newly exposed GitHub Actions failure before starting the separate sidebar milestone.
+- Plan: Preserve the locked tldraw version and patch byte content while removing runner-specific line-ending behavior from its integrity check.
+- Actions:
+  - Confirmed Actions run `29484081261` completed `npm ci` successfully and then failed because Linux LF checkout bytes did not match the Windows CRLF hash stored by the verifier.
+  - Changed only the invariant script to normalize the text patch to LF before hashing and reviewed the canonical Git blob hash.
+- Files Changed:
+  - `scripts/verify-tldraw-invariants.mjs` - Verify canonical patch content consistently on Windows and Linux.
+  - `Context.md` - Recorded the second CI root cause and isolated portability fix.
+- Diff Summary:
+  - Platform-dependent raw text hash -> platform-independent canonical text hash; tldraw package and patch remain untouched.
+- Validation:
+  - `npm run verify:tldraw` passed on the Windows checkout.
+  - The canonical hash of the committed LF Git blob matches the reviewed invariant.
+  - `git diff --exit-code -- patches/@tldraw+editor+4.2.0.patch` confirmed no patch change.
+- Risks/Notes:
+  - This deliberately normalizes line endings only; every other patch byte remains integrity-protected.
+- Next Steps:
+  - Push the verifier correction, confirm the new CI run passes the tldraw gate, then continue the Fabric agent sidebar/loading milestone.
