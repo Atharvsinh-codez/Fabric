@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   CANVAS_AGENT_SKILL,
+  MAX_BOARD_ASSISTANCE_WALL_TIME_MS,
   buildBoardAssistanceInput,
   getBoardAssistanceSkill,
 } from "./board-assistance.v1";
@@ -37,6 +38,11 @@ describe("canvas-agent skill", () => {
       expect.arrayContaining(["diamond", "triangle", "hexagon"]),
     );
     expect(CANVAS_AGENT_SKILL.allowedCreatedNodeTypes).not.toContain("image");
+  });
+
+  it("keeps model execution within the 180-second canvas-agent deadline", () => {
+    expect(CANVAS_AGENT_SKILL.manifest.limits.maxWallTimeMs).toBe(180_000);
+    expect(MAX_BOARD_ASSISTANCE_WALL_TIME_MS).toBe(180_000);
   });
 
   it("forbids raster output and requires pen answers plus human approval", () => {

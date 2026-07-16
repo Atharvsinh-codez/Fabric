@@ -26,6 +26,17 @@ describe("parseAiRuntimeConfig", () => {
     expect(Object.isFrozen(parseAiRuntimeConfig(validConfig).apiKeys)).toBe(true);
   });
 
+  it("allows the 300-second hosting envelope but rejects longer provider timeouts", () => {
+    expect(parseAiRuntimeConfig({
+      ...validConfig,
+      requestTimeoutMs: 300_000,
+    }).requestTimeoutMs).toBe(300_000);
+    expect(() => parseAiRuntimeConfig({
+      ...validConfig,
+      requestTimeoutMs: 300_001,
+    })).toThrow();
+  });
+
   it("rejects unsafe endpoints, unsupported providers, and malformed models", () => {
     expect(() => parseAiRuntimeConfig({ ...validConfig, baseUrl: "http://provider.test/v1" })).toThrow();
     expect(() => parseAiRuntimeConfig({

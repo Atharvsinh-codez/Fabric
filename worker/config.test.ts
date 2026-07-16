@@ -4,6 +4,8 @@ import { loadServerlessWorkerConfig, loadWorkerConfig } from "./config";
 
 const baseEnvironment = {
   WORKER_DATABASE_URL: "postgresql://worker:secret@db.example.test/fabric?sslmode=require",
+  APP_URL: "https://fabric.example.test/",
+  AUTH_SECRET: "production-auth-secret-with-enough-independent-entropy",
   AI_PROVIDER: "openai-compatible",
   AI_BASE_URL: "https://provider.example.test/v1",
   AI_API_KEYS:
@@ -15,7 +17,8 @@ const baseEnvironment = {
 
 describe("worker configuration boundary", () => {
   it("accepts an environment-selected OpenAI-compatible endpoint and model", () => {
-    expect(loadWorkerConfig(baseEnvironment).ai).toMatchObject({
+    const config = loadWorkerConfig(baseEnvironment);
+    expect(config.ai).toMatchObject({
       provider: "openai-compatible",
       baseUrl: "https://provider.example.test/v1",
       apiKeys: [
@@ -24,11 +27,54 @@ describe("worker configuration boundary", () => {
       ],
       model: "gcli/grok-4.5-medium",
       streamOnly: true,
+      requestTimeoutMs: 180_000,
     });
+    expect(config.media.baseUrl).toBe("https://fabric.example.test");
+    expect(config.media.signingKey).not.toBe(baseEnvironment.AUTH_SECRET);
+    expect(config.media.signingKey).not.toBe(
+      "production-primary-api-key-value-long-enough",
+    );
+    expect(loadWorkerConfig(baseEnvironment).media.signingKey).toBe(
+      config.media.signingKey,
+    );
+    expect(
+      loadWorkerConfig({
+        ...baseEnvironment,
+        AUTH_SECRET: "rotated-auth-secret-with-enough-independent-entropy",
+      }).media.signingKey,
+    ).not.toBe(config.media.signingKey);
     expect(() => loadWorkerConfig({ ...baseEnvironment, AI_PROVIDER: "other" })).toThrow();
     expect(() => loadWorkerConfig({ ...baseEnvironment, AI_BASE_URL: "http://provider.test/v1" })).toThrow();
     expect(() => loadWorkerConfig({ ...baseEnvironment, AI_MODEL: "model with spaces" })).toThrow();
     expect(() => loadWorkerConfig({ ...baseEnvironment, AI_STREAM_ONLY: "false" })).toThrow();
+  });
+
+  it("requires a credential-free application origin and sufficient derivation secret", () => {
+    expect(
+      loadWorkerConfig({
+        ...baseEnvironment,
+        APP_URL: "http://localhost:3000/",
+      }).media.baseUrl,
+    ).toBe("http://localhost:3000");
+
+    for (const APP_URL of [
+      "http://fabric.example.test",
+      "https://user:secret@fabric.example.test",
+      "https://fabric.example.test/app",
+      "https://fabric.example.test/?token=secret",
+      "https://fabric.example.test/#fragment",
+    ]) {
+      expect(() => loadWorkerConfig({ ...baseEnvironment, APP_URL })).toThrow(
+        /credential-free application origin/,
+      );
+    }
+
+    expect(() =>
+      loadWorkerConfig({ ...baseEnvironment, AUTH_SECRET: undefined }),
+    ).toThrow();
+    expect(() =>
+      loadWorkerConfig({ ...baseEnvironment, AUTH_SECRET: "too-short" }),
+    ).toThrow();
   });
 
   it("supports the single-key fallback without weakening preferred-list validation", () => {

@@ -7,6 +7,13 @@ export type ThinkingLevel = "minimal" | "low" | "medium" | "high";
 
 export type JsonSchema = Readonly<Record<string, unknown>>;
 
+export type ModelImageInput = Readonly<{
+  /** A short-lived HTTPS URL issued by Fabric for this one authorized run. */
+  url: string;
+  label: string;
+  detail?: "auto" | "high" | "low";
+}>;
+
 export type ModelUsage = Readonly<{
   inputTokens?: number;
   outputTokens?: number;
@@ -24,6 +31,7 @@ export type ModelStreamEvent =
 
 export type ModelTurnRequest = Readonly<{
   input: string;
+  images?: readonly ModelImageInput[];
   systemInstruction: string;
   thinkingLevel: ThinkingLevel;
   maxOutputTokens: number;

@@ -32,7 +32,10 @@ import { dispatchAiRunOnDemand } from "@/worker/serverless-dispatch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// Complex visual reasoning can legitimately take longer than a minute on an
+// OpenAI-compatible gateway. Keep the function alive for the complete bounded
+// run instead of aborting a healthy provider stream at the old 45-second cap.
+export const maxDuration = 300;
 
 const MAX_REQUEST_BYTES = 64 * 1_024;
 const RunIdSchema = z.string().uuid();

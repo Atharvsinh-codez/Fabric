@@ -58,7 +58,7 @@ function parseByteRange(header: string | null, byteSize: number): ByteRange | nu
 
 function responseHeaders(
   asset: BoardAssetResponseRecord,
-  access: "member" | "share",
+  access: "member" | "share" | "ai",
 ): Headers {
   const extension = EXTENSIONS[asset.mimeType as SupportedBoardAssetMimeType] ?? "bin";
   const headers = new Headers({
@@ -67,7 +67,7 @@ function responseHeaders(
     "Content-Disposition": `inline; filename="${asset.id}.${extension}"`,
     "Content-Security-Policy": "default-src 'none'; sandbox",
     "Content-Type": asset.mimeType,
-    "Cross-Origin-Resource-Policy": "same-origin",
+    "Cross-Origin-Resource-Policy": access === "ai" ? "cross-origin" : "same-origin",
     ETag: `"sha256-${asset.contentHash}"`,
     "Referrer-Policy": "no-referrer",
     "Surrogate-Control": "no-store",
@@ -79,7 +79,7 @@ function responseHeaders(
 
 export async function createBoardAssetResponse(
   asset: BoardAssetResponseRecord,
-  access: "member" | "share",
+  access: "member" | "share" | "ai",
   request: Request,
   objectStore?: PrivateObjectStore,
 ): Promise<Response> {

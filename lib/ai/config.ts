@@ -60,7 +60,7 @@ const AiRuntimeConfigSchema = z
     apiKeys: AiApiKeysSchema,
     model: AiModelSchema,
     streamOnly: z.literal(true),
-    requestTimeoutMs: z.number().int().min(1_000).max(60_000),
+    requestTimeoutMs: z.number().int().min(1_000).max(300_000),
   })
   .strict();
 

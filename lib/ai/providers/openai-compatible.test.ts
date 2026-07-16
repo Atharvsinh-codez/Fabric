@@ -20,14 +20,17 @@ const turnRequest = {
   timeoutMs: 45_000,
 };
 
-function createConfig(apiKeys: readonly string[] = [API_KEYS[0]]) {
+function createConfig(
+  apiKeys: readonly string[] = [API_KEYS[0]],
+  requestTimeoutMs = 45_000,
+) {
   return parseAiRuntimeConfig({
     provider: "openai-compatible",
     baseUrl: "https://provider.example.test/v1",
     apiKeys,
     model: "gcli/grok-4.5-medium",
     streamOnly: true,
-    requestTimeoutMs: 45_000,
+    requestTimeoutMs,
   });
 }
 
@@ -151,6 +154,55 @@ describe("OpenAiCompatibleChatProvider", () => {
     ]);
   });
 
+  it("sends authorized image URLs as bounded multimodal content parts", async () => {
+    const fetchImplementation = vi.fn<typeof fetch>(async () => completedResponse());
+    const provider = new OpenAiCompatibleChatProvider(createConfig(), fetchImplementation);
+
+    await collect(await provider.createTurn({
+      ...turnRequest,
+      images: [
+        {
+          url: "https://fabric.example.test/api/ai/media/signed-token",
+          label: "Authorized selected board image 1.",
+          detail: "high",
+        },
+      ],
+    }));
+
+    const body = JSON.parse(String(fetchImplementation.mock.calls[0]?.[1]?.body)) as {
+      messages: Array<{ role: string; content: unknown }>;
+    };
+    expect(body.messages[1]?.content).toEqual([
+      { type: "text", text: "bounded input" },
+      { type: "text", text: "Authorized selected board image 1." },
+      {
+        type: "image_url",
+        image_url: {
+          url: "https://fabric.example.test/api/ai/media/signed-token",
+          detail: "high",
+        },
+      },
+    ]);
+  });
+
+  it("rejects non-HTTPS or excessive image inputs before calling the provider", async () => {
+    const fetchImplementation = vi.fn<typeof fetch>(async () => completedResponse());
+    const provider = new OpenAiCompatibleChatProvider(createConfig(), fetchImplementation);
+
+    await expect(provider.createTurn({
+      ...turnRequest,
+      images: [{ url: "data:image/png;base64,abc", label: "unsafe" }],
+    })).rejects.toMatchObject({ code: "invalid_request" });
+    await expect(provider.createTurn({
+      ...turnRequest,
+      images: Array.from({ length: 6 }, (_, index) => ({
+        url: `https://fabric.example.test/api/ai/media/${index}`,
+        label: `image ${index}`,
+      })),
+    })).rejects.toMatchObject({ code: "invalid_request" });
+    expect(fetchImplementation).not.toHaveBeenCalled();
+  });
+
   it("fails over only before a stream starts and caps credential fan-out", async () => {
     const authorizations: string[] = [];
     const fetchImplementation = vi.fn<typeof fetch>(async (_url, init) => {
@@ -224,6 +276,84 @@ describe("OpenAiCompatibleChatProvider", () => {
       });
       expect(fetchImplementation).toHaveBeenCalledOnce();
     } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("diagnoses an acknowledged silent stream only at the configured longer deadline", async () => {
+    vi.useFakeTimers();
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const encoder = new TextEncoder();
+      const fetchImplementation = vi.fn<typeof fetch>(async (_url, init) => {
+        const signal = init?.signal;
+        let removeAbortListener: () => void = () => undefined;
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+              id: "chatcmpl-acknowledged",
+              choices: [],
+            })}\n\n`));
+            const failOnAbort = () => {
+              controller.error(new DOMException("deadline", "AbortError"));
+            };
+            signal?.addEventListener("abort", failOnAbort, { once: true });
+            removeAbortListener = () => signal?.removeEventListener("abort", failOnAbort);
+          },
+          cancel() {
+            removeAbortListener();
+          },
+        });
+        return new Response(body, {
+          headers: { "Content-Type": "text/event-stream; charset=utf-8" },
+        });
+      });
+      const provider = new OpenAiCompatibleChatProvider(
+        createConfig([API_KEYS[0]], 180_000),
+        fetchImplementation,
+      );
+      const events: ModelStreamEvent[] = [];
+      let settled = false;
+      const outcome = (async () => {
+        const turn = await provider.createTurn({ ...turnRequest, timeoutMs: 180_000 });
+        for await (const event of turn.events) events.push(event);
+      })().then(
+        () => {
+          settled = true;
+          return { error: null };
+        },
+        (error: unknown) => {
+          settled = true;
+          return { error };
+        },
+      );
+
+      await vi.advanceTimersByTimeAsync(45_001);
+      expect(settled).toBe(false);
+      expect(events).toEqual([
+        { type: "interaction_started", interactionId: "chatcmpl-acknowledged" },
+      ]);
+      expect(warning).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(134_999);
+      await expect(outcome).resolves.toMatchObject({
+        error: {
+          code: "provider_stream_failed",
+          retryable: true,
+          diagnosticCode: "acknowledged_stream_deadline_before_content",
+        },
+      });
+      expect(warning).toHaveBeenCalledOnce();
+      expect(warning).toHaveBeenCalledWith(
+        "[fabric-ai-provider] provider stream deadline",
+        {
+          diagnosticCode: "acknowledged_stream_deadline_before_content",
+          timeoutMs: 180_000,
+        },
+      );
+      expect(fetchImplementation).toHaveBeenCalledOnce();
+    } finally {
+      warning.mockRestore();
       vi.useRealTimers();
     }
   });

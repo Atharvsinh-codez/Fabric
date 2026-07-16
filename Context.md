@@ -165,3 +165,35 @@ Rules:
   - The spinner is intentionally limited to compact AI activity feedback and never blocks editing or changes realtime behavior.
 - Next Steps:
   - Commit and push this isolated sidebar/loading milestone, then confirm its GitHub Actions run remains green.
+
+### [2026-07-16 17:15 IST] - Restore reliable multimodal Fabric agent runs
+- Request: Fix production Fabric agent failures that showed `AI is temporarily unavailable` and provider rows with zero tokens, make selected drawings and uploaded images available to the model, and avoid adding another Vercel environment variable.
+- Plan: Diagnose persisted production run timing and provider acceptance first, preserve the existing tenant/approval boundary, extend only the bounded streaming and visual-context paths, then pass every release gate before production deployment.
+- Actions:
+  - Confirmed multiple production runs were accepted by the configured provider and assigned interaction IDs, but Fabric canceled every stream at its former 45-second wall-clock deadline before the first structured content arrived; the provider's zero-token rows were failed-stream accounting rather than empty Fabric prompts.
+  - Raised the reviewed canvas-agent wall-clock budget to 180 seconds inside a 300-second Vercel route envelope and kept the existing 60-second renewable job lease.
+  - Added sanitized acknowledged-but-silent stream diagnostics that never log prompts, keys, endpoint URLs, response bodies, or model output.
+  - Added multimodal OpenAI-compatible message parts for up to five validated HTTPS visual inputs while continuing to reject data URLs, credential-bearing URLs, and unbounded inputs.
+  - Added short-lived run/board-bound media capabilities for selected private images and a bounded PNG renderer for authorized selected drawing geometry.
+  - Revalidate active run state, cancellation, deadline, archived board state, exact asset ID, board ID, and content hash on every provider media fetch; permanent R2 URLs and user cookies are never exposed.
+  - Derived purpose-separated capability signing material internally from the existing `AUTH_SECRET`, so no `AI_MEDIA_SIGNING_KEY` or other new deployment variable is needed.
+  - Added `sharp` as an explicit runtime dependency for deterministic server-side preview rendering and updated production guidance.
+- Files Changed:
+  - `app/api/ai/proposal/route.ts`, `lib/ai/skills/board-assistance.v1.ts`, `lib/ai/providers/openai-compatible.ts`, `worker/processor.ts` - Longer bounded streaming and multimodal model input.
+  - `app/api/ai/media/[token]/route.ts`, `lib/ai/media-token.ts`, `lib/ai/server/selection-preview.ts`, `worker/media-context.ts` - Secure provider-fetchable image and drawing context.
+  - `lib/boards/assets/response.ts`, `worker/config.ts`, `package.json`, `package-lock.json`, `.env.example`, `docs/production-runbook.md` - AI-only media delivery, derived configuration, dependency, and release documentation.
+  - Focused tests across provider, media tokens/routes/rendering, assets, worker configuration/processing, readiness, timeout, and dispatch paths.
+- Diff Summary:
+  - Provider-accepted streams killed at 45 seconds -> one bounded 180-second agent turn within the 300-second deployment envelope.
+  - Metadata-only image nodes and vector JSON alone -> authorized visual content delivered through expiring, exact-scope HTTPS capabilities.
+  - Generic zero-token outage signal -> sanitized timeout telemetry that identifies acknowledged streams with no content before their deadline.
+  - Proposed extra media secret -> purpose-separated derivation from the already-required `AUTH_SECRET`; no new environment variable.
+- Validation:
+  - AI-focused verification passed: 12 files / 51 tests, application TypeScript, and scoped ESLint.
+  - `npm run verify` passed: tldraw `4.2.0` and the reviewed patch verified; 114 application test files / 469 tests passed; all application, realtime, Cloudflare runtime, and AI Worker TypeScript checks passed; 15 Cloudflare Worker tests passed; ESLint and the production Next.js/server build passed.
+  - The production build includes `/api/ai/media/[token]` and `/api/ai/proposal`; `git diff --check` passed and no `AI_MEDIA_SIGNING_KEY` reference remains.
+- Risks/Notes:
+  - The repository has no pre-commit configuration; its complete npm verification and GitHub Actions workflow remain the enforced gates.
+  - Visual inputs remain untrusted board evidence and cannot expand permissions or bypass human proposal approval.
+- Next Steps:
+  - Commit and push the verified AI fix, deploy the exact revision to `fabric-s9rn`, and validate the production readiness and agent stream.

@@ -5,11 +5,16 @@ const mocks = vi.hoisted(() => ({
   createWorkerDatabase: vi.fn(),
   end: vi.fn(),
   loadServerlessWorkerConfig: vi.fn(),
+  providerConstructor: vi.fn(),
   processClaimedAiJob: vi.fn(),
 }));
 
 vi.mock("../lib/ai/providers/openai-compatible", () => ({
-  OpenAiCompatibleChatProvider: class OpenAiCompatibleChatProvider {},
+  OpenAiCompatibleChatProvider: class OpenAiCompatibleChatProvider {
+    constructor(configuration: unknown) {
+      mocks.providerConstructor(configuration);
+    }
+  },
 }));
 vi.mock("./config", () => ({
   loadServerlessWorkerConfig: mocks.loadServerlessWorkerConfig,
@@ -41,7 +46,11 @@ beforeEach(() => {
       apiKeys: ["test-key-with-enough-entropy"],
       model: "gcli/grok-4.5-medium",
       streamOnly: true,
-      requestTimeoutMs: 45_000,
+      requestTimeoutMs: 180_000,
+    },
+    media: {
+      baseUrl: "https://fabric.example.test",
+      signingKey: "derived-media-signing-material-with-purpose-separation",
     },
   });
   mocks.createWorkerDatabase.mockReturnValue({ end: mocks.end });
@@ -68,8 +77,18 @@ describe("on-demand AI dispatch", () => {
       expect.anything(),
       expect.objectContaining({ runId: job.runId }),
     );
+    expect(mocks.providerConstructor).toHaveBeenCalledWith(
+      expect.objectContaining({ requestTimeoutMs: 180_000 }),
+    );
     expect(mocks.processClaimedAiJob).toHaveBeenCalledWith(
-      expect.objectContaining({ job }),
+      expect.objectContaining({
+        job,
+        leaseMs: 60_000,
+        media: {
+          baseUrl: "https://fabric.example.test",
+          signingKey: "derived-media-signing-material-with-purpose-separation",
+        },
+      }),
     );
     expect(mocks.end).toHaveBeenCalledOnce();
   });

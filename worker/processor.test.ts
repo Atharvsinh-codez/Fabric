@@ -103,10 +103,12 @@ describe("durable AI processor", () => {
         },
       ],
     };
+    let observedImages: unknown;
     const provider: FabricModelProvider = {
       provider: "openai-compatible",
       model: "gcli/grok-4.5-medium",
-      async createTurn() {
+      async createTurn(turn) {
+        observedImages = turn.images;
         return {
           events: (async function* () {
             yield { type: "interaction_started" as const, interactionId: "interaction-1" };
@@ -119,7 +121,24 @@ describe("durable AI processor", () => {
       },
     };
 
-    await processClaimedAiJob({ sql: {} as never, job, provider, leaseMs: 60_000 });
+    const buildModelImages = vi.fn().mockResolvedValue([
+      {
+        url: "https://fabric.example.test/api/ai/media/signed-preview",
+        label: "Authorized drawing preview.",
+        detail: "high" as const,
+      },
+    ]);
+    await processClaimedAiJob({
+      sql: {} as never,
+      job,
+      provider,
+      leaseMs: 60_000,
+      media: {
+        baseUrl: "https://fabric.example.test",
+        signingKey: "m".repeat(64),
+      },
+      buildModelImages,
+    });
 
     expect(repository.recordProposalReady).toHaveBeenCalledOnce();
     expect(repository.recordProposalReady.mock.calls[0]?.[1]).toMatchObject({
@@ -129,6 +148,15 @@ describe("durable AI processor", () => {
     });
     expect(repository.recordRunFailure).not.toHaveBeenCalled();
     expect(repository.recordRunCanceled).not.toHaveBeenCalled();
+    expect(buildModelImages).toHaveBeenCalledWith(
+      expect.objectContaining({ job, request: job.executionInput }),
+    );
+    expect(observedImages).toEqual([
+      expect.objectContaining({
+        url: "https://fabric.example.test/api/ai/media/signed-preview",
+        detail: "high",
+      }),
+    ]);
     expect(repository.recordProposalDelta).toHaveBeenCalledTimes(2);
     expect(
       repository.recordProposalDelta.mock.calls

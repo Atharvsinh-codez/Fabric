@@ -42,7 +42,13 @@ async function runServerlessDispatch(
     if (!job) return;
 
     const provider = new OpenAiCompatibleChatProvider(config.ai);
-    await processClaimedAiJob({ sql, job, provider, leaseMs: config.leaseMs });
+    await processClaimedAiJob({
+      sql,
+      job,
+      provider,
+      leaseMs: config.leaseMs,
+      media: config.media,
+    });
   } finally {
     await sql.end({ timeout: 5 });
   }

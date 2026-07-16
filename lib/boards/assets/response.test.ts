@@ -63,4 +63,23 @@ describe("createBoardAssetResponse", () => {
     });
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([4, 5]));
   });
+
+  it("permits cross-origin model retrieval only for token-authorized AI reads", async () => {
+    const bytes = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7]);
+    const aiResponse = await createBoardAssetResponse(
+      { ...asset, content: bytes },
+      "ai",
+      new Request("https://fabric.test/api/ai/media/token"),
+    );
+    const memberResponse = await createBoardAssetResponse(
+      { ...asset, content: bytes },
+      "member",
+      new Request("https://fabric.test/api/boards/board/assets/asset"),
+    );
+
+    expect(aiResponse.headers.get("cross-origin-resource-policy")).toBe("cross-origin");
+    expect(aiResponse.headers.get("vary")).toBeNull();
+    expect(memberResponse.headers.get("cross-origin-resource-policy")).toBe("same-origin");
+    expect(memberResponse.headers.get("vary")).toBe("Cookie");
+  });
 });

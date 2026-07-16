@@ -17,6 +17,10 @@ import {
 
 import type { WorkerSql } from "./database";
 import {
+  buildAiModelImages,
+  type AiMediaConfiguration,
+} from "./media-context";
+import {
   baseSnapshotIsCurrent,
   type ClaimedAiJob,
   readAiRunControl,
@@ -120,6 +124,8 @@ export async function processClaimedAiJob(input: {
   job: ClaimedAiJob;
   provider: FabricModelProvider;
   leaseMs: number;
+  media?: AiMediaConfiguration;
+  buildModelImages?: typeof buildAiModelImages;
 }): Promise<void> {
   const { sql, job, provider } = input;
   const requestResult = AiProposalRequestSchema.safeParse(job.executionInput);
@@ -215,6 +221,15 @@ export async function processClaimedAiJob(input: {
       throw new FabricModelError("provider_stream_failed", "The run state could not advance", true);
     }
 
+    const modelImages = input.media
+      ? await (input.buildModelImages ?? buildAiModelImages)({
+          sql,
+          job,
+          request,
+          media: input.media,
+        })
+      : [];
+
     await recordRunProgress(sql, {
       runId: job.runId,
       status: "calling_model",
@@ -223,6 +238,7 @@ export async function processClaimedAiJob(input: {
     });
     const turn = await provider.createTurn({
       input: buildBoardAssistanceInput(request, patchBase),
+      ...(modelImages.length > 0 ? { images: modelImages } : {}),
       systemInstruction: skill.systemInstruction,
       thinkingLevel: manifest.thinkingLevel,
       maxOutputTokens: manifest.limits.maxOutputTokens,

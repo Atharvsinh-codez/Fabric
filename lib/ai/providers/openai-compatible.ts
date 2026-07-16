@@ -2,6 +2,7 @@ import { FABRIC_AI_PROVIDER, type AiRuntimeConfig } from "../config";
 import {
   FabricModelError,
   type FabricModelProvider,
+  type ModelImageInput,
   type ModelStreamEvent,
   type ModelTurn,
   type ModelTurnRequest,
@@ -10,6 +11,53 @@ import {
 
 const MAX_CLIENT_ATTEMPTS_PER_TURN = 3;
 const MAX_SSE_EVENT_CHARACTERS = 1_048_576;
+const MAX_MODEL_IMAGES = 5;
+const ACKNOWLEDGED_SILENT_STREAM_DEADLINE =
+  "acknowledged_stream_deadline_before_content" as const;
+
+class ProviderDiagnosticError extends FabricModelError {
+  constructor(
+    code: "provider_stream_failed",
+    message: string,
+    retryable: boolean,
+    readonly diagnosticCode: typeof ACKNOWLEDGED_SILENT_STREAM_DEADLINE,
+  ) {
+    super(code, message, retryable);
+    this.name = "ProviderDiagnosticError";
+  }
+}
+
+function imageContentParts(images: readonly ModelImageInput[] | undefined) {
+  if (!images?.length) return null;
+  if (images.length > MAX_MODEL_IMAGES) {
+    throw new FabricModelError("invalid_request", "The model image limit was exceeded");
+  }
+  return images.flatMap((image) => {
+    let url: URL;
+    try {
+      url = new URL(image.url);
+    } catch {
+      throw new FabricModelError("invalid_request", "The model image URL is invalid");
+    }
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      image.url.length > 4_096 ||
+      image.label.length < 1 ||
+      image.label.length > 200
+    ) {
+      throw new FabricModelError("invalid_request", "The model image input is invalid");
+    }
+    return [
+      { type: "text", text: image.label },
+      {
+        type: "image_url",
+        image_url: { url: image.url, detail: image.detail ?? "auto" },
+      },
+    ] as const;
+  });
+}
 
 class ProviderHttpError extends Error {
   constructor(readonly status: number) {
@@ -71,13 +119,31 @@ function canFailOverBeforeStream(error: unknown): boolean {
 
 function normalizeProviderError(
   error: unknown,
-  context?: { externalSignal?: AbortSignal; didTimeout?: boolean },
+  context?: {
+    externalSignal?: AbortSignal;
+    didTimeout?: boolean;
+    streamAcknowledged?: boolean;
+    textDeltaSeen?: boolean;
+    timeoutMs?: number;
+  },
 ): FabricModelError {
   if (error instanceof FabricModelError) return error;
   if (context?.externalSignal?.aborted) {
     return new FabricModelError("aborted", "The model request was canceled");
   }
   if (context?.didTimeout) {
+    if (context.streamAcknowledged && !context.textDeltaSeen) {
+      console.warn("[fabric-ai-provider] provider stream deadline", {
+        diagnosticCode: ACKNOWLEDGED_SILENT_STREAM_DEADLINE,
+        timeoutMs: context.timeoutMs,
+      });
+      return new ProviderDiagnosticError(
+        "provider_stream_failed",
+        "The model stream deadline was exceeded after acknowledgement before content",
+        true,
+        ACKNOWLEDGED_SILENT_STREAM_DEADLINE,
+      );
+    }
     return new FabricModelError(
       "provider_stream_failed",
       "The model request deadline was exceeded",
@@ -350,16 +416,20 @@ export class OpenAiCompatibleChatProvider implements FabricModelProvider {
     if (request.signal?.aborted) {
       throw new FabricModelError("aborted", "The model request was canceled");
     }
-    const deadline = createRequestDeadline(
-      request.signal,
-      Math.min(request.timeoutMs, this.requestTimeoutMs),
-    );
     const initialKeyIndex = this.reserveInitialKeyIndex(request.keyRotationOrdinal);
+    const imageParts = imageContentParts(request.images);
+    const timeoutMs = Math.min(request.timeoutMs, this.requestTimeoutMs);
+    const deadline = createRequestDeadline(request.signal, timeoutMs);
     const requestBody = JSON.stringify({
       model: this.model,
       messages: [
         { role: "system", content: request.systemInstruction },
-        { role: "user", content: request.input },
+        {
+          role: "user",
+          content: imageParts
+            ? [{ type: "text", text: request.input }, ...imageParts]
+            : request.input,
+        },
       ],
       max_tokens: request.maxOutputTokens,
       response_format: {
@@ -415,12 +485,21 @@ export class OpenAiCompatibleChatProvider implements FabricModelProvider {
           const body = response.body;
           return {
             events: (async function* () {
+              let streamAcknowledged = false;
+              let textDeltaSeen = false;
               try {
-                yield* toModelEvents(body, deadline.signal);
+                for await (const event of toModelEvents(body, deadline.signal)) {
+                  if (event.type === "interaction_started") streamAcknowledged = true;
+                  if (event.type === "text_delta") textDeltaSeen = true;
+                  yield event;
+                }
               } catch (error) {
                 throw normalizeProviderError(error, {
                   externalSignal,
                   didTimeout: didTimeout(),
+                  streamAcknowledged,
+                  textDeltaSeen,
+                  timeoutMs,
                 });
               } finally {
                 cleanup();

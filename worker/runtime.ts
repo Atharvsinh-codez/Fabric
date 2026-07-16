@@ -84,7 +84,13 @@ export async function startAiWorkerRuntime(
           continue;
         }
         console.info(`Fabric AI worker claimed run ${job.runId} attempt ${job.attempt}.`);
-        await processClaimedAiJob({ sql, job, provider, leaseMs: config.leaseMs });
+        await processClaimedAiJob({
+          sql,
+          job,
+          provider,
+          leaseMs: config.leaseMs,
+          media: config.media,
+        });
       } catch (error) {
         const errorName = error instanceof Error ? error.name : "UnknownError";
         console.error(`Fabric AI worker loop error: ${errorName}.`);

@@ -23,6 +23,8 @@ const workerEnvironment = {
   AI_MODEL: "gcli/grok-4.5-medium",
   AI_STREAM_ONLY: "true",
   AI_RUNS_ENABLED: "true",
+  APP_URL: "https://fabric.example.test",
+  AUTH_SECRET: "a-secure-random-auth-secret-with-32-characters",
   NEXT_PUBLIC_REALTIME_URL:
     "wss://fabric-realtime.example.workers.dev/realtime",
   REALTIME_REVOCATION_ENDPOINT:
