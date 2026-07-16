@@ -1,0 +1,3 @@
+export const PAGINATION_CURSOR_MAX_CHARS = 1_024;
+export const BOARD_LIST_DEFAULT_PAGE_SIZE = 50;
+export const BOARD_LIST_MAX_PAGE_SIZE = 100;

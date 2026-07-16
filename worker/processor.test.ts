@@ -1,0 +1,230 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { FabricModelProvider } from "../lib/ai/contracts";
+
+const repository = vi.hoisted(() => ({
+  baseSnapshotIsCurrent: vi.fn(),
+  readAiRunControl: vi.fn(),
+  recordProposalDelta: vi.fn(),
+  recordProposalReady: vi.fn(),
+  recordProviderInteractionId: vi.fn(),
+  recordRunCanceled: vi.fn(),
+  recordRunFailure: vi.fn(),
+  recordRunProgress: vi.fn(),
+  refreshAiJobLease: vi.fn(),
+  releaseAiJobForRetry: vi.fn(),
+}));
+
+vi.mock("./repository", () => repository);
+
+import { processClaimedAiJob } from "./processor";
+
+const selectionHash = "a".repeat(64);
+const job = {
+  jobId: "11111111-1111-4111-8111-111111111111",
+  providerKeyOrdinal: 1,
+  runId: "22222222-2222-4222-8222-222222222222",
+  leaseOwner: "worker-1",
+  attempt: 1,
+  maxAttempts: 1,
+  runStatus: "queued" as const,
+  model: "gemini-2.5-flash" as const,
+  principalId: "33333333-3333-4333-8333-333333333333",
+  workspaceId: "44444444-4444-4444-8444-444444444444",
+  boardId: "55555555-5555-4555-8555-555555555555",
+  documentGenerationId: "66666666-6666-4666-8666-666666666666",
+  baseDurableSequence: 7,
+  selectionHash,
+  executionInput: {
+    skill: "cluster-by-theme" as const,
+    mode: "suggest" as const,
+    workspaceId: "44444444-4444-4444-8444-444444444444",
+    boardId: "55555555-5555-4555-8555-555555555555",
+    documentGenerationId: "66666666-6666-4666-8666-666666666666",
+    durableSequence: 7,
+    instruction: "Cluster these notes by theme.",
+    selection: [
+      { id: "node_1", type: "note" as const, title: "One", x: 0, y: 0, width: 200, height: 120 },
+      { id: "node_2", type: "note" as const, title: "Two", x: 220, y: 0, width: 200, height: 120 },
+    ],
+  },
+  deadlineAt: new Date(Date.now() + 30_000),
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  repository.baseSnapshotIsCurrent.mockResolvedValue(true);
+  repository.readAiRunControl.mockResolvedValue({
+    status: "queued",
+    cancelRequestedAt: null,
+    deadlineAt: job.deadlineAt,
+  });
+  repository.recordRunProgress.mockResolvedValue(true);
+  repository.recordProposalDelta.mockResolvedValue(true);
+  repository.recordProposalReady.mockResolvedValue(true);
+  repository.refreshAiJobLease.mockResolvedValue(true);
+});
+
+describe("durable AI processor", () => {
+  it("persists only a validated proposal ready for approval", async () => {
+    const patch = {
+      schemaVersion: 1 as const,
+      summary: "Grouped two notes into one theme.",
+      base: {
+        workspaceId: job.workspaceId,
+        boardId: job.boardId,
+        documentGenerationId: job.documentGenerationId,
+        durableSequence: job.baseDurableSequence,
+        selectionHash,
+      },
+      operations: [
+        {
+          type: "createNode" as const,
+          tempId: "tmp_theme",
+          nodeType: "frame" as const,
+          position: { x: 40, y: 40 },
+          size: { width: 640, height: 420 },
+          content: { title: "Theme" },
+          appearance: { fill: "fog" as const },
+        },
+        {
+          type: "moveNode" as const,
+          nodeId: "node_1",
+          position: { x: 80, y: 110 },
+          parentId: "tmp_theme",
+        },
+        {
+          type: "moveNode" as const,
+          nodeId: "node_2",
+          position: { x: 320, y: 110 },
+          parentId: "tmp_theme",
+        },
+      ],
+    };
+    const provider: FabricModelProvider = {
+      provider: "google-gemini",
+      model: "gemini-2.5-flash",
+      async createTurn() {
+        return {
+          events: (async function* () {
+            yield { type: "interaction_started" as const, interactionId: "interaction-1" };
+            for (const text of JSON.stringify(patch)) {
+              yield { type: "text_delta" as const, text };
+            }
+            yield { type: "interaction_completed" as const, usage: { totalTokens: 42 } };
+          })(),
+        };
+      },
+    };
+
+    await processClaimedAiJob({ sql: {} as never, job, provider, leaseMs: 60_000 });
+
+    expect(repository.recordProposalReady).toHaveBeenCalledOnce();
+    expect(repository.recordProposalReady.mock.calls[0]?.[1]).toMatchObject({
+      job,
+      proposal: { patch, patchHash: expect.stringMatching(/^[a-f0-9]{64}$/) },
+      usage: { totalTokens: 42 },
+    });
+    expect(repository.recordRunFailure).not.toHaveBeenCalled();
+    expect(repository.recordRunCanceled).not.toHaveBeenCalled();
+    expect(repository.recordProposalDelta).toHaveBeenCalledTimes(2);
+    expect(
+      repository.recordProposalDelta.mock.calls
+        .map((call) => call[2])
+        .join(""),
+    ).toBe(JSON.stringify(patch));
+  });
+
+  it("enforces feedback's summary-only non-destructive policy", async () => {
+    const feedbackJob = {
+      ...job,
+      executionInput: {
+        ...job.executionInput,
+        mode: "feedback" as const,
+        instruction: "Explain what is unclear.",
+      },
+    };
+    const unsafePatch = {
+      schemaVersion: 1 as const,
+      summary: "Moved evidence instead of adding feedback.",
+      base: {
+        workspaceId: job.workspaceId,
+        boardId: job.boardId,
+        documentGenerationId: job.documentGenerationId,
+        durableSequence: job.baseDurableSequence,
+        selectionHash,
+      },
+      operations: [
+        {
+          type: "moveNode" as const,
+          nodeId: "node_1",
+          position: { x: 80, y: 110 },
+        },
+      ],
+    };
+    const provider: FabricModelProvider = {
+      provider: "google-gemini",
+      model: "gemini-2.5-flash",
+      async createTurn(turn) {
+        expect(turn.systemInstruction).toContain("board-feedback");
+        expect(JSON.parse(turn.input)).toMatchObject({ assistanceMode: "feedback" });
+        expect(turn.keyRotationOrdinal).toBe(job.providerKeyOrdinal - 1);
+        return {
+          events: (async function* () {
+            yield { type: "text_delta" as const, text: JSON.stringify(unsafePatch) };
+            yield { type: "interaction_completed" as const, usage: {} };
+          })(),
+        };
+      },
+    };
+
+    await processClaimedAiJob({
+      sql: {} as never,
+      job: feedbackJob,
+      provider,
+      leaseMs: 60_000,
+    });
+
+    expect(repository.recordProposalReady).not.toHaveBeenCalled();
+    expect(repository.recordRunFailure).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        status: "validation_failed",
+        error: expect.objectContaining({
+          code: "semantic_validation_failed",
+          issueCodes: expect.arrayContaining(["operation_not_allowed"]),
+        }),
+      }),
+    );
+  });
+
+  it("fails closed before provider invocation when the queued model differs", async () => {
+    const createTurn = vi.fn();
+    const provider: FabricModelProvider = {
+      provider: "google-gemini",
+      model: "gemini-2.5-flash",
+      createTurn,
+    };
+
+    await processClaimedAiJob({
+      sql: {} as never,
+      job: { ...job, model: "gemini-3.5-flash" },
+      provider,
+      leaseMs: 60_000,
+    });
+
+    expect(createTurn).not.toHaveBeenCalled();
+    expect(repository.recordRunProgress).not.toHaveBeenCalled();
+    expect(repository.recordRunFailure).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        status: "provider_unavailable",
+        error: expect.objectContaining({
+          code: "provider_misconfigured",
+          retryable: false,
+        }),
+      }),
+    );
+  });
+
+});

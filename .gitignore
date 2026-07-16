@@ -1,0 +1,17 @@
+/node_modules
+/.next
+/out
+/dist
+*.log
+*.tsbuildinfo
+worker-startup.cpuprofile
+.env*
+!.env.example
+.vercel
+/.wrangler
+/_wrangler-pid.tmp
+/.dev.vars*
+.DS_Store
+/nul
+/work
+/whiteboardstaging

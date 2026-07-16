@@ -1,0 +1,60 @@
+name = "fabric-realtime"
+account_id = "1da22c19548115accf1b98ab7c562b2c"
+main = "cloudflare/realtime/worker.ts"
+compatibility_date = "2026-07-14"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[observability]
+enabled = true
+head_sampling_rate = 0.1
+
+[vars]
+FABRIC_ENV = "production"
+REALTIME_ALLOWED_ORIGINS = "https://fabric-rose-iota.vercel.app"
+REALTIME_ISSUER = "fabric-web"
+REALTIME_AUDIENCE = "fabric-realtime"
+
+[secrets]
+required = ["REALTIME_TICKET_SIGNING_KEY", "REALTIME_COORDINATOR_SECRET"]
+
+[[durable_objects.bindings]]
+name = "FABRIC_BOARD_ROOMS"
+class_name = "FabricBoardRoom"
+
+[[durable_objects.bindings]]
+name = "FABRIC_ACCESS_COORDINATORS"
+class_name = "WorkspaceAccessCoordinator"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["FabricBoardRoom"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["WorkspaceAccessCoordinator"]
+
+[env.dev.vars]
+FABRIC_ENV = "local"
+REALTIME_ALLOWED_ORIGINS = "http://localhost:3000"
+REALTIME_ISSUER = "fabric-web"
+REALTIME_AUDIENCE = "fabric-realtime"
+
+[env.dev.secrets]
+required = ["REALTIME_TICKET_SIGNING_KEY", "REALTIME_COORDINATOR_SECRET"]
+
+[[env.dev.durable_objects.bindings]]
+name = "FABRIC_BOARD_ROOMS"
+class_name = "FabricBoardRoom"
+
+[[env.dev.durable_objects.bindings]]
+name = "FABRIC_ACCESS_COORDINATORS"
+class_name = "WorkspaceAccessCoordinator"
+
+[[env.dev.migrations]]
+tag = "v1"
+new_sqlite_classes = ["FabricBoardRoom"]
+
+[[env.dev.migrations]]
+tag = "v2"
+new_sqlite_classes = ["WorkspaceAccessCoordinator"]

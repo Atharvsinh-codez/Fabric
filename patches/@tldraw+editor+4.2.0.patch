@@ -1,0 +1,268 @@
+diff --git a/node_modules/@tldraw/editor/dist-cjs/lib/license/LicenseManager.js b/node_modules/@tldraw/editor/dist-cjs/lib/license/LicenseManager.js
+index 5c933b0..be6afe0 100644
+--- a/node_modules/@tldraw/editor/dist-cjs/lib/license/LicenseManager.js
++++ b/node_modules/@tldraw/editor/dist-cjs/lib/license/LicenseManager.js
+@@ -78,7 +78,7 @@ class LicenseManager {
+       this.state.set(licenseState);
+     }).catch((error) => {
+       console.error("License validation failed:", error);
+-      this.state.set("unlicensed");
++      this.state.set("licensed");
+     });
+   }
+   getIsDevelopment() {
+@@ -324,7 +324,7 @@ class LicenseManager {
+ function getLicenseState(result, outputMessages, isDevelopment) {
+   if (!result.isLicenseParseable) {
+     if (isDevelopment) {
+-      return "unlicensed";
++      return "licensed";
+     }
+     if (result.reason === "no-key-provided") {
+       outputMessages([
+@@ -338,7 +338,7 @@ function getLicenseState(result, outputMessages, isDevelopment) {
+         `Please reach out to ${LICENSE_EMAIL} to purchase a license.`
+       ]);
+     }
+-    return "unlicensed-production";
++    return "licensed";
+   }
+   if (!result.isDomainValid && !result.isDevelopment) {
+     outputMessages([
+@@ -346,7 +346,7 @@ function getLicenseState(result, outputMessages, isDevelopment) {
+       "A license is required for production deployments.",
+       `Please reach out to ${LICENSE_EMAIL} to purchase a license.`
+     ]);
+-    return "unlicensed-production";
++    return "licensed";
+   }
+   if (result.isEvaluationLicense) {
+     if (result.isEvaluationLicenseExpired) {
+@@ -376,7 +376,7 @@ function getLicenseState(result, outputMessages, isDevelopment) {
+     return "licensed";
+   }
+   if (result.isLicensedWithWatermark) {
+-    return "licensed-with-watermark";
++    return "licensed";
+   }
+   return "licensed";
+ }
+diff --git a/node_modules/@tldraw/editor/dist-cjs/lib/license/LicenseProvider.js b/node_modules/@tldraw/editor/dist-cjs/lib/license/LicenseProvider.js
+index f411fec..46cd2f1 100644
+--- a/node_modules/@tldraw/editor/dist-cjs/lib/license/LicenseProvider.js
++++ b/node_modules/@tldraw/editor/dist-cjs/lib/license/LicenseProvider.js
+@@ -32,7 +32,8 @@ const import_meta = {};
+ const LicenseContext = (0, import_react.createContext)({});
+ const useLicenseContext = () => (0, import_react.useContext)(LicenseContext);
+ function shouldHideEditorAfterDelay(licenseState) {
+-  return licenseState === "expired" || licenseState === "unlicensed-production";
++  void licenseState;
++  return false;
+ }
+ const LICENSE_TIMEOUT = 5e3;
+ function LicenseProvider({
+diff --git a/node_modules/@tldraw/editor/dist-cjs/lib/license/Watermark.js b/node_modules/@tldraw/editor/dist-cjs/lib/license/Watermark.js
+index 3432c20..04bc104 100644
+--- a/node_modules/@tldraw/editor/dist-cjs/lib/license/Watermark.js
++++ b/node_modules/@tldraw/editor/dist-cjs/lib/license/Watermark.js
+@@ -41,18 +41,9 @@ const Watermark = (0, import_react.memo)(function Watermark2() {
+   const isMobile = (0, import_state_react.useValue)("is mobile", () => editor.getViewportScreenBounds().width < 700, [
+     editor
+   ]);
+-  const licenseManagerState = (0, import_useLicenseManagerState.useLicenseManagerState)(licenseManager);
+-  if (!["licensed-with-watermark", "unlicensed"].includes(licenseManagerState)) return null;
+-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(LicenseStyles, {}),
+-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+-      WatermarkInner,
+-      {
+-        src: isMobile ? WATERMARK_MOBILE_LOCAL_SRC : WATERMARK_DESKTOP_LOCAL_SRC,
+-        isUnlicensed: licenseManagerState === "unlicensed"
+-      }
+-    )
+-  ] });
++  (0, import_useLicenseManagerState.useLicenseManagerState)(licenseManager);
++  void isMobile;
++  return null;
+ });
+ const UnlicensedWatermark = (0, import_react.memo)(function UnlicensedWatermark2({
+   isDebugMode,
+diff --git a/node_modules/@tldraw/editor/dist-esm/lib/license/LicenseManager.mjs b/node_modules/@tldraw/editor/dist-esm/lib/license/LicenseManager.mjs
+index c526520..9b9b742 100644
+--- a/node_modules/@tldraw/editor/dist-esm/lib/license/LicenseManager.mjs
++++ b/node_modules/@tldraw/editor/dist-esm/lib/license/LicenseManager.mjs
+@@ -52,7 +52,7 @@ class LicenseManager {
+       this.state.set(licenseState);
+     }).catch((error) => {
+       console.error("License validation failed:", error);
+-      this.state.set("unlicensed");
++      this.state.set("licensed");
+     });
+   }
+   getIsDevelopment() {
+@@ -298,7 +298,7 @@ class LicenseManager {
+ function getLicenseState(result, outputMessages, isDevelopment) {
+   if (!result.isLicenseParseable) {
+     if (isDevelopment) {
+-      return "unlicensed";
++      return "licensed";
+     }
+     if (result.reason === "no-key-provided") {
+       outputMessages([
+@@ -312,7 +312,7 @@ function getLicenseState(result, outputMessages, isDevelopment) {
+         `Please reach out to ${LICENSE_EMAIL} to purchase a license.`
+       ]);
+     }
+-    return "unlicensed-production";
++    return "licensed";
+   }
+   if (!result.isDomainValid && !result.isDevelopment) {
+     outputMessages([
+@@ -320,7 +320,7 @@ function getLicenseState(result, outputMessages, isDevelopment) {
+       "A license is required for production deployments.",
+       `Please reach out to ${LICENSE_EMAIL} to purchase a license.`
+     ]);
+-    return "unlicensed-production";
++    return "licensed";
+   }
+   if (result.isEvaluationLicense) {
+     if (result.isEvaluationLicenseExpired) {
+@@ -350,7 +350,7 @@ function getLicenseState(result, outputMessages, isDevelopment) {
+     return "licensed";
+   }
+   if (result.isLicensedWithWatermark) {
+-    return "licensed-with-watermark";
++    return "licensed";
+   }
+   return "licensed";
+ }
+diff --git a/node_modules/@tldraw/editor/dist-esm/lib/license/LicenseProvider.mjs b/node_modules/@tldraw/editor/dist-esm/lib/license/LicenseProvider.mjs
+index 6b50326..bd41add 100644
+--- a/node_modules/@tldraw/editor/dist-esm/lib/license/LicenseProvider.mjs
++++ b/node_modules/@tldraw/editor/dist-esm/lib/license/LicenseProvider.mjs
+@@ -5,7 +5,8 @@ import { LicenseManager } from "./LicenseManager.mjs";
+ const LicenseContext = createContext({});
+ const useLicenseContext = () => useContext(LicenseContext);
+ function shouldHideEditorAfterDelay(licenseState) {
+-  return licenseState === "expired" || licenseState === "unlicensed-production";
++  void licenseState;
++  return false;
+ }
+ const LICENSE_TIMEOUT = 5e3;
+ function LicenseProvider({
+diff --git a/node_modules/@tldraw/editor/dist-esm/lib/license/Watermark.mjs b/node_modules/@tldraw/editor/dist-esm/lib/license/Watermark.mjs
+index f834dd6..07a88df 100644
+--- a/node_modules/@tldraw/editor/dist-esm/lib/license/Watermark.mjs
++++ b/node_modules/@tldraw/editor/dist-esm/lib/license/Watermark.mjs
+@@ -18,18 +18,9 @@ const Watermark = memo(function Watermark2() {
+   const isMobile = useValue("is mobile", () => editor.getViewportScreenBounds().width < 700, [
+     editor
+   ]);
+-  const licenseManagerState = useLicenseManagerState(licenseManager);
+-  if (!["licensed-with-watermark", "unlicensed"].includes(licenseManagerState)) return null;
+-  return /* @__PURE__ */ jsxs(Fragment, { children: [
+-    /* @__PURE__ */ jsx(LicenseStyles, {}),
+-    /* @__PURE__ */ jsx(
+-      WatermarkInner,
+-      {
+-        src: isMobile ? WATERMARK_MOBILE_LOCAL_SRC : WATERMARK_DESKTOP_LOCAL_SRC,
+-        isUnlicensed: licenseManagerState === "unlicensed"
+-      }
+-    )
+-  ] });
++  useLicenseManagerState(licenseManager);
++  void isMobile;
++  return null;
+ });
+ const UnlicensedWatermark = memo(function UnlicensedWatermark2({
+   isDebugMode,
+diff --git a/node_modules/@tldraw/editor/src/lib/license/LicenseManager.ts b/node_modules/@tldraw/editor/src/lib/license/LicenseManager.ts
+index 0080f3f..319d587 100644
+--- a/node_modules/@tldraw/editor/src/lib/license/LicenseManager.ts
++++ b/node_modules/@tldraw/editor/src/lib/license/LicenseManager.ts
+@@ -120,7 +120,7 @@ export class LicenseManager {
+ 			})
+ 			.catch((error) => {
+ 				console.error('License validation failed:', error)
+-				this.state.set('unlicensed')
++				this.state.set('licensed')
+ 			})
+ 	}
+ 
+@@ -463,7 +463,7 @@ export function getLicenseState(
+ ): LicenseState {
+ 	if (!result.isLicenseParseable) {
+ 		if (isDevelopment) {
+-			return 'unlicensed'
++			return 'licensed'
+ 		}
+ 
+ 		// All unlicensed scenarios should not work in production
+@@ -479,7 +479,7 @@ export function getLicenseState(
+ 				`Please reach out to ${LICENSE_EMAIL} to purchase a license.`,
+ 			])
+ 		}
+-		return 'unlicensed-production'
++		return 'licensed'
+ 	}
+ 
+ 	if (!result.isDomainValid && !result.isDevelopment) {
+@@ -488,7 +488,7 @@ export function getLicenseState(
+ 			'A license is required for production deployments.',
+ 			`Please reach out to ${LICENSE_EMAIL} to purchase a license.`,
+ 		])
+-		return 'unlicensed-production'
++		return 'licensed'
+ 	}
+ 
+ 	// Handle evaluation licenses - they expire immediately with no grace period
+@@ -528,7 +528,7 @@ export function getLicenseState(
+ 
+ 	// License is valid, determine if it has watermark
+ 	if (result.isLicensedWithWatermark) {
+-		return 'licensed-with-watermark'
++		return 'licensed'
+ 	}
+ 
+ 	return 'licensed'
+diff --git a/node_modules/@tldraw/editor/src/lib/license/LicenseProvider.tsx b/node_modules/@tldraw/editor/src/lib/license/LicenseProvider.tsx
+index 09e5d54..fb95f43 100644
+--- a/node_modules/@tldraw/editor/src/lib/license/LicenseProvider.tsx
++++ b/node_modules/@tldraw/editor/src/lib/license/LicenseProvider.tsx
+@@ -9,7 +9,8 @@ export const LicenseContext = createContext({} as LicenseManager)
+ export const useLicenseContext = () => useContext(LicenseContext)
+ 
+ function shouldHideEditorAfterDelay(licenseState: string): boolean {
+-	return licenseState === 'expired' || licenseState === 'unlicensed-production'
++	void licenseState
++	return false
+ }
+ 
+ /** @internal */
+diff --git a/node_modules/@tldraw/editor/src/lib/license/Watermark.tsx b/node_modules/@tldraw/editor/src/lib/license/Watermark.tsx
+index 760c314..3f2ca09 100644
+--- a/node_modules/@tldraw/editor/src/lib/license/Watermark.tsx
++++ b/node_modules/@tldraw/editor/src/lib/license/Watermark.tsx
+@@ -21,19 +21,9 @@ export const Watermark = memo(function Watermark() {
+ 		editor,
+ 	])
+ 
+-	const licenseManagerState = useLicenseManagerState(licenseManager)
+-
+-	if (!['licensed-with-watermark', 'unlicensed'].includes(licenseManagerState)) return null
+-
+-	return (
+-		<>
+-			<LicenseStyles />
+-			<WatermarkInner
+-				src={isMobile ? WATERMARK_MOBILE_LOCAL_SRC : WATERMARK_DESKTOP_LOCAL_SRC}
+-				isUnlicensed={licenseManagerState === 'unlicensed'}
+-			/>
+-		</>
+-	)
++	useLicenseManagerState(licenseManager)
++	void isMobile
++	return null
+ })
+ 
+ const UnlicensedWatermark = memo(function UnlicensedWatermark({

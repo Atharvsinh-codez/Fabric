@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "allowImportingTsExtensions": true,
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2022",
+    "types": ["./worker-configuration.d.ts", "node"]
+  },
+  "include": ["worker.ts", "worker-configuration.d.ts"],
+  "exclude": []
+}
