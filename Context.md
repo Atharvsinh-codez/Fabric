@@ -93,3 +93,25 @@ Rules:
   - Deployment environments must continue to provide `REALTIME_COORDINATOR_SECRET` through their secret store; it is intentionally not committed.
 - Next Steps:
   - Commit the reviewed scope and push `main` to `origin`.
+
+### [2026-07-16 14:06 IST] - Restore reproducible npm 10 CI installs
+- Request: Investigate and fix GitHub Actions run `29483036126`, record the completed milestone, and push it before continuing UI work.
+- Plan: Reproduce the install failure with the exact CI npm version, regenerate only the lockfile, prove a genuine clean install including the reviewed tldraw patch, then publish the isolated fix.
+- Actions:
+  - Confirmed the Actions `verify` job stopped at `npm ci` before tests because `@emnapi/runtime@1.11.2` and `@emnapi/core@1.11.2` were missing from the lockfile.
+  - Reproduced the same failure locally with npm `10.9.8`, matching the Node 22 GitHub runner.
+  - Regenerated `package-lock.json` with npm `10.9.8`, restoring the required optional/peer dependency records without changing declared dependencies.
+- Files Changed:
+  - `package-lock.json` - Synchronized the cross-platform dependency graph with the npm version used by CI.
+  - `Context.md` - Recorded the CI diagnosis, focused correction, and verification.
+- Diff Summary:
+  - npm 11-generated lockfile rejected by npm 10 CI -> npm 10-compatible lockfile with complete `@emnapi` records.
+- Validation:
+  - A genuine `npx npm@10.9.8 ci` completed and the `patch-package` postinstall reapplied `@tldraw/editor@4.2.0` successfully.
+  - `npx npm@10.9.8 ci --dry-run --ignore-scripts` passed.
+  - `npm run verify:tldraw` and `npm run typecheck` passed.
+  - `npm audit --omit=dev --audit-level=high` found 0 production vulnerabilities.
+- Risks/Notes:
+  - The repository has no pre-commit configuration; its npm verification and GitHub Actions workflow remain the enforced gates.
+- Next Steps:
+  - Commit and push this isolated CI fix, then continue the approved Fabric agent sidebar/loading milestone.
