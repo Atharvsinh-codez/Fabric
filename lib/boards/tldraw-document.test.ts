@@ -177,6 +177,52 @@ describe("tldraw document adapter", () => {
 
     expect(invalid).toBeNull();
   });
+
+  it("projects pen dimensions from real segment point bounds", () => {
+    const record = completeRecord(
+      {
+        id: "shape:pen-bounds",
+        type: "draw",
+        x: 50,
+        y: 75,
+        props: {
+          scale: 1,
+          color: "black",
+          segments: [
+            {
+              type: "free",
+              points: [
+                { x: 20, y: 10, z: 0.4 },
+                { x: 170, y: 130, z: 0.8 },
+              ],
+            },
+          ],
+        },
+        meta: {
+          fabric: {
+            kind: "node",
+            nodeId: "pen-bounds",
+            nodeType: "drawing",
+            title: "Pen stroke",
+          },
+        },
+      },
+      0,
+    );
+    const document = createFabricTldrawDocument({
+      store: { [record.id]: record },
+      schema: { schemaVersion: 2, sequences: {} },
+    });
+
+    expect(projectTldrawDocument(document!).nodes[0]).toMatchObject({
+      id: "pen-bounds",
+      type: "drawing",
+      width: 150,
+      height: 120,
+      x: 50,
+      y: 75,
+    });
+  });
 });
 
 describe("TldrawRecordBudget", () => {

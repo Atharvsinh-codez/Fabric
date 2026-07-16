@@ -13,9 +13,18 @@ import {
 import type { FabricWhiteboardAiAdapter } from "@/components/fabric-whiteboard/ai-panel";
 import type { CanvasOperation } from "@/lib/ai/canvas-patch";
 import type { ProposalReadyPayload } from "@/lib/ai/contracts";
+import {
+  normalizePenDrawing,
+  PEN_RENDERER_VERSION,
+  renderPenText,
+  type PenSegment,
+} from "@/lib/ai/pen-renderer";
 import type { AiProposalRequest } from "@/lib/ai/proposal-request";
 import { captureTldrawCheckpoint } from "@/lib/boards/tldraw-store-adapter";
-import { canvasNodeIdForTldrawShapeRecord } from "@/lib/boards/tldraw-document";
+import {
+  canvasNodeIdForTldrawShapeRecord,
+  canvasSourceGeometryForTldrawShapeRecord,
+} from "@/lib/boards/tldraw-document";
 import type { CanvasNode } from "@/lib/types";
 
 const colorTokens = {
@@ -64,6 +73,23 @@ function richTextValue(value: unknown): string {
   return `${ownText}${content}`.trim();
 }
 
+function geoTypeForNode(
+  nodeType: Extract<
+    CanvasOperation,
+    { type: "createNode" }
+  >["nodeType"],
+): "rectangle" | "ellipse" | "diamond" | "triangle" | "hexagon" {
+  if (
+    nodeType === "ellipse" ||
+    nodeType === "diamond" ||
+    nodeType === "triangle" ||
+    nodeType === "hexagon"
+  ) {
+    return nodeType;
+  }
+  return "rectangle";
+}
+
 function shapePropsForNode(operation: Extract<CanvasOperation, { type: "createNode" }>) {
   const text = contentText(operation.content);
   const color = operation.appearance?.fill
@@ -100,7 +126,7 @@ function shapePropsForNode(operation: Extract<CanvasOperation, { type: "createNo
   return {
     type: "geo",
     props: {
-      geo: operation.nodeType === "ellipse" ? "ellipse" : "rectangle",
+      geo: geoTypeForNode(operation.nodeType),
       w: operation.size.width,
       h: operation.size.height,
       color,
@@ -154,6 +180,106 @@ function createNode(
       });
     }
   }
+}
+
+function createNativeDrawing(
+  editor: Editor,
+  input: {
+    tempId: string;
+    position: { x: number; y: number };
+    segments: readonly PenSegment[];
+    color?: keyof typeof colorTokens;
+    size?: "s" | "m" | "l" | "xl";
+    parentId?: string;
+    semantic: Record<string, unknown>;
+  },
+  temporaryIds: Map<string, TLShapeId>,
+): void {
+  const drawing = normalizePenDrawing(input.segments);
+  const id = createShapeId();
+  temporaryIds.set(input.tempId, id);
+  const parentId = input.parentId
+    ? resolveNodeId(editor, input.parentId, temporaryIds)
+    : undefined;
+  editor.createShape({
+    id,
+    type: "draw",
+    x: input.position.x,
+    y: input.position.y,
+    props: {
+      color: colorTokens[input.color ?? "ink"],
+      fill: "none",
+      dash: "draw",
+      size: input.size ?? "m",
+      segments: drawing.segments,
+      isComplete: true,
+      isClosed: false,
+      isPen: true,
+      scale: 1,
+    },
+    meta: {
+      fabric: {
+        kind: "node",
+        nodeId: input.tempId,
+        nodeType: "drawing",
+        drawingFingerprint: drawing.fingerprint,
+        ...input.semantic,
+      },
+    },
+  } as TLShapePartial);
+  if (parentId) editor.reparentShapes([id], parentId);
+}
+
+function writeText(
+  editor: Editor,
+  operation: Extract<CanvasOperation, { type: "writeText" }>,
+  temporaryIds: Map<string, TLShapeId>,
+): void {
+  const drawing = renderPenText({
+    text: operation.text,
+    fontSize: operation.fontSize,
+    maxWidth: operation.maxWidth,
+  });
+  createNativeDrawing(
+    editor,
+    {
+      tempId: operation.tempId,
+      position: operation.position,
+      segments: drawing.segments,
+      color: operation.color,
+      parentId: operation.parentId,
+      semantic: {
+        title: operation.text.split(/\r?\n/, 1)[0]?.slice(0, 200) || "Pen text",
+        body: operation.text,
+        penText: operation.text,
+        penFontSize: operation.fontSize,
+        penMaxWidth: operation.maxWidth,
+        penRenderer: PEN_RENDERER_VERSION,
+        drawingFingerprint: drawing.fingerprint,
+      },
+    },
+    temporaryIds,
+  );
+}
+
+function createDrawing(
+  editor: Editor,
+  operation: Extract<CanvasOperation, { type: "createDrawing" }>,
+  temporaryIds: Map<string, TLShapeId>,
+): void {
+  createNativeDrawing(
+    editor,
+    {
+      tempId: operation.tempId,
+      position: operation.position,
+      segments: operation.segments,
+      color: operation.color,
+      size: operation.size,
+      parentId: operation.parentId,
+      semantic: { title: "AI drawing", drawingSource: "canvas-agent" },
+    },
+    temporaryIds,
+  );
 }
 
 function updatedShapeProps(
@@ -288,6 +414,7 @@ function createConnector(
       color: "blue",
       start: { x: 0, y: 0 },
       end: { x: end.x - start.x, y: end.y - start.y },
+      ...(operation.label ? { richText: toRichText(operation.label) } : {}),
     },
     meta: {
       fabric: {
@@ -299,6 +426,30 @@ function createConnector(
       },
     },
   } as TLShapePartial);
+  editor.createBindings([
+    {
+      type: "arrow",
+      fromId: id,
+      toId: sourceId,
+      props: {
+        terminal: "start",
+        isExact: false,
+        normalizedAnchor: { x: 0.5, y: 0.5 },
+        isPrecise: false,
+      },
+    },
+    {
+      type: "arrow",
+      fromId: id,
+      toId: targetId,
+      props: {
+        terminal: "end",
+        isExact: false,
+        normalizedAnchor: { x: 0.5, y: 0.5 },
+        isPrecise: false,
+      },
+    },
+  ]);
 }
 
 function applyOperation(
@@ -307,6 +458,10 @@ function applyOperation(
   temporaryIds: Map<string, TLShapeId>,
 ): void {
   if (operation.type === "createNode") createNode(editor, operation, temporaryIds);
+  else if (operation.type === "writeText") writeText(editor, operation, temporaryIds);
+  else if (operation.type === "createDrawing") {
+    createDrawing(editor, operation, temporaryIds);
+  }
   else if (operation.type === "updateNode") updateNode(editor, operation, temporaryIds);
   else if (operation.type === "moveNode") moveNode(editor, operation, temporaryIds);
   else if (operation.type === "resizeNode") resizeNode(editor, operation, temporaryIds);
@@ -379,6 +534,9 @@ export function serializeTldrawAiSelection(
     if (includedNodeIds.has(nodeId)) continue;
     const node = nodesById.get(nodeId);
     if (!node) continue;
+    const source = canvasSourceGeometryForTldrawShapeRecord(
+      shape as unknown as Record<string, unknown>,
+    );
 
     includedNodeIds.add(node.id);
     selection.push({
@@ -393,6 +551,7 @@ export function serializeTldrawAiSelection(
       ...(node.locked !== undefined ? { locked: node.locked } : {}),
       ...(node.parentId !== undefined ? { parentId: node.parentId } : {}),
       ...(node.tag !== undefined ? { tag: node.tag } : {}),
+      ...(source ? { source } : {}),
     });
     if (selection.length === 40) break;
   }

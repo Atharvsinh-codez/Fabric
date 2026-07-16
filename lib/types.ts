@@ -15,7 +15,18 @@ export type PanelId = "inspector" | "comments" | "ai" | null;
 
 export type SyncState = "synced" | "saving" | "offline" | "reconnecting" | "partial";
 
-export type NodeType = "frame" | "note" | "text" | "rectangle" | "ellipse" | "image" | "summary";
+export type NodeType =
+  | "frame"
+  | "note"
+  | "text"
+  | "rectangle"
+  | "ellipse"
+  | "diamond"
+  | "triangle"
+  | "hexagon"
+  | "image"
+  | "drawing"
+  | "summary";
 
 export type CanvasNode = {
   id: string;

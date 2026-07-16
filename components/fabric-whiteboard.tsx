@@ -23,7 +23,6 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 
 import {
   FabricAiPanel,
-  type FabricAssistanceMode,
   type FabricWhiteboardAiAdapter,
 } from "@/components/fabric-whiteboard/ai-panel";
 import { FabricCheckpointDialog } from "@/components/fabric-whiteboard/checkpoint-dialog";
@@ -34,7 +33,7 @@ import { FabricShareDialog } from "@/components/fabric-whiteboard/share-dialog";
 import { FabricTemplateLibraryDialog } from "@/components/fabric-whiteboard/template-library-dialog";
 import {
   boardSyncLabel,
-  FabricAssistanceModePicker,
+  FabricAiTrigger,
   FabricSyncNotice,
   FabricSyncStatus,
 } from "@/components/fabric-whiteboard/status-controls";
@@ -158,7 +157,6 @@ export function FabricWhiteboard({
   const canComment =
     !accessLost && canCommentOnBoardState({ role, archivedAt });
   const [editor, setEditor] = useState<Editor | null>(null);
-  const [assistanceMode, setAssistanceMode] = useState<FabricAssistanceMode>("off");
   const [aiFinalizing, setAiFinalizing] = useState(false);
   const [panel, setPanel] = useState<"comments" | "ai" | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
@@ -183,7 +181,6 @@ export function FabricWhiteboard({
     !isArchived &&
     !accessLost &&
     role === "owner";
-  const visibleAssistanceMode = canEdit ? assistanceMode : "off";
   const visiblePanel =
     accessLost || (!canEdit && panel === "ai") ? null : panel;
   const visibleTemplatesOpen = canEdit && templatesOpen;
@@ -306,12 +303,6 @@ export function FabricWhiteboard({
     return { x: viewport.x + viewport.w / 2, y: viewport.y + viewport.h / 2 };
   }, [editor]);
 
-  const openAiMode = (mode: FabricAssistanceMode) => {
-    if (!canEdit) return;
-    setAssistanceMode(mode);
-    setPanel(mode === "off" ? null : "ai");
-  };
-
   const overlays = (
     <>
       <div className="pointer-events-none absolute inset-x-2 top-2 z-1000 flex items-start justify-between gap-2 sm:inset-x-3 sm:top-3">
@@ -330,15 +321,15 @@ export function FabricWhiteboard({
                     : roleLabel(role)}
               </p>
             </div>
+            {canEdit ? (
+              <FabricAiTrigger
+                panelOpen={visiblePanel === "ai"}
+                busy={aiFinalizing}
+                disabled={!editor}
+                onClick={() => setPanel((current) => current === "ai" ? null : "ai")}
+              />
+            ) : null}
           </div>
-
-          <FabricAssistanceModePicker
-            mode={visibleAssistanceMode}
-            panelOpen={visiblePanel === "ai"}
-            busy={aiFinalizing}
-            canEdit={canEdit}
-            onModeChange={openAiMode}
-          />
         </div>
 
         <div className="pointer-events-auto flex shrink-0 items-center gap-1 rounded-radius-lg bg-surface-white p-1 floating-shadow">
@@ -426,11 +417,9 @@ export function FabricWhiteboard({
         onClose={() => setPanel(null)}
       />
 
-      {visibleAssistanceMode !== "off" ? (
+      {canEdit ? (
         <FabricAiPanel
-          key={visibleAssistanceMode}
           editor={editor}
-          mode={visibleAssistanceMode}
           boardId={boardId}
           workspaceId={workspaceId}
           documentGenerationId={documentGenerationId}

@@ -9,12 +9,14 @@ import {
 import type { AiProposalRequest } from "./proposal-request";
 
 const request: AiProposalRequest = {
-  skill: "cluster-by-theme",
+  skill: "canvas-agent",
   workspaceId: "product-studio",
   boardId: "board-1",
   documentGenerationId: "document:board-1:local-v1",
   durableSequence: 0,
   instruction: "Cluster the notes by theme.",
+  viewport: { x: 0, y: 0, width: 1_280, height: 720 },
+  conversation: [],
   selection: [
     { id: "note-1", type: "note", title: "One", x: 0, y: 0, width: 120, height: 80 },
     { id: "note-2", type: "note", title: "Two", x: 140, y: 0, width: 120, height: 80 },

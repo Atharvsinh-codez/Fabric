@@ -7,7 +7,6 @@ import {
   type ModelUsage,
 } from "../lib/ai/contracts";
 import { hashCanonicalJson } from "../lib/ai/hash";
-import { resolveAiAssistanceMode } from "../lib/ai/assistance-mode";
 import { AiProposalRequestSchema } from "../lib/ai/proposal-request";
 import { retryDelayMs } from "../lib/ai/run-state";
 import { validateCanvasPatchSemantics } from "../lib/ai/semantic-validator";
@@ -138,7 +137,7 @@ export async function processClaimedAiJob(input: {
   }
 
   if (await cancelIfRequested(sql, job.runId)) return;
-  if (job.model !== provider.model) {
+  if (job.provider !== provider.provider || job.model !== provider.model) {
     await recordRunFailure(sql, {
       job,
       status: "provider_unavailable",
@@ -163,9 +162,8 @@ export async function processClaimedAiJob(input: {
     return;
   }
 
-  const mode = resolveAiAssistanceMode(requestResult.data.mode);
-  const request = { ...requestResult.data, mode };
-  const skill = getBoardAssistanceSkill(mode);
+  const request = requestResult.data;
+  const skill = getBoardAssistanceSkill();
   const manifest = skill.manifest;
   const maxAccumulatedOutputBytes = manifest.limits.maxPatchBytes * 2;
   const patchBase = {

@@ -1,4 +1,4 @@
-import { GeminiInteractionsProvider } from "../lib/ai/providers/gemini";
+import { OpenAiCompatibleChatProvider } from "../lib/ai/providers/openai-compatible";
 
 import { loadServerlessWorkerConfig } from "./config";
 import { createWorkerDatabase } from "./database";
@@ -41,7 +41,7 @@ async function runServerlessDispatch(
     });
     if (!job) return;
 
-    const provider = new GeminiInteractionsProvider(config.ai);
+    const provider = new OpenAiCompatibleChatProvider(config.ai);
     await processClaimedAiJob({ sql, job, provider, leaseMs: config.leaseMs });
   } finally {
     await sql.end({ timeout: 5 });

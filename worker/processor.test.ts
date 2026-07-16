@@ -28,7 +28,8 @@ const job = {
   attempt: 1,
   maxAttempts: 1,
   runStatus: "queued" as const,
-  model: "gemini-2.5-flash" as const,
+  provider: "openai-compatible",
+  model: "gcli/grok-4.5-medium",
   principalId: "33333333-3333-4333-8333-333333333333",
   workspaceId: "44444444-4444-4444-8444-444444444444",
   boardId: "55555555-5555-4555-8555-555555555555",
@@ -36,8 +37,7 @@ const job = {
   baseDurableSequence: 7,
   selectionHash,
   executionInput: {
-    skill: "cluster-by-theme" as const,
-    mode: "suggest" as const,
+    skill: "canvas-agent" as const,
     workspaceId: "44444444-4444-4444-8444-444444444444",
     boardId: "55555555-5555-4555-8555-555555555555",
     documentGenerationId: "66666666-6666-4666-8666-666666666666",
@@ -47,6 +47,8 @@ const job = {
       { id: "node_1", type: "note" as const, title: "One", x: 0, y: 0, width: 200, height: 120 },
       { id: "node_2", type: "note" as const, title: "Two", x: 220, y: 0, width: 200, height: 120 },
     ],
+    viewport: { x: -100, y: -80, width: 1280, height: 720 },
+    conversation: [],
   },
   deadlineAt: new Date(Date.now() + 30_000),
 };
@@ -102,8 +104,8 @@ describe("durable AI processor", () => {
       ],
     };
     const provider: FabricModelProvider = {
-      provider: "google-gemini",
-      model: "gemini-2.5-flash",
+      provider: "openai-compatible",
+      model: "gcli/grok-4.5-medium",
       async createTurn() {
         return {
           events: (async function* () {
@@ -135,18 +137,17 @@ describe("durable AI processor", () => {
     ).toBe(JSON.stringify(patch));
   });
 
-  it("enforces feedback's summary-only non-destructive policy", async () => {
-    const feedbackJob = {
+  it("uses the canvas agent contract and rejects image creation", async () => {
+    const canvasJob = {
       ...job,
       executionInput: {
         ...job.executionInput,
-        mode: "feedback" as const,
-        instruction: "Explain what is unclear.",
+        instruction: "Generate an image of this idea.",
       },
     };
     const unsafePatch = {
       schemaVersion: 1 as const,
-      summary: "Moved evidence instead of adding feedback.",
+      summary: "Tried to create a raster image.",
       base: {
         workspaceId: job.workspaceId,
         boardId: job.boardId,
@@ -156,18 +157,25 @@ describe("durable AI processor", () => {
       },
       operations: [
         {
-          type: "moveNode" as const,
-          nodeId: "node_1",
+          type: "createNode" as const,
+          tempId: "tmp_image",
+          nodeType: "image" as const,
           position: { x: 80, y: 110 },
+          size: { width: 320, height: 240 },
+          content: { title: "Generated image" },
         },
       ],
     };
     const provider: FabricModelProvider = {
-      provider: "google-gemini",
-      model: "gemini-2.5-flash",
+      provider: "openai-compatible",
+      model: "gcli/grok-4.5-medium",
       async createTurn(turn) {
-        expect(turn.systemInstruction).toContain("board-feedback");
-        expect(JSON.parse(turn.input)).toMatchObject({ assistanceMode: "feedback" });
+        expect(turn.systemInstruction).toContain("canvas-agent");
+        expect(JSON.parse(turn.input)).toMatchObject({
+          viewport: job.executionInput.viewport,
+          outputRules: { imageCreationAllowed: false, rasterOutputAllowed: false },
+        });
+        expect(JSON.parse(turn.input)).not.toHaveProperty("assistanceMode");
         expect(turn.keyRotationOrdinal).toBe(job.providerKeyOrdinal - 1);
         return {
           events: (async function* () {
@@ -180,7 +188,7 @@ describe("durable AI processor", () => {
 
     await processClaimedAiJob({
       sql: {} as never,
-      job: feedbackJob,
+      job: canvasJob,
       provider,
       leaseMs: 60_000,
     });
@@ -191,8 +199,7 @@ describe("durable AI processor", () => {
       expect.objectContaining({
         status: "validation_failed",
         error: expect.objectContaining({
-          code: "semantic_validation_failed",
-          issueCodes: expect.arrayContaining(["operation_not_allowed"]),
+          code: "invalid_model_output",
         }),
       }),
     );
@@ -201,14 +208,14 @@ describe("durable AI processor", () => {
   it("fails closed before provider invocation when the queued model differs", async () => {
     const createTurn = vi.fn();
     const provider: FabricModelProvider = {
-      provider: "google-gemini",
-      model: "gemini-2.5-flash",
+      provider: "openai-compatible",
+      model: "gcli/grok-4.5-medium",
       createTurn,
     };
 
     await processClaimedAiJob({
       sql: {} as never,
-      job: { ...job, model: "gemini-3.5-flash" },
+      job: { ...job, model: "other/model" },
       provider,
       leaseMs: 60_000,
     });

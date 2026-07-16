@@ -1,4 +1,4 @@
-import { GeminiInteractionsProvider } from "../lib/ai/providers/gemini";
+import { OpenAiCompatibleChatProvider } from "../lib/ai/providers/openai-compatible";
 
 import { loadWorkerConfig } from "./config";
 import { createWorkerDatabase } from "./database";
@@ -25,7 +25,7 @@ export async function startAiWorkerRuntime(
 ): Promise<AiWorkerRuntime> {
   const config = loadWorkerConfig(environment);
   const sql = createWorkerDatabase(config.databaseUrl);
-  const provider = new GeminiInteractionsProvider(config.ai);
+  const provider = new OpenAiCompatibleChatProvider(config.ai);
   let shuttingDown = false;
   let lastCleanupAt = 0;
   let stopPromise: Promise<void> | null = null;

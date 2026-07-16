@@ -1,6 +1,7 @@
 import type { TLShapeId, TLShapePartial } from "tldraw";
 
 import type { BoardDocument, JsonValue } from "@/db/schema/product";
+import type { CanvasSourceGeometry } from "@/lib/ai/canvas-patch";
 import type { CanvasEdge, CanvasNode, NodeType } from "@/lib/types";
 
 export const FABRIC_TLDRAW_DOCUMENT_VERSION = 1 as const;
@@ -26,7 +27,11 @@ const CANVAS_NODE_TYPES = new Set<NodeType>([
   "text",
   "rectangle",
   "ellipse",
+  "diamond",
+  "triangle",
+  "hexagon",
   "image",
+  "drawing",
   "summary",
 ]);
 const SAFE_CANVAS_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
@@ -504,12 +509,124 @@ function shapeDimensions(shape: Record<string, unknown>): { width: number; heigh
   } else if (shape.type === "text") {
     height = Math.max(40, Math.ceil(shapeText(shape).length / 30) * 28);
   } else if (shape.type === "draw" || shape.type === "highlight" || shape.type === "line") {
-    width = 220;
-    height = 140;
+    const points: Array<{ x: number; y: number }> = [];
+    if (shape.type === "line" && isRecord(props.points)) {
+      for (const point of Object.values(props.points)) {
+        if (isRecord(point) && isFiniteNumber(point.x) && isFiniteNumber(point.y)) {
+          points.push({ x: point.x, y: point.y });
+        }
+      }
+    } else if (Array.isArray(props.segments)) {
+      for (const segment of props.segments) {
+        if (!isRecord(segment) || !Array.isArray(segment.points)) continue;
+        for (const point of segment.points) {
+          if (isRecord(point) && isFiniteNumber(point.x) && isFiniteNumber(point.y)) {
+            points.push({ x: point.x, y: point.y });
+          }
+        }
+      }
+    }
+    if (points.length > 0) {
+      const xs = points.map((point) => point.x);
+      const ys = points.map((point) => point.y);
+      width = Math.max(1, Math.max(...xs) - Math.min(...xs));
+      height = Math.max(1, Math.max(...ys) - Math.min(...ys));
+    }
   }
   return {
     width: Math.min(100_000, Math.max(8, width * scale)),
     height: Math.min(100_000, Math.max(8, height * scale)),
+  };
+}
+
+function sampledVectorPoints(
+  points: readonly { x: number; y: number; z?: number }[],
+  limit: number,
+): Array<{ x: number; y: number; z?: number }> {
+  if (points.length <= limit) return [...points];
+  return Array.from({ length: limit }, (_, index) => {
+    const sourceIndex = Math.round((index * (points.length - 1)) / (limit - 1));
+    return points[sourceIndex]!;
+  });
+}
+
+/**
+ * Produces the bounded, origin-normalized geometry that may be sent to the AI
+ * model. Callers must pass a record from the authorized durable snapshot, not
+ * a client-supplied shape, so vector selection cannot be spoofed.
+ */
+export function canvasSourceGeometryForTldrawShapeRecord(
+  shape: Record<string, unknown>,
+): CanvasSourceGeometry | undefined {
+  if (shape.type !== "draw" && shape.type !== "highlight" && shape.type !== "line") {
+    return undefined;
+  }
+  const props = isRecord(shape.props) ? shape.props : {};
+  const rawSegments: Array<{
+    type: "free" | "straight";
+    points: Array<{ x: number; y: number; z?: number }>;
+  }> = [];
+
+  if (shape.type === "line" && isRecord(props.points)) {
+    const points = Object.values(props.points)
+      .filter(isRecord)
+      .sort((left, right) => String(left.index ?? "").localeCompare(String(right.index ?? "")))
+      .flatMap((point) =>
+        isFiniteNumber(point.x) && isFiniteNumber(point.y)
+          ? [{ x: point.x, y: point.y }]
+          : [],
+      );
+    if (points.length > 0) rawSegments.push({ type: "straight", points });
+  } else if (Array.isArray(props.segments)) {
+    for (const segment of props.segments) {
+      if (!isRecord(segment) || !Array.isArray(segment.points)) continue;
+      const points = segment.points.flatMap((point) => {
+        if (!isRecord(point) || !isFiniteNumber(point.x) || !isFiniteNumber(point.y)) {
+          return [];
+        }
+        const z = isFiniteNumber(point.z)
+          ? Math.min(1, Math.max(0, point.z))
+          : undefined;
+        return [{ x: point.x, y: point.y, ...(z === undefined ? {} : { z }) }];
+      });
+      if (points.length > 0) {
+        rawSegments.push({
+          type: segment.type === "free" ? "free" : "straight",
+          points,
+        });
+      }
+    }
+  }
+  if (rawSegments.length === 0) return undefined;
+
+  const selectedSegments = rawSegments.length <= 32
+    ? rawSegments
+    : Array.from({ length: 32 }, (_, index) =>
+        rawSegments[Math.round((index * (rawSegments.length - 1)) / 31)]!,
+      );
+  const pointsPerSegment = Math.max(2, Math.floor(96 / selectedSegments.length));
+  const sampledSegments = selectedSegments.map((segment) => {
+    const points = sampledVectorPoints(segment.points, Math.min(64, pointsPerSegment));
+    if (points.length === 1) points.push({ ...points[0]! });
+    return { type: segment.type, points };
+  });
+  const allPoints = sampledSegments.flatMap((segment) => segment.points);
+  const minX = Math.min(...allPoints.map((point) => point.x));
+  const minY = Math.min(...allPoints.map((point) => point.y));
+  const maxX = Math.max(...allPoints.map((point) => point.x));
+  const maxY = Math.max(...allPoints.map((point) => point.y));
+  const scale = Math.min(1, 10_000 / Math.max(1, maxX - minX, maxY - minY));
+
+  return {
+    shapeType: shape.type,
+    segments: sampledSegments.map((segment) => ({
+      type: segment.type,
+      points: segment.points.map((point) => ({
+        x: Number(((point.x - minX) * scale).toFixed(3)),
+        y: Number(((point.y - minY) * scale).toFixed(3)),
+        ...(point.z === undefined ? {} : { z: Number(point.z.toFixed(3)) }),
+      })),
+    })),
   };
 }
 
@@ -546,9 +663,16 @@ function nodeTypeForShape(shape: Record<string, unknown>, fabric: Record<string,
   if (shape.type === "image" || shape.type === "video" || shape.type === "bookmark") {
     return "image";
   }
+  if (shape.type === "draw" || shape.type === "highlight" || shape.type === "line") {
+    return "drawing";
+  }
   if (shape.type === "geo") {
     const props = isRecord(shape.props) ? shape.props : {};
-    return props.geo === "ellipse" ? "ellipse" : "rectangle";
+    if (props.geo === "ellipse") return "ellipse";
+    if (props.geo === "diamond") return "diamond";
+    if (props.geo === "triangle") return "triangle";
+    if (props.geo === "hexagon") return "hexagon";
+    return "rectangle";
   }
   return "summary";
 }

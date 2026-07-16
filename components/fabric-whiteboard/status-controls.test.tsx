@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  FabricAssistanceModePicker,
+  FabricAiTrigger,
   FabricSyncNotice,
   FabricSyncStatus,
 } from "./status-controls";
@@ -31,54 +31,42 @@ describe("whiteboard status controls", () => {
     act(() => root.render(node));
   }
 
-  it("exposes clear pressed and panel states for every assistance mode", () => {
-    const onModeChange = vi.fn();
+  it("opens and closes the single Fabric AI sidebar from an accessible trigger", () => {
+    const onClick = vi.fn();
     render(
-      <FabricAssistanceModePicker
-        mode="feedback"
+      <FabricAiTrigger
         panelOpen={false}
         busy={false}
-        canEdit
-        onModeChange={onModeChange}
+        onClick={onClick}
       />,
     );
 
-    const feedback = container.querySelector<HTMLButtonElement>(
-      '[aria-label="Open Feedback Assistance"]',
+    const trigger = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Open Fabric AI"]',
     );
-    const solve = container.querySelector<HTMLButtonElement>(
-      '[aria-label="Open Solve Assistance"]',
+    expect(trigger?.getAttribute("aria-controls")).toBe(
+      "fabric-ai-assistance-panel",
     );
-    expect(feedback?.getAttribute("aria-pressed")).toBe("true");
-    expect(feedback?.getAttribute("aria-expanded")).toBe("false");
-    expect(solve?.getAttribute("aria-pressed")).toBe("false");
+    expect(trigger?.getAttribute("aria-pressed")).toBe("false");
+    expect(trigger?.getAttribute("aria-expanded")).toBe("false");
 
-    act(() => feedback?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    expect(onModeChange).toHaveBeenCalledWith("feedback");
-
-    act(() => solve?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    expect(onModeChange).toHaveBeenCalledWith("solve");
+    act(() => trigger?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onClick).toHaveBeenCalledOnce();
   });
 
-  it("keeps edit-only assistance modes unavailable to viewers", () => {
+  it("keeps Fabric AI unavailable when editing is not authorized", () => {
     render(
-      <FabricAssistanceModePicker
-        mode="off"
+      <FabricAiTrigger
         panelOpen={false}
         busy={false}
-        canEdit={false}
-        onModeChange={() => undefined}
+        disabled
+        onClick={() => undefined}
       />,
     );
 
     expect(
       container.querySelector<HTMLButtonElement>(
-        '[aria-label="Turn Off AI Assistance"]',
-      )?.disabled,
-    ).toBe(false);
-    expect(
-      container.querySelector<HTMLButtonElement>(
-        '[aria-label="Open Suggest Assistance"]',
+        '[aria-label="Open Fabric AI"]',
       )?.disabled,
     ).toBe(true);
   });

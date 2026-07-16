@@ -1,6 +1,12 @@
 import { z } from "zod";
 
 import type { CanvasPatch } from "./canvas-patch";
+import {
+  normalizePenDrawing,
+  PEN_RENDERER_VERSION,
+  renderPenText,
+  type PenSegment,
+} from "./pen-renderer";
 import type { CanvasDocumentSnapshot } from "../boards/canvas-document";
 
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
@@ -48,7 +54,9 @@ export type ApprovalProjectionIssueCode =
   | "resized_node_mismatch"
   | "node_not_deleted"
   | "missing_connector"
-  | "connector_mismatch";
+  | "connector_mismatch"
+  | "missing_native_drawing"
+  | "native_drawing_mismatch";
 
 export type ApprovalProjectionVerification =
   | Readonly<{ ok: true }>
@@ -79,6 +87,107 @@ function resolvedId(id: string | undefined | null): string | undefined {
   return id === null || id === undefined ? undefined : id;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function penSegments(value: unknown): PenSegment[] | null {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const segments: PenSegment[] = [];
+  for (const valueSegment of value) {
+    if (
+      !isRecord(valueSegment) ||
+      (valueSegment.type !== "free" && valueSegment.type !== "straight") ||
+      !Array.isArray(valueSegment.points) ||
+      valueSegment.points.length < 2
+    ) {
+      return null;
+    }
+    const points: Array<{ x: number; y: number; z?: number }> = [];
+    for (const valuePoint of valueSegment.points) {
+      if (
+        !isRecord(valuePoint) ||
+        typeof valuePoint.x !== "number" ||
+        !Number.isFinite(valuePoint.x) ||
+        typeof valuePoint.y !== "number" ||
+        !Number.isFinite(valuePoint.y) ||
+        (valuePoint.z !== undefined &&
+          (typeof valuePoint.z !== "number" || !Number.isFinite(valuePoint.z)))
+      ) {
+        return null;
+      }
+      points.push({
+        x: valuePoint.x,
+        y: valuePoint.y,
+        ...(typeof valuePoint.z === "number" ? { z: valuePoint.z } : {}),
+      });
+    }
+    segments.push({ type: valueSegment.type, points });
+  }
+  return segments;
+}
+
+const NATIVE_DRAW_COLORS: Record<string, string> = {
+  surface: "white",
+  ink: "black",
+  sky: "blue",
+  mint: "green",
+  butter: "yellow",
+  lavender: "violet",
+  rose: "red",
+  fog: "grey",
+};
+
+function nativeDrawingMatches(
+  operation: Extract<CanvasPatch["operations"][number], { type: "writeText" | "createDrawing" }>,
+  document: CanvasDocumentSnapshot,
+): "missing" | "mismatch" | "match" {
+  const shapes = Object.values(document.tldraw?.snapshot.store ?? {}).filter((record) => {
+    if (record.typeName !== "shape" || !isRecord(record.meta)) return false;
+    const fabric = isRecord(record.meta.fabric) ? record.meta.fabric : null;
+    return fabric?.nodeId === operation.tempId;
+  });
+  if (shapes.length === 0) return "missing";
+  if (shapes.length !== 1) return "mismatch";
+
+  const shape = shapes[0]!;
+  if (shape.type !== "draw" || !isRecord(shape.props) || !isRecord(shape.meta)) {
+    return "mismatch";
+  }
+  const fabric = isRecord(shape.meta.fabric) ? shape.meta.fabric : null;
+  const actualSegments = penSegments(shape.props.segments);
+  if (!fabric || !actualSegments) return "mismatch";
+
+  const expected = operation.type === "writeText"
+    ? renderPenText({
+        text: operation.text,
+        fontSize: operation.fontSize,
+        maxWidth: operation.maxWidth,
+      })
+    : normalizePenDrawing(operation.segments);
+  const actual = normalizePenDrawing(actualSegments);
+  const expectedColor = NATIVE_DRAW_COLORS[operation.color ?? "ink"];
+  const metadataMatches = operation.type === "writeText"
+    ? fabric.penText === operation.text &&
+      fabric.penFontSize === operation.fontSize &&
+      fabric.penMaxWidth === operation.maxWidth &&
+      fabric.penRenderer === PEN_RENDERER_VERSION &&
+      fabric.drawingFingerprint === expected.fingerprint
+    : fabric.drawingSource === "canvas-agent" &&
+      fabric.drawingFingerprint === expected.fingerprint;
+
+  return shape.props.color === expectedColor &&
+    shape.props.fill === "none" &&
+    shape.props.isPen === true &&
+    shape.props.isComplete === true &&
+    shape.props.isClosed === false &&
+    (operation.type !== "createDrawing" || shape.props.size === (operation.size ?? "m")) &&
+    JSON.stringify(actual.segments) === JSON.stringify(expected.segments) &&
+    metadataMatches
+    ? "match"
+    : "mismatch";
+}
+
 function appearanceMatches(
   node: CanvasDocumentSnapshot["nodes"][number],
   appearance: { fill?: string; textColor?: string } | undefined,
@@ -104,7 +213,7 @@ function appearanceMatches(
  */
 export function verifyApprovedPatchProjection(
   patch: CanvasPatch,
-  document: Pick<CanvasDocumentSnapshot, "nodes" | "edges">,
+  document: CanvasDocumentSnapshot,
 ): ApprovalProjectionVerification {
   const nodes = new Map(document.nodes.map((node) => [node.id, node]));
   const edges = new Map(document.edges.map((edge) => [edge.id, edge]));
@@ -130,6 +239,37 @@ export function verifyApprovedPatchProjection(
         resolvedId(node.parentId) === resolvedId(operation.parentId) &&
         appearanceMatches(node, operation.appearance);
       if (!matches) issues.add("created_node_mismatch");
+      continue;
+    }
+
+    if (operation.type === "writeText" || operation.type === "createDrawing") {
+      const node = nodes.get(operation.tempId);
+      if (!node) {
+        issues.add("missing_created_node");
+        continue;
+      }
+      const drawing = operation.type === "writeText"
+        ? renderPenText({
+            text: operation.text,
+            fontSize: operation.fontSize,
+            maxWidth: operation.maxWidth,
+          })
+        : normalizePenDrawing(operation.segments);
+      const matches =
+        node.type === "drawing" &&
+        sameNumber(node.x, operation.position.x) &&
+        sameNumber(node.y, operation.position.y) &&
+        sameNumber(node.width, Math.max(8, drawing.width)) &&
+        sameNumber(node.height, Math.max(8, drawing.height)) &&
+        resolvedId(node.parentId) === resolvedId(operation.parentId) &&
+        (operation.type !== "writeText" ||
+          (node.title ===
+            (operation.text.split(/\r?\n/, 1)[0]?.slice(0, 200) || "Pen text") &&
+            node.body === operation.text));
+      if (!matches) issues.add("created_node_mismatch");
+      const nativeMatch = nativeDrawingMatches(operation, document);
+      if (nativeMatch === "missing") issues.add("missing_native_drawing");
+      else if (nativeMatch === "mismatch") issues.add("native_drawing_mismatch");
       continue;
     }
 

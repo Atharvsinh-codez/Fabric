@@ -29,7 +29,6 @@
     "@fontsource-variable/geist-mono": "^5.2.8",
     "@fontsource-variable/host-grotesk": "^5.2.8",
     "@fontsource-variable/instrument-sans": "^5.2.8",
-    "@google/genai": "2.11.0",
     "@heroicons/react": "^2.2.0",
     "clsx": "^2.1.1",
     "drizzle-orm": "0.45.2",

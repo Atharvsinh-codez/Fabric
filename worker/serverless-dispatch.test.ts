@@ -8,8 +8,8 @@ const mocks = vi.hoisted(() => ({
   processClaimedAiJob: vi.fn(),
 }));
 
-vi.mock("../lib/ai/providers/gemini", () => ({
-  GeminiInteractionsProvider: class GeminiInteractionsProvider {},
+vi.mock("../lib/ai/providers/openai-compatible", () => ({
+  OpenAiCompatibleChatProvider: class OpenAiCompatibleChatProvider {},
 }));
 vi.mock("./config", () => ({
   loadServerlessWorkerConfig: mocks.loadServerlessWorkerConfig,
@@ -24,7 +24,8 @@ const job = {
   jobId: "11111111-1111-4111-8111-111111111111",
   providerKeyOrdinal: 1,
   runId: "22222222-2222-4222-8222-222222222222",
-  model: "gemini-2.5-flash" as const,
+  provider: "openai-compatible",
+  model: "gcli/grok-4.5-medium",
 };
 
 beforeEach(() => {
@@ -35,9 +36,11 @@ beforeEach(() => {
     leaseMs: 60_000,
     workerId: "serverless-worker",
     ai: {
+      provider: "openai-compatible",
+      baseUrl: "https://provider.example.test/v1",
       apiKeys: ["test-key-with-enough-entropy"],
-      model: "gemini-2.5-flash",
-      storeInteractions: false,
+      model: "gcli/grok-4.5-medium",
+      streamOnly: true,
       requestTimeoutMs: 45_000,
     },
   });

@@ -1,6 +1,6 @@
 # Fabric
 
-Fabric is a persistent multiplayer design canvas built with Next.js 16, React 19, Tailwind CSS v4, tldraw, Yjs, Auth.js, Neon/PostgreSQL, Cloudflare Durable Objects and R2, and streamed Gemini proposals.
+Fabric is a persistent multiplayer design canvas built with Next.js 16, React 19, Tailwind CSS v4, tldraw, Yjs, Auth.js, Neon/PostgreSQL, Cloudflare Durable Objects and R2, and streamed OpenAI-compatible canvas proposals.
 
 Production uses a Next.js App Router deployment for pages and authenticated APIs, a Cloudflare Worker with one SQLite Durable Object per board generation for realtime collaboration, private R2 buckets for uploaded media, and Neon for identity, tenant metadata, recovery checkpoints, and durable product state. `server.ts` remains the attached local-development runtime and is not the Vercel production entrypoint.
 
@@ -14,14 +14,14 @@ Production separates runtime credentials and responsibilities:
 | --- | --- | --- |
 | Next.js web | UI, Auth.js, tenant-aware APIs, AI SSE delivery, ticket issuance, media authorization, and proposal approval | `DATABASE_URL` as `fabric_web` plus a dedicated R2 S3 credential |
 | Cloudflare realtime Worker | Scoped WebSockets, ordered Yjs persistence, awareness, and ticket redemption | Durable Object SQLite; no Neon or R2 credential |
-| AI worker/dispatcher | Durable leases, Gemini streaming, validation, retries, cancellation, and retention | `WORKER_DATABASE_URL` as `fabric_worker` when separately attached |
+| AI worker/dispatcher | Durable leases, OpenAI-compatible streaming, validation, retries, cancellation, and retention | `WORKER_DATABASE_URL` as `fabric_worker` when separately attached |
 | R2 | Private board media and custom avatar bytes | Dedicated private buckets; metadata and authorization remain in Neon |
 
-`DATABASE_URL_DIRECT` uses the DDL-capable `fabric_migrator` identity only for ordered migrations. The browser never receives OAuth secrets, database URLs, Gemini credentials, health credentials, or realtime keys. `NEXT_PUBLIC_*` values are intentionally browser-visible build inputs.
+`DATABASE_URL_DIRECT` uses the DDL-capable `fabric_migrator` identity only for ordered migrations. The browser never receives OAuth secrets, database URLs, AI provider credentials, health credentials, or realtime keys. `NEXT_PUBLIC_*` values are intentionally browser-visible build inputs.
 
 ## Local development
 
-Prerequisites: Node.js 22, npm, a PostgreSQL/Neon database, Google and GitHub OAuth applications, and a Gemini API key.
+Prerequisites: Node.js 22, npm, a PostgreSQL/Neon database, Google and GitHub OAuth applications, and a server-only key for an OpenAI-compatible streaming endpoint.
 
 ```powershell
 npm ci

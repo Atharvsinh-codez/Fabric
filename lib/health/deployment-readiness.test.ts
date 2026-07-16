@@ -16,10 +16,12 @@ const workerEnvironment = {
     "postgresql://worker:secret@worker-pooler.example.test/fabric?sslmode=require",
   DATABASE_URL:
     "postgresql://web:secret@web-pooler.example.test/fabric?sslmode=require",
-  GEMINI_API_KEYS:
+  AI_PROVIDER: "openai-compatible",
+  AI_BASE_URL: "https://provider.example.test/v1",
+  AI_API_KEYS:
     "production-primary-api-key-value-long-enough,production-secondary-api-key-value-long-enough",
-  GEMINI_MODEL: "gemini-2.5-flash",
-  GEMINI_STORE_INTERACTIONS: "false",
+  AI_MODEL: "gcli/grok-4.5-medium",
+  AI_STREAM_ONLY: "true",
   AI_RUNS_ENABLED: "true",
   NEXT_PUBLIC_REALTIME_URL:
     "wss://fabric-realtime.example.workers.dev/realtime",
@@ -125,7 +127,7 @@ describe("deployment readiness topology", () => {
     expect(
       hasReadyServerlessAiConfiguration({
         ...workerEnvironment,
-        GEMINI_API_KEYS: "replace-me",
+        AI_API_KEYS: "replace-me",
       }),
     ).toBe(false);
   });

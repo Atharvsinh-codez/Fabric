@@ -12,8 +12,7 @@ import {
   hashIdempotencyKey,
   resolveIdempotentRun,
 } from "@/lib/ai/idempotency";
-import { resolveAiAssistanceMode } from "@/lib/ai/assistance-mode";
-import { APPROVED_GEMINI_MODEL } from "@/lib/ai/config";
+import { loadAiRunProvenance } from "@/lib/ai/config";
 import {
   type AiProposalRequest,
   ProposalNodeSnapshotSchema,
@@ -24,10 +23,14 @@ import type { FabricAiSseEventName, FabricAiSsePayloads } from "@/lib/ai/sse";
 import { requireBoardCapability } from "@/lib/boards/authorization";
 import { readCanvasDocument } from "@/lib/boards/canvas-document";
 import { BoardApiError } from "@/lib/boards/http";
+import {
+  canvasNodeIdForTldrawShapeRecord,
+  canvasSourceGeometryForTldrawShapeRecord,
+} from "@/lib/boards/tldraw-document";
 
-const SDK_VERSION = "2.11.0";
+const SDK_VERSION = "native-fetch-sse.v1";
 const POLICY_VERSION = "fabric-ai-policy.v1";
-const CONFIG_VERSION = "fabric-ai-config.v2";
+const CONFIG_VERSION = "fabric-ai-config.v3";
 
 export type StoredRunEvent = {
   runId: string;
@@ -45,7 +48,21 @@ function canonicalSelection(
   request: AiProposalRequest,
   document: Parameters<typeof readCanvasDocument>[0],
 ): AiProposalRequest["selection"] {
-  const currentNodes = new Map(readCanvasDocument(document).nodes.map((node) => [node.id, node]));
+  const snapshot = readCanvasDocument(document);
+  const currentNodes = new Map(snapshot.nodes.map((node) => [node.id, node]));
+  const durableShapes = new Map<string, Record<string, unknown>>();
+  for (const record of Object.values(snapshot.tldraw?.snapshot.store ?? {})) {
+    if (record.typeName !== "shape" || record.type === "arrow" || record.type === "group") {
+      continue;
+    }
+    const nodeId = canvasNodeIdForTldrawShapeRecord(record as Record<string, unknown>);
+    // The semantic projection keeps the first valid node id and assigns a
+    // deterministic fallback to duplicate metadata. Mirror that behavior so
+    // a duplicate shape cannot replace the selected shape's durable geometry.
+    if (!durableShapes.has(nodeId)) {
+      durableShapes.set(nodeId, record as Record<string, unknown>);
+    }
+  }
   return request.selection.map((requestedNode) => {
     const node = currentNodes.get(requestedNode.id);
     if (!node) {
@@ -54,6 +71,10 @@ function canonicalSelection(
         "The selected canvas objects changed before the AI run was created.",
       );
     }
+    const rawShape = durableShapes.get(node.id);
+    const source = rawShape
+      ? canvasSourceGeometryForTldrawShapeRecord(rawShape)
+      : undefined;
     const result = ProposalNodeSnapshotSchema.safeParse({
       id: node.id,
       type: node.type,
@@ -66,6 +87,7 @@ function canonicalSelection(
       ...(node.locked !== undefined ? { locked: node.locked } : {}),
       ...(node.parentId !== undefined ? { parentId: node.parentId } : {}),
       ...(node.tag !== undefined ? { tag: node.tag } : {}),
+      ...(source ? { source } : {}),
     });
     if (!result.success) {
       throw staleSnapshot(
@@ -111,7 +133,6 @@ export async function authorizeProposalSnapshot(
 
   return {
     ...request,
-    mode: resolveAiAssistanceMode(request.mode),
     workspaceId: current.workspaceId,
     boardId: current.id,
     documentGenerationId: current.documentGenerationId,
@@ -127,15 +148,11 @@ export async function createOrReuseAiRun(input: {
   now?: Date;
 }): Promise<{ runId: string; created: boolean }> {
   const now = input.now ?? new Date();
-  const mode = resolveAiAssistanceMode(input.request.mode);
-  const skill = getBoardAssistanceSkill(mode).manifest;
+  const provenance = loadAiRunProvenance();
+  const skill = getBoardAssistanceSkill().manifest;
   const idempotencyHash = hashIdempotencyKey(input.principalId, input.idempotencyKey);
   const selectionHash = hashCanonicalJson(input.request.selection);
-  const executionInput = {
-    ...input.request,
-    mode,
-    selection: input.request.selection,
-  };
+  const executionInput = input.request;
   const inputHash = hashCanonicalJson({
     principalId: input.principalId,
     executionInput,
@@ -143,6 +160,8 @@ export async function createOrReuseAiRun(input: {
     skillVersion: skill.version,
     promptVersion: skill.promptVersion,
     policyVersion: POLICY_VERSION,
+    provider: provenance.provider,
+    model: provenance.model,
   });
   const deadlineAt = new Date(now.getTime() + skill.limits.maxWallTimeMs);
 
@@ -189,7 +208,8 @@ export async function createOrReuseAiRun(input: {
         skillVersion: skill.version,
         promptVersion: skill.promptVersion,
         policyVersion: POLICY_VERSION,
-        model: APPROVED_GEMINI_MODEL,
+        provider: provenance.provider,
+        model: provenance.model,
         sdkVersion: SDK_VERSION,
         configVersion: CONFIG_VERSION,
         lastEventSequence: 2,
@@ -226,8 +246,8 @@ export async function createOrReuseAiRun(input: {
           skill: skill.id,
           skillVersion: skill.version,
           promptVersion: skill.promptVersion,
-          provider: "google-gemini",
-          model: APPROVED_GEMINI_MODEL,
+          provider: provenance.provider,
+          model: provenance.model,
         },
         createdAt: now,
       },

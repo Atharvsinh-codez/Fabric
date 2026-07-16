@@ -1,30 +1,21 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  BOARD_ASSISTANCE_SKILLS,
+  CANVAS_AGENT_SKILL,
   buildBoardAssistanceInput,
   getBoardAssistanceSkill,
 } from "./board-assistance.v1";
 
 const request = {
-  skill: "cluster-by-theme" as const,
-  mode: "feedback" as const,
+  skill: "canvas-agent" as const,
   workspaceId: "workspace-1",
   boardId: "board-1",
   documentGenerationId: "generation-1",
   durableSequence: 4,
-  instruction: "Find contradictions.",
-  selection: [
-    {
-      id: "node-1",
-      type: "note" as const,
-      title: "Evidence",
-      x: 0,
-      y: 0,
-      width: 180,
-      height: 120,
-    },
-  ],
+  instruction: "Solve the equation and draw the decision flow.",
+  viewport: { x: 100, y: 200, width: 1_200, height: 800 },
+  conversation: [{ role: "user" as const, content: "Keep it concise." }],
+  selection: [],
 };
 
 const base = {
@@ -35,54 +26,43 @@ const base = {
   selectionHash: "a".repeat(64),
 };
 
-describe("board assistance skills", () => {
-  it("gives each mode a distinct, least-capability patch policy", () => {
-    expect(BOARD_ASSISTANCE_SKILLS.feedback.manifest.allowedOperations).toEqual([
-      "createNode",
-    ]);
-    expect(BOARD_ASSISTANCE_SKILLS.feedback.manifest.thinkingLevel).toBe("medium");
-    expect(BOARD_ASSISTANCE_SKILLS.feedback.allowedCreatedNodeTypes).toEqual([
-      "summary",
-    ]);
-    expect(BOARD_ASSISTANCE_SKILLS.suggest.manifest.allowedOperations).toEqual([
-      "createNode",
-      "moveNode",
-    ]);
-    expect(BOARD_ASSISTANCE_SKILLS.suggest.manifest.thinkingLevel).toBe("medium");
-    expect(BOARD_ASSISTANCE_SKILLS.solve.manifest.allowedOperations).toEqual([
-      "createNode",
-      "moveNode",
-      "createConnector",
-    ]);
-    expect(BOARD_ASSISTANCE_SKILLS.solve.manifest.thinkingLevel).toBe("high");
-    expect(BOARD_ASSISTANCE_SKILLS.solve.allowedCreatedNodeTypes).toEqual([
-      "frame",
-      "summary",
-    ]);
-    expect(
-      Object.values(BOARD_ASSISTANCE_SKILLS).map(
-        (skill) => skill.manifest.limits.maxOutputTokens,
-      ),
-    ).toEqual([16_384, 16_384, 16_384]);
-    expect(
-      Object.values(BOARD_ASSISTANCE_SKILLS).map(
-        (skill) => skill.manifest.limits.maxRetries,
-      ),
-    ).toEqual([0, 0, 0]);
+describe("canvas-agent skill", () => {
+  it("uses one skill with native diagram and deterministic pen operations", () => {
+    expect(getBoardAssistanceSkill()).toBe(CANVAS_AGENT_SKILL);
+    expect(CANVAS_AGENT_SKILL.manifest.id).toBe("canvas-agent");
+    expect(CANVAS_AGENT_SKILL.manifest.allowedOperations).toEqual(
+      expect.arrayContaining(["createNode", "createConnector", "writeText"]),
+    );
+    expect(CANVAS_AGENT_SKILL.allowedCreatedNodeTypes).toEqual(
+      expect.arrayContaining(["diamond", "triangle", "hexagon"]),
+    );
+    expect(CANVAS_AGENT_SKILL.allowedCreatedNodeTypes).not.toContain("image");
   });
 
-  it("puts the selected mode and human-approval boundary in model input", () => {
+  it("forbids raster output and requires pen answers plus human approval", () => {
+    expect(CANVAS_AGENT_SKILL.systemInstruction).toContain(
+      "Answer questions, show reasoning, and write equations with writeText",
+    );
+    expect(CANVAS_AGENT_SKILL.systemInstruction).toContain(
+      "Never create, replace, synthesize, or modify an image",
+    );
     const input = JSON.parse(buildBoardAssistanceInput(request, base)) as {
-      assistanceMode: string;
-      outputRules: { humanApprovalRequired: boolean; autoApply: boolean };
+      viewport: typeof request.viewport;
+      selectedNodes: unknown[];
+      outputRules: {
+        humanApprovalRequired: boolean;
+        autoApply: boolean;
+        imageCreationAllowed: boolean;
+        rasterOutputAllowed: boolean;
+      };
     };
-    expect(input.assistanceMode).toBe("feedback");
+    expect(input.viewport).toEqual(request.viewport);
+    expect(input.selectedNodes).toEqual([]);
     expect(input.outputRules).toMatchObject({
       humanApprovalRequired: true,
       autoApply: false,
+      imageCreationAllowed: false,
+      rasterOutputAllowed: false,
     });
-    expect(getBoardAssistanceSkill("feedback").systemInstruction).toContain(
-      "Do not move, reparent, connect, or modify any selected source node.",
-    );
   });
 });

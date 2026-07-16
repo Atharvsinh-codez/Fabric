@@ -4,9 +4,9 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import {
-  APPROVED_GEMINI_MODEL,
+  FABRIC_AI_PROVIDER,
+  parseAiApiKeys,
   parseAiRuntimeConfig,
-  parseGeminiApiKeys,
 } from "../lib/ai/config";
 import { MAX_BOARD_ASSISTANCE_WALL_TIME_MS } from "../lib/ai/skills/board-assistance.v1";
 
@@ -17,10 +17,12 @@ const WorkerEnvironmentSchema = z
       .trim()
       .url()
       .refine((value) => value.startsWith("postgresql://") || value.startsWith("postgres://")),
-    GEMINI_API_KEYS: z.string().optional(),
-    GEMINI_API_KEY: z.string().optional(),
-    GEMINI_MODEL: z.literal(APPROVED_GEMINI_MODEL).default(APPROVED_GEMINI_MODEL),
-    GEMINI_STORE_INTERACTIONS: z.enum(["false", "FALSE", "False"]).default("false"),
+    AI_PROVIDER: z.literal(FABRIC_AI_PROVIDER),
+    AI_BASE_URL: z.string().trim().min(1),
+    AI_API_KEYS: z.string().optional(),
+    AI_API_KEY: z.string().optional(),
+    AI_MODEL: z.string().trim().min(1),
+    AI_STREAM_ONLY: z.literal("true"),
     AI_RUNS_ENABLED: z.enum(["true", "false"]).default("false"),
     AI_WORKER_POLL_MS: z.coerce.number().int().min(100).max(10_000).default(500),
     AI_WORKER_LEASE_MS: z.coerce.number().int().min(30_000).max(300_000).default(60_000),
@@ -52,9 +54,11 @@ function parseWorkerEnvironment(
   }
 
   const ai = parseAiRuntimeConfig({
-    apiKeys: parseGeminiApiKeys(parsed),
-    model: parsed.GEMINI_MODEL,
-    storeInteractions: false,
+    provider: parsed.AI_PROVIDER,
+    baseUrl: parsed.AI_BASE_URL,
+    apiKeys: parseAiApiKeys(parsed),
+    model: parsed.AI_MODEL,
+    streamOnly: parsed.AI_STREAM_ONLY === "true",
     requestTimeoutMs: MAX_BOARD_ASSISTANCE_WALL_TIME_MS,
   });
 

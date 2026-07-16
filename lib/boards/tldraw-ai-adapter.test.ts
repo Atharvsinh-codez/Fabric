@@ -1,13 +1,23 @@
 import { describe, expect, it } from "vitest";
 import type { Editor, TLShape, TLShapeId } from "tldraw";
+import { drawShapeProps } from "@tldraw/tlschema";
 
-import { serializeTldrawAiSelection } from "./tldraw-ai-adapter";
+import {
+  applyTldrawProposal,
+  serializeTldrawAiSelection,
+} from "./tldraw-ai-adapter";
 import type { CanvasNode, NodeType } from "../types";
 
-function shape(id: string, type: string, nodeId = `node-${id}`): TLShape {
+function shape(
+  id: string,
+  type: string,
+  nodeId = `node-${id}`,
+  props: Record<string, unknown> = {},
+): TLShape {
   return {
     id: `shape:${id}`,
     type,
+    props,
     meta: { fabric: { nodeId } },
   } as unknown as TLShape;
 }
@@ -98,5 +108,97 @@ describe("tldraw AI selection serialization", () => {
     expect(
       serializeTldrawAiSelection(editor, [node("node-only-child", "text")]),
     ).toHaveLength(1);
+  });
+
+  it("serializes bounded source geometry for a selected pen stroke", () => {
+    const drawing = shape("pen", "draw", "node-pen", {
+      segments: [
+        {
+          type: "free",
+          points: [
+            { x: -10, y: 5, z: 0.2 },
+            { x: 30, y: 25, z: 0.8 },
+          ],
+        },
+      ],
+    });
+    const editor = selectionEditor({ selected: [drawing], shapes: [drawing] });
+
+    expect(
+      serializeTldrawAiSelection(editor, [node("node-pen", "drawing")])[0]?.source,
+    ).toEqual({
+      shapeType: "draw",
+      segments: [
+        {
+          type: "free",
+          points: [
+            { x: 0, y: 0, z: 0.2 },
+            { x: 40, y: 20, z: 0.8 },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("applies writeText as exactly one valid native multi-segment draw shape", async () => {
+    const created: Array<Record<string, unknown>> = [];
+    const editor = {
+      getInstanceState: () => ({ isReadonly: false }),
+      markHistoryStoppingPoint: () => "mark:test",
+      run: (callback: () => void) => callback(),
+      createShape: (input: Record<string, unknown>) => {
+        created.push(input);
+      },
+      reparentShapes: () => undefined,
+      bailToMark: () => undefined,
+    } as unknown as Editor;
+
+    await applyTldrawProposal(
+      {
+        patch: {
+          schemaVersion: 1,
+          summary: "Write the result with the pen.",
+          base: {
+            workspaceId: "workspace-1",
+            boardId: "board-1",
+            documentGenerationId: "generation-1",
+            durableSequence: 1,
+          },
+          operations: [
+            {
+              type: "writeText",
+              tempId: "tmp_answer",
+              position: { x: 80, y: 120 },
+              text: "2 + 3 = 5",
+              fontSize: 28,
+              maxWidth: 500,
+            },
+          ],
+        },
+        patchHash: "a".repeat(64),
+        patchBytes: 256,
+        affectedNodeIds: ["tmp_answer"],
+        riskClass: "low",
+      },
+      editor,
+    );
+
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({
+      type: "draw",
+      x: 80,
+      y: 120,
+      props: { isComplete: true, isPen: true },
+      meta: {
+        fabric: {
+          nodeId: "tmp_answer",
+          nodeType: "drawing",
+          penText: "2 + 3 = 5",
+        },
+      },
+    });
+    const props = created[0]?.props as Record<string, unknown>;
+    expect(Array.isArray(props.segments) && props.segments.length > 1).toBe(true);
+    expect(() => drawShapeProps.segments.validate(props.segments)).not.toThrow();
   });
 });

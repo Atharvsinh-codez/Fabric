@@ -55,14 +55,23 @@ export const aiProviderKeyOrdinalSequence = pgSequence(
 );
 
 export type AiRunExecutionInput = {
-  skill: "cluster-by-theme";
-  mode?: "feedback" | "suggest" | "solve";
+  skill: "canvas-agent";
   workspaceId: string;
   boardId: string;
   documentGenerationId: string;
   durableSequence: number;
   instruction: string;
   selection: Array<Record<string, unknown>>;
+  viewport: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  conversation: Array<{
+    role: "user" | "assistant";
+    content: string;
+  }>;
 } | { redacted: true };
 
 export type AiRunUsage = {
@@ -105,11 +114,10 @@ export const aiRuns = pgTable(
     skillVersion: text("skill_version").notNull(),
     promptVersion: text("prompt_version").notNull(),
     policyVersion: text("policy_version").notNull(),
-    provider: text("provider").default("google-gemini").notNull(),
-    // Keep the legacy database default during mixed-version rollout. New code
-    // always persists its reviewed model explicitly, so old 3.5 workers cannot
-    // accidentally record 2.5 provenance before they are drained.
-    model: text("model").default("gemini-3.5-flash").notNull(),
+    // Provider and model provenance is always supplied by the server-side
+    // runtime configuration. No database default may silently mislabel a run.
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
     sdkVersion: text("sdk_version").notNull(),
     configVersion: text("config_version").notNull(),
     lastEventSequence: bigint("last_event_sequence", { mode: "number" }).default(0).notNull(),
@@ -144,12 +152,15 @@ export const aiRuns = pgTable(
       "ai_runs_status_check",
       sql`${table.status} in ('queued', 'preparing_context', 'calling_model', 'building_proposal', 'validating_proposal', 'waiting_for_approval', 'applying', 'completed', 'canceled', 'policy_denied', 'provider_unavailable', 'budget_exceeded', 'validation_failed', 'stale_generation', 'expired_approval')`,
     ),
-    check("ai_runs_provider_check", sql`${table.provider} = 'google-gemini'`),
-    // Preserve historical run provenance while pinning all new runs to the
-    // reviewed production model at the application boundary.
+    check(
+      "ai_runs_provider_check",
+      sql`${table.provider} in ('google-gemini', 'openai-compatible')`,
+    ),
+    // Historical Gemini provenance remains queryable. OpenAI-compatible model
+    // identifiers are environment-selected and bounded to a safe identifier.
     check(
       "ai_runs_model_check",
-      sql`${table.model} in ('gemini-3.5-flash', 'gemini-2.5-flash')`,
+      sql`(${table.provider} = 'google-gemini' and ${table.model} in ('gemini-3.5-flash', 'gemini-2.5-flash')) or (${table.provider} = 'openai-compatible' and char_length(${table.model}) between 1 and 255 and ${table.model} ~ '^[A-Za-z0-9][A-Za-z0-9._:/-]*$')`,
     ),
     check(
       "ai_runs_hashes_check",

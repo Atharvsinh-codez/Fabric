@@ -133,19 +133,19 @@ Uploads use short-lived, write-once staging keys. The server streams and verifie
 
 ### AI serverless dispatch
 
-- `GEMINI_API_KEYS` (preferred; 1-16 trimmed, deduplicated keys as a
-  comma/newline-separated list or JSON string array)
-- `GEMINI_API_KEY` (backward-compatible single-key alternative)
-- `GEMINI_MODEL=gemini-2.5-flash`
-- `GEMINI_STORE_INTERACTIONS=false`
-- `GEMINI_STREAM_ONLY=true`
+- `AI_PROVIDER=openai-compatible`
+- `AI_BASE_URL` set to an HTTPS OpenAI-compatible `/v1` endpoint with no credentials or query string
+- `AI_API_KEYS` (optional preferred pool; 1-16 trimmed, deduplicated keys as a comma/newline-separated list or JSON string array)
+- `AI_API_KEY` when exactly one server-only credential is configured
+- `AI_MODEL` set to the reviewed provider model identifier
+- `AI_STREAM_ONLY=true`
 - `AI_RUNS_ENABLED=true` only when production should accept work
 - `AI_SERVERLESS_DISPATCH_ENABLED=true` when running outside Vercel detection
 - the lease, retention, and budget values from `.env.example`
 
-Vercel claims only the authenticated run attached to the current SSE request and keeps the bounded dispatch promise tied to that response lifecycle. Gemini calls use streaming responses and disabled provider storage. The browser cannot replace the provider model, response schema, or safety limits. Terminal event retention defaults to 14 days and terminal run retention to 30 days.
+Vercel claims only the authenticated run attached to the current SSE request and keeps the bounded dispatch promise tied to that response lifecycle. The provider adapter sends only streamed OpenAI-compatible Chat Completions requests; it never falls back to a buffered or non-streaming model call. The browser cannot replace the provider endpoint, model, response schema, or safety limits. Terminal event retention defaults to 14 days and terminal run retention to 30 days.
 
-When both key variables are present, `GEMINI_API_KEYS` is authoritative; a malformed preferred list fails readiness instead of silently falling back. Multiple keys are for controlled credential rotation and availability failover, not for bypassing a provider quota. Store either variable only in server/worker secret storage and never in a `NEXT_PUBLIC_*` setting.
+When both key variables are present, `AI_API_KEYS` is authoritative; a malformed preferred list fails readiness instead of silently falling back. Multiple keys are for controlled credential rotation and availability failover, not for bypassing a provider quota. Store either variable only in server/worker secret storage and never in a `NEXT_PUBLIC_*` setting.
 
 ### Browser-visible build inputs
 
@@ -154,7 +154,7 @@ These values are embedded by the Next.js build and require a rebuild when change
 - `NEXT_PUBLIC_APP_URL`
 - `NEXT_PUBLIC_REALTIME_URL`
 
-Never put OAuth secrets, Neon URLs, Gemini keys, readiness credentials, or realtime keys in `NEXT_PUBLIC_*` variables, command arguments, logs, or release artifacts.
+Never put OAuth secrets, Neon URLs, AI provider keys, readiness credentials, or realtime keys in `NEXT_PUBLIC_*` variables, command arguments, logs, or release artifacts.
 
 ### Rotation
 
@@ -171,7 +171,7 @@ Use one Neon project/database per environment. Create these identities:
 
 Only `fabric_web` and `fabric_worker` are active runtime connections in the Vercel + Cloudflare production topology. Keeping the purpose-limited `fabric_realtime` role and legacy collaboration tables during the observation window makes rollback evidence and existing-room reconciliation possible without granting Cloudflare database access.
 
-The committed migration sequence is ordered and forward-only. Release migrations `0006` through `0008` add runtime structures; `0009` is the reviewed status-constraint/data compatibility correction described below; `0010` adds bounded avatar upload reservations; `0011` moves new AI runs to Gemini 2.5 Flash while preserving historical model provenance; and `0012` adds the global Gemini key-rotation sequence. None deletes tenant or board rows:
+The committed migration sequence is ordered and forward-only. Release migrations `0006` through `0008` add runtime structures; `0009` is the reviewed status-constraint/data compatibility correction described below; `0010` adds bounded avatar upload reservations; `0011` and `0012` preserve the earlier Gemini rollout and credential-rotation provenance; and `0013` moves all new work to an env-selected OpenAI-compatible provider while keeping historical run rows readable. None deletes tenant or board rows:
 
 | Migration | Boundary |
 | --- | --- |
@@ -188,6 +188,7 @@ The committed migration sequence is ordered and forward-only. Release migrations
 | `0010_heavy_boom_boom.sql` | Adds per-user, expiring avatar upload reservations so quota checks and finalization remain idempotent and concurrency-safe |
 | `0011_blushing_korvac.sql` | Allows explicitly versioned `gemini-2.5-flash` runs while retaining `gemini-3.5-flash` for historical and mixed-version rollout provenance |
 | `0012_chunky_vance_astro.sql` | Adds a standalone monotonic sequence used to choose the next Gemini credential across serverless and attached worker instances without rewriting AI job rows |
+| `0013_foamy_lionheart.sql` | Removes legacy AI defaults and allows explicit `openai-compatible` runs with a bounded env-selected model identifier while retaining historical Gemini provenance |
 
 ### Pre-migration procedure
 
@@ -442,7 +443,7 @@ Capacity notes:
 
 ## 10. Monitoring and incidents
 
-Collect correlated Vercel and Cloudflare logs, HTTP/WebSocket outcomes, Durable Object storage/room errors, Neon connection/storage metrics, AI queue age and attempts, Gemini errors, and client sync failures. Keep user content, signed tickets, and secrets out of logs.
+Collect correlated Vercel and Cloudflare logs, HTTP/WebSocket outcomes, Durable Object storage/room errors, Neon connection/storage metrics, AI queue age and attempts, OpenAI-compatible provider errors, and client sync failures. Keep user content, signed tickets, and secrets out of logs.
 
 Alert on:
 
@@ -471,10 +472,10 @@ Do not call a deployment production-ready until all of the following are true:
 - the purpose-separated coordinator secret is present on Vercel and Cloudflare, the dispatch secret is Vercel-only, and the protected revocation schedule/backlog alert are active
 - `fabric_web` and `fabric_worker` are distinct pooled roles and their grants are verified; no Neon credential is exposed to Cloudflare
 - the direct migrator is isolated from the running application
-- migrations through `0012` are applied in order and the rotation sequence grant is verified
+- migrations through `0013` are applied in order and the provider-rotation sequence grant is verified
 - Neon protection plus a cross-provider board-checkpoint recovery drill are complete
 - existing rooms pass the saved-board cutover gate or have a tested import; no legacy realtime tail is silently abandoned
-- Gemini billing/quota is adequate and a streamed run succeeds in the target environment
+- provider billing/quota is adequate and a streamed OpenAI-compatible run succeeds in the target environment
 - AI event/run retention has a scheduled cleanup path for the serverless deployment
 - Vercel liveness, Worker health, end-to-end synthetic readiness, dashboards, alerts, logs, and a rollback owner are configured
 - credentials ever shared through insecure channels have been rotated

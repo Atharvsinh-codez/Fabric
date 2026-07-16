@@ -15,6 +15,7 @@ export const TemporaryIdentifierSchema = z
 const NodeReferenceSchema = z.union([CanvasIdentifierSchema, TemporaryIdentifierSchema]);
 const FiniteCoordinateSchema = z.number().finite().min(-100_000).max(100_000);
 const DimensionSchema = z.number().finite().min(24).max(10_000);
+const LocalVectorCoordinateSchema = z.number().finite().min(0).max(10_000);
 
 export const CanvasColorTokenSchema = z.enum([
   "surface",
@@ -27,15 +28,84 @@ export const CanvasColorTokenSchema = z.enum([
   "fog",
 ]);
 
-export const CanvasNodeTypeSchema = z.enum([
+/** Shape kinds that may be sent to the model as authorized source material. */
+export const CanvasSelectableNodeTypeSchema = z.enum([
   "frame",
   "note",
   "text",
   "rectangle",
   "ellipse",
+  "diamond",
+  "triangle",
+  "hexagon",
   "image",
+  "drawing",
   "summary",
 ]);
+
+/** Shape kinds the model may create. Images are deliberately source-only. */
+export const CanvasCreatableNodeTypeSchema = z.enum([
+  "frame",
+  "note",
+  "text",
+  "rectangle",
+  "ellipse",
+  "diamond",
+  "triangle",
+  "hexagon",
+  "summary",
+]);
+
+/** Backwards-compatible name for selection and semantic snapshot consumers. */
+export const CanvasNodeTypeSchema = CanvasSelectableNodeTypeSchema;
+
+export const CanvasVectorPointSchema = z
+  .object({
+    x: LocalVectorCoordinateSchema,
+    y: LocalVectorCoordinateSchema,
+    z: z.number().finite().min(0).max(1).optional(),
+  })
+  .strict();
+
+export const CanvasVectorSegmentSchema = z
+  .object({
+    type: z.enum(["free", "straight"]),
+    points: z.array(CanvasVectorPointSchema).min(2).max(64),
+  })
+  .strict();
+
+const CanvasVectorSegmentsSchema = z
+  .array(CanvasVectorSegmentSchema)
+  .min(1)
+  .max(64)
+  .superRefine((segments, context) => {
+    const pointCount = segments.reduce((total, segment) => total + segment.points.length, 0);
+    if (pointCount > 2_048) {
+      context.addIssue({
+        code: "custom",
+        message: "Vector geometry exceeds the 2048-point limit",
+      });
+    }
+  });
+
+const CanvasDrawingSegmentsSchema = CanvasVectorSegmentsSchema.superRefine(
+  (segments, context) => {
+    const pointCount = segments.reduce((total, segment) => total + segment.points.length, 0);
+    if (pointCount > 512) {
+      context.addIssue({
+        code: "custom",
+        message: "Created drawing exceeds the 512-point limit",
+      });
+    }
+  },
+);
+
+export const CanvasSourceGeometrySchema = z
+  .object({
+    shapeType: z.enum(["draw", "highlight", "line"]),
+    segments: CanvasVectorSegmentsSchema,
+  })
+  .strict();
 
 const PositionSchema = z
   .object({
@@ -72,11 +142,40 @@ const CreateNodeOperationSchema = z
   .object({
     type: z.literal("createNode"),
     tempId: TemporaryIdentifierSchema,
-    nodeType: CanvasNodeTypeSchema,
+    nodeType: CanvasCreatableNodeTypeSchema,
     position: PositionSchema,
     size: SizeSchema,
     content: NodeContentSchema,
     appearance: NodeAppearanceSchema.optional(),
+    parentId: NodeReferenceSchema.optional(),
+  })
+  .strict();
+
+const WriteTextOperationSchema = z
+  .object({
+    type: z.literal("writeText"),
+    tempId: TemporaryIdentifierSchema,
+    position: PositionSchema,
+    text: z
+      .string()
+      .min(1)
+      .max(80)
+      .refine((value) => value.trim().length > 0, "Pen text cannot be blank"),
+    fontSize: z.number().finite().min(12).max(96),
+    maxWidth: z.number().finite().min(60).max(2_000),
+    color: CanvasColorTokenSchema.optional(),
+    parentId: NodeReferenceSchema.optional(),
+  })
+  .strict();
+
+const CreateDrawingOperationSchema = z
+  .object({
+    type: z.literal("createDrawing"),
+    tempId: TemporaryIdentifierSchema,
+    position: PositionSchema,
+    segments: CanvasDrawingSegmentsSchema,
+    color: CanvasColorTokenSchema.optional(),
+    size: z.enum(["s", "m", "l", "xl"]).optional(),
     parentId: NodeReferenceSchema.optional(),
   })
   .strict();
@@ -120,6 +219,7 @@ const CreateConnectorOperationSchema = z
     sourceId: NodeReferenceSchema,
     targetId: NodeReferenceSchema,
     route: z.enum(["straight", "elbow"]),
+    label: z.string().trim().min(1).max(120).optional(),
   })
   .strict();
 
@@ -132,6 +232,8 @@ const DeleteNodeOperationSchema = z
 
 export const CanvasOperationSchema = z.discriminatedUnion("type", [
   CreateNodeOperationSchema,
+  WriteTextOperationSchema,
+  CreateDrawingOperationSchema,
   UpdateNodeOperationSchema,
   MoveNodeOperationSchema,
   ResizeNodeOperationSchema,
@@ -158,7 +260,9 @@ export const CanvasPatchSchema = z
 
 export type CanvasOperation = z.infer<typeof CanvasOperationSchema>;
 export type CanvasPatch = z.infer<typeof CanvasPatchSchema>;
-export type CanvasNodeType = z.infer<typeof CanvasNodeTypeSchema>;
+export type CanvasNodeType = z.infer<typeof CanvasSelectableNodeTypeSchema>;
+export type CanvasCreatableNodeType = z.infer<typeof CanvasCreatableNodeTypeSchema>;
+export type CanvasSourceGeometry = z.infer<typeof CanvasSourceGeometrySchema>;
 
 /** The provider schema and the runtime validator are generated from one source. */
 export const CANVAS_PATCH_JSON_SCHEMA = Object.freeze(

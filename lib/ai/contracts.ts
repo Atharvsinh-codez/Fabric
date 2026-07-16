@@ -1,7 +1,7 @@
 import type { CanvasPatch } from "./canvas-patch";
 import type { PatchRiskClass } from "./semantic-validator";
 
-import { APPROVED_GEMINI_MODEL } from "./config";
+import type { FabricAiModel, FabricAiProvider } from "./config";
 
 export type ThinkingLevel = "minimal" | "low" | "medium" | "high";
 
@@ -39,8 +39,8 @@ export type ModelTurn = Readonly<{
 }>;
 
 export interface FabricModelProvider {
-  readonly provider: "google-gemini";
-  readonly model: typeof APPROVED_GEMINI_MODEL;
+  readonly provider: FabricAiProvider;
+  readonly model: FabricAiModel;
   createTurn(request: ModelTurnRequest): Promise<ModelTurn>;
 }
 

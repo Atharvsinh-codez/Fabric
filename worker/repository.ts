@@ -1,5 +1,5 @@
 import type { AiRunStatus } from "../db/schema/ai";
-import type { FabricGeminiModel } from "../lib/ai/config";
+import type { FabricAiModel } from "../lib/ai/config";
 import type { ModelUsage, ProposalReadyPayload } from "../lib/ai/contracts";
 import type { AiProposalRequest } from "../lib/ai/proposal-request";
 import {
@@ -25,7 +25,8 @@ export type ClaimedAiJob = {
   attempt: number;
   maxAttempts: number;
   runStatus: AiRunStatus;
-  model: FabricGeminiModel;
+  provider: string;
+  model: FabricAiModel;
   principalId: string;
   workspaceId: string;
   boardId: string;
@@ -158,6 +159,7 @@ export async function claimNextAiJob(
       c.attempts as attempt,
       c.max_attempts as "maxAttempts",
       r.status as "runStatus",
+      r.provider as provider,
       r.model as model,
       r.principal_id as "principalId",
       r.workspace_id as "workspaceId",
@@ -222,6 +224,7 @@ export async function claimAiJobByRunId(
       c.attempts as attempt,
       c.max_attempts as "maxAttempts",
       r.status as "runStatus",
+      r.provider as provider,
       r.model as model,
       r.principal_id as "principalId",
       r.workspace_id as "workspaceId",

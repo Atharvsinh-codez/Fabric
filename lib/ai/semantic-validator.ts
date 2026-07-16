@@ -1,4 +1,8 @@
-import type { CanvasNodeType, CanvasPatch } from "./canvas-patch";
+import type {
+  CanvasCreatableNodeType,
+  CanvasNodeType,
+  CanvasPatch,
+} from "./canvas-patch";
 
 export type PatchRiskClass = "low" | "medium" | "high";
 
@@ -15,7 +19,7 @@ export type CanvasPatchSemanticContext = Readonly<{
   base: CanvasPatch["base"];
   nodes: readonly SemanticNodeSnapshot[];
   allowedOperations: readonly CanvasPatch["operations"][number]["type"][];
-  allowedCreatedNodeTypes?: readonly CanvasNodeType[];
+  allowedCreatedNodeTypes?: readonly CanvasCreatableNodeType[];
   protectedNodeIds?: readonly string[];
   limits: Readonly<{
     maxPatchBytes: number;
@@ -123,6 +127,18 @@ export function validateCanvasPatchSemantics(
       return;
     }
 
+    if (operation.type === "writeText" || operation.type === "createDrawing") {
+      if (existingNodes.has(operation.tempId) || createdIdentifiers.has(operation.tempId)) {
+        addIssue("duplicate_identifier", `${path}.tempId`, "Temporary identifier is not unique");
+      } else {
+        createdIdentifiers.add(operation.tempId);
+        knownNodes.set(operation.tempId, "drawing");
+      }
+      if (operation.parentId) parentByNode.set(operation.tempId, operation.parentId);
+      affectedNodeIds.add(operation.tempId);
+      return;
+    }
+
     if (operation.type === "createConnector") {
       if (existingNodes.has(operation.tempId) || createdIdentifiers.has(operation.tempId)) {
         addIssue("duplicate_identifier", `${path}.tempId`, "Temporary identifier is not unique");
@@ -157,6 +173,12 @@ export function validateCanvasPatchSemantics(
     const references: Array<{ value: string; path: string; requireFrame?: boolean }> = [];
 
     if (operation.type === "createNode" && operation.parentId) {
+      references.push({ value: operation.parentId, path: `${path}.parentId`, requireFrame: true });
+    }
+    if (
+      (operation.type === "writeText" || operation.type === "createDrawing") &&
+      operation.parentId
+    ) {
       references.push({ value: operation.parentId, path: `${path}.parentId`, requireFrame: true });
     }
     if (operation.type === "moveNode" && operation.parentId) {

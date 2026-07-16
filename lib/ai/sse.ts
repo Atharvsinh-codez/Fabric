@@ -1,14 +1,18 @@
 import type { ModelUsage, ProposalReadyPayload } from "./contracts";
 
-import { FABRIC_AI_PROTOCOL_VERSION, type FabricGeminiModel } from "./config";
+import {
+  FABRIC_AI_PROTOCOL_VERSION,
+  type FabricAiModel,
+  type FabricAiProvider,
+} from "./config";
 
 export type FabricAiSsePayloads = {
   "run.started": {
     skill: string;
     skillVersion: string;
     promptVersion: string;
-    provider: "google-gemini";
-    model: FabricGeminiModel;
+    provider: FabricAiProvider;
+    model: FabricAiModel;
   };
   "run.progress": {
     phase:

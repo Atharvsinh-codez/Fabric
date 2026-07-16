@@ -4,41 +4,45 @@ import { loadServerlessWorkerConfig, loadWorkerConfig } from "./config";
 
 const baseEnvironment = {
   WORKER_DATABASE_URL: "postgresql://worker:secret@db.example.test/fabric?sslmode=require",
-  GEMINI_API_KEYS:
+  AI_PROVIDER: "openai-compatible",
+  AI_BASE_URL: "https://provider.example.test/v1",
+  AI_API_KEYS:
     "production-primary-api-key-value-long-enough,production-secondary-api-key-value-long-enough",
-  GEMINI_MODEL: "gemini-2.5-flash",
-  GEMINI_STORE_INTERACTIONS: "false",
+  AI_MODEL: "gcli/grok-4.5-medium",
+  AI_STREAM_ONLY: "true",
   AI_RUNS_ENABLED: "true",
 };
 
 describe("worker configuration boundary", () => {
-  it("accepts only the reviewed model and store:false", () => {
+  it("accepts an environment-selected OpenAI-compatible endpoint and model", () => {
     expect(loadWorkerConfig(baseEnvironment).ai).toMatchObject({
+      provider: "openai-compatible",
+      baseUrl: "https://provider.example.test/v1",
       apiKeys: [
         "production-primary-api-key-value-long-enough",
         "production-secondary-api-key-value-long-enough",
       ],
-      model: "gemini-2.5-flash",
-      storeInteractions: false,
+      model: "gcli/grok-4.5-medium",
+      streamOnly: true,
     });
-    expect(() => loadWorkerConfig({ ...baseEnvironment, GEMINI_MODEL: "gemini-flash-latest" })).toThrow();
-    expect(() =>
-      loadWorkerConfig({ ...baseEnvironment, GEMINI_STORE_INTERACTIONS: "true" }),
-    ).toThrow();
+    expect(() => loadWorkerConfig({ ...baseEnvironment, AI_PROVIDER: "other" })).toThrow();
+    expect(() => loadWorkerConfig({ ...baseEnvironment, AI_BASE_URL: "http://provider.test/v1" })).toThrow();
+    expect(() => loadWorkerConfig({ ...baseEnvironment, AI_MODEL: "model with spaces" })).toThrow();
+    expect(() => loadWorkerConfig({ ...baseEnvironment, AI_STREAM_ONLY: "false" })).toThrow();
   });
 
-  it("supports the legacy single-key variable without weakening preferred-list validation", () => {
+  it("supports the single-key fallback without weakening preferred-list validation", () => {
     expect(loadWorkerConfig({
       ...baseEnvironment,
-      GEMINI_API_KEYS: undefined,
-      GEMINI_API_KEY: "legacy-production-api-key-value-long-enough",
-    }).ai.apiKeys).toEqual(["legacy-production-api-key-value-long-enough"]);
+      AI_API_KEYS: undefined,
+      AI_API_KEY: "fallback-production-api-key-value-long-enough",
+    }).ai.apiKeys).toEqual(["fallback-production-api-key-value-long-enough"]);
 
     expect(() => loadWorkerConfig({
       ...baseEnvironment,
-      GEMINI_API_KEYS: "[malformed",
-      GEMINI_API_KEY: "legacy-production-api-key-value-long-enough",
-    })).toThrow(/GEMINI_API_KEYS/);
+      AI_API_KEYS: "[malformed",
+      AI_API_KEY: "fallback-production-api-key-value-long-enough",
+    })).toThrow(/AI_API_KEYS/);
   });
 
   it("rejects reuse of the web database credential", () => {

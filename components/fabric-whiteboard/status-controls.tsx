@@ -3,42 +3,15 @@
 import {
   CloudIcon,
   ExclamationTriangleIcon,
+  SparklesIcon,
   XMarkIcon,
 } from "@heroicons/react/16/solid";
 import { useEffect, useState } from "react";
 
-import type { FabricAssistanceMode } from "@/components/fabric-whiteboard/ai-panel";
 import { IconButton, cx } from "@/components/ui";
 import type { BoardSyncState } from "@/lib/boards/use-board-document";
 
 const SYNC_NOTICE_DURATION_MS = 6_000;
-
-const assistanceModes = [
-  {
-    value: "off",
-    label: "Off",
-    accessibleLabel: "Turn Off AI Assistance",
-  },
-  {
-    value: "feedback",
-    label: "Feedback",
-    accessibleLabel: "Open Feedback Assistance",
-  },
-  {
-    value: "suggest",
-    label: "Suggest",
-    accessibleLabel: "Open Suggest Assistance",
-  },
-  {
-    value: "solve",
-    label: "Solve",
-    accessibleLabel: "Open Solve Assistance",
-  },
-] as const satisfies ReadonlyArray<{
-  value: FabricAssistanceMode;
-  label: string;
-  accessibleLabel: string;
-}>;
 
 const syncLabels: Record<BoardSyncState, string> = {
   synced: "Saved",
@@ -52,56 +25,46 @@ export function boardSyncLabel(state: BoardSyncState): string {
   return syncLabels[state];
 }
 
-export function FabricAssistanceModePicker({
-  mode,
+export function FabricAiTrigger({
   panelOpen,
   busy,
-  canEdit,
-  onModeChange,
+  disabled,
+  onClick,
 }: {
-  mode: FabricAssistanceMode;
   panelOpen: boolean;
   busy: boolean;
-  canEdit: boolean;
-  onModeChange: (mode: FabricAssistanceMode) => void;
+  disabled?: boolean;
+  onClick: () => void;
 }) {
   return (
-    <nav
-      className="flex max-w-full items-center gap-1 overflow-x-auto rounded-radius-lg bg-surface-white p-1 floating-shadow"
-      aria-label="AI Assistance Mode"
+    <button
+      type="button"
+      aria-label={panelOpen ? "Close Fabric AI" : "Open Fabric AI"}
+      aria-controls="fabric-ai-assistance-panel"
+      aria-expanded={panelOpen}
+      aria-pressed={panelOpen}
+      disabled={disabled}
+      onClick={onClick}
+      className={cx(
+        "relative flex h-8 shrink-0 items-center gap-1.5 rounded-radius-md py-1.5 pr-2.5 pl-1.5 text-base font-medium outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent disabled:cursor-not-allowed disabled:opacity-40 sm:text-sm",
+        panelOpen
+          ? "bg-(--accent-soft) text-sky-blue-accent"
+          : "text-muted-gray hover:bg-light-surface-tint hover:text-near-black-primary-text active:bg-light-surface-tint",
+      )}
     >
-      {assistanceModes.map((option) => {
-        const selected = mode === option.value;
-        const opensPanel = option.value !== "off";
-        return (
-          <button
-            key={option.value}
-            type="button"
-            aria-label={option.accessibleLabel}
-            aria-pressed={selected}
-            aria-controls={opensPanel ? "fabric-ai-assistance-panel" : undefined}
-            aria-expanded={opensPanel ? selected && panelOpen : undefined}
-            disabled={(busy && option.value !== mode) || (!canEdit && opensPanel)}
-            onClick={() => onModeChange(option.value)}
-            className={cx(
-              "relative h-8 shrink-0 rounded-radius-md px-2.5 text-base font-medium outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent disabled:cursor-not-allowed disabled:opacity-40 sm:text-sm",
-              selected && option.value === "off" &&
-                "bg-light-surface-tint text-near-black-primary-text",
-              selected && option.value !== "off" &&
-                "bg-(--accent-soft) text-sky-blue-accent",
-              !selected &&
-                "text-muted-gray hover:bg-light-surface-tint hover:text-near-black-primary-text",
-            )}
-          >
-            {option.label}
-            <span
-              className="pointer-events-none absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
-              aria-hidden="true"
-            />
-          </button>
-        );
-      })}
-    </nav>
+      <SparklesIcon
+        className={cx(
+          "size-4 h-lh shrink-0 fill-current",
+          busy && "animate-pulse motion-reduce:animate-none",
+        )}
+        aria-hidden="true"
+      />
+      <span>AI</span>
+      <span
+        className="pointer-events-none absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
+        aria-hidden="true"
+      />
+    </button>
   );
 }
 

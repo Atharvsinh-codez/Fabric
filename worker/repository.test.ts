@@ -17,7 +17,8 @@ function claimedRow(overrides: Record<string, unknown> = {}) {
     attempt: "1",
     maxAttempts: "1",
     runStatus: "queued" as const,
-    model: "gemini-2.5-flash" as const,
+    provider: "openai-compatible",
+    model: "gcli/grok-4.5-medium",
     principalId: "33333333-3333-4333-8333-333333333333",
     workspaceId: "44444444-4444-4444-8444-444444444444",
     boardId: "55555555-5555-4555-8555-555555555555",
@@ -25,14 +26,15 @@ function claimedRow(overrides: Record<string, unknown> = {}) {
     baseDurableSequence: "9",
     selectionHash: "a".repeat(64),
     executionInput: {
-      skill: "cluster-by-theme" as const,
-      mode: "suggest" as const,
+      skill: "canvas-agent" as const,
       workspaceId: "44444444-4444-4444-8444-444444444444",
       boardId: "55555555-5555-4555-8555-555555555555",
       documentGenerationId: "66666666-6666-4666-8666-666666666666",
       durableSequence: 9,
       instruction: "Organize these notes.",
       selection: [],
+      viewport: { x: 0, y: 0, width: 1280, height: 720 },
+      conversation: [],
     },
     deadlineAt: new Date(Date.now() + 30_000),
     ...overrides,
@@ -55,7 +57,8 @@ describe("serverless AI job claiming", () => {
       attempt: 1,
       maxAttempts: 1,
       baseDurableSequence: 9,
-      model: "gemini-2.5-flash",
+      provider: "openai-compatible",
+      model: "gcli/grok-4.5-medium",
     });
     const [strings, ...values] = query.mock.calls[0] as [TemplateStringsArray, ...unknown[]];
     const statement = strings.join("?");
@@ -64,6 +67,7 @@ describe("serverless AI job claiming", () => {
       `nextval('ai_provider_key_ordinal_seq') as "providerKeyOrdinal"`,
     );
     expect(statement).toContain("r.model as model");
+    expect(statement).toContain("r.provider as provider");
     expect(statement.match(/nextval/gu)).toHaveLength(1);
     expect(values).toContain(runId);
     expect(query).toHaveBeenCalledOnce();
@@ -80,7 +84,8 @@ describe("serverless AI job claiming", () => {
       leaseMs: 60_000,
     })).resolves.toMatchObject({
       providerKeyOrdinal: Number.MAX_SAFE_INTEGER,
-      model: "gemini-2.5-flash",
+      provider: "openai-compatible",
+      model: "gcli/grok-4.5-medium",
     });
 
     const [strings] = query.mock.calls[0] as [TemplateStringsArray];
@@ -89,6 +94,7 @@ describe("serverless AI job claiming", () => {
       `nextval('ai_provider_key_ordinal_seq') as "providerKeyOrdinal"`,
     );
     expect(statement).toContain("r.model as model");
+    expect(statement).toContain("r.provider as provider");
     expect(statement.match(/nextval/gu)).toHaveLength(1);
     expect(query).toHaveBeenCalledOnce();
   });

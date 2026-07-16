@@ -330,7 +330,7 @@ export function PricingPage() {
                     ["Identity", "Google and GitHub provide identity; Fabric stores database sessions without provider bearer tokens."],
                     ["Collaboration", "Workspace roles govern boards, comments, members, share links, and AI approval."],
                     ["Persistence", "Board data uses the configured Neon database, with device recovery state in IndexedDB."],
-                    ["External services", "Live collaboration and AI depend on the configured realtime service, worker, and Gemini quota."],
+                    ["External services", "Live collaboration and AI depend on the configured realtime service, worker, and model-provider quota."],
                   ].map(([term, detail]) => (
                     <div key={term} className="flex flex-col gap-1 border-t border-border-subtle pt-4">
                       <dt className="font-medium text-near-black-primary-text">{term}</dt>
@@ -389,7 +389,7 @@ export function PricingPage() {
                     ["Canvas editing and product UI", true, "Supported browser"],
                     ["Durable multiplayer sync", true, "Realtime service and Neon"],
                     ["Offline reopen and outbox", true, "IndexedDB-capable browser"],
-                    ["Streaming AI proposals", true, "AI worker and Gemini credentials"],
+                    ["Streaming AI proposals", true, "AI worker and OpenAI-compatible credentials"],
                     ["Payment and subscriptions", false, "No billing integration"],
                   ].map(([capability, available, dependency]) => (
                     <tr key={capability as string}>
@@ -575,7 +575,7 @@ const dataHandlingRows = [
   ["OAuth identity and sessions", "Name, email, avatar, provider account ID, database session, and hashed network metadata", "Provider access, refresh, and ID tokens are discarded before account persistence. Sessions expire or can be revoked."],
   ["Workspace and board content", "Workspaces, projects, roles, board snapshots, comments, share-link metadata, checkpoints, and media metadata in Neon; private upload bytes in Cloudflare R2", "Effective board access is checked for every read and mutation. Boards can be archived, links revoked, and replaced or abandoned media is removed through durable cleanup."],
   ["Realtime recovery state", "Principal-, board-, and generation-scoped IndexedDB state plus durable server updates", "Device state remains in that browser. Signing out ends the session but does not guarantee deletion of browser recovery data."],
-  ["AI runs", "Instruction, selected semantic objects, hashes, events, proposal, usage, and status in Fabric storage", "Only an explicit AI run calls Google Gemini. The provider request sets interaction storage to false."],
+  ["AI runs", "Instruction, bounded conversation and selected-canvas context, hashes, events, proposal, usage, and status in Fabric storage", "Only an explicit AI run calls the configured OpenAI-compatible streaming endpoint."],
   ["Security and session events", "Session timestamps, user-agent family, IP hash, and account security events", "These records support session visibility and revocation; the application does not publish a retention duration for them."],
 ];
 
@@ -695,7 +695,7 @@ export function PrivacyPage() {
               <SparklesIcon className="size-10 shrink-0 stroke-sky-blue-accent" aria-hidden="true" />
               <h2 className="max-w-[35ch] text-balance text-3xl font-medium tracking-tight sm:text-4xl">An AI run crosses another boundary.</h2>
               <p className="max-w-[48ch] text-pretty text-lg text-muted-gray sm:text-base">
-                Fabric sends the instruction and selected semantic objects to the configured Google Gemini model only after an editor starts a run. Provider-side interaction storage is disabled in the request; provider processing remains subject to the configured account and provider terms.
+                Fabric sends the instruction, bounded conversation, and selected-canvas context to the configured OpenAI-compatible model only after an editor starts a run. Requests are streamed and provider processing remains subject to the configured account, endpoint, and provider terms.
               </p>
             </div>
           </div>
@@ -711,7 +711,7 @@ export function PrivacyPage() {
               </p>
             </div>
             <StatusNote>
-              Deployment operators must verify their own OAuth settings, database backups, logs, Gemini account terms, regional configuration, support process, and legal notices before relying on this overview.
+              Deployment operators must verify their own OAuth settings, database backups, logs, AI-provider account terms, regional configuration, support process, and legal notices before relying on this overview.
             </StatusNote>
           </div>
         </section>
@@ -1076,7 +1076,7 @@ export function AiOfflinePage() {
                   "Rewrite, resize, delete, or connect existing objects",
                   "Grant itself new tools, network access, or capabilities",
                   "Apply a proposal automatically or around authorization checks",
-                  "Run without the configured worker and Gemini provider connection",
+                  "Run without the configured worker and streaming model-provider connection",
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-3 text-lg text-muted-gray sm:text-base">
                     <NoSymbolIcon className="size-6 shrink-0 stroke-muted-gray" aria-hidden="true" />
@@ -1096,7 +1096,7 @@ export function AiOfflinePage() {
               description="Fabric connects authenticated editing, durable board storage, local recovery, comments, scoped sharing, realtime transport, and streamed AI proposals."
             />
             <StatusNote>
-              Realtime room ownership is process-local, so multi-instance fan-out and update compaction are outside the current runtime. AI availability depends on worker health, Gemini credentials, and provider quota.
+              Realtime room ownership is process-local, so multi-instance fan-out and update compaction are outside the current runtime. AI availability depends on worker health, OpenAI-compatible credentials, and provider quota.
             </StatusNote>
           </div>
         </section>

@@ -68,6 +68,76 @@ describe("CanvasPatch", () => {
     expect(CanvasPatchSchema.safeParse(unsafe).success).toBe(false);
   });
 
+  it("allows image sources but rejects every image creation operation", () => {
+    const imageCreation = {
+      ...patch,
+      operations: [
+        {
+          type: "createNode",
+          tempId: "tmp_image",
+          nodeType: "image",
+          position: { x: 40, y: 40 },
+          size: { width: 320, height: 180 },
+          content: { title: "Generated image" },
+        },
+      ],
+    };
+    expect(CanvasPatchSchema.safeParse(imageCreation).success).toBe(false);
+  });
+
+  it.each(["diamond", "triangle", "hexagon"] as const)(
+    "accepts an editable native %s diagram node",
+    (nodeType) => {
+      expect(
+        CanvasPatchSchema.safeParse({
+          ...patch,
+          operations: [
+            {
+              type: "createNode",
+              tempId: `tmp_${nodeType}`,
+              nodeType,
+              position: { x: 80, y: 80 },
+              size: { width: 180, height: 120 },
+              content: { title: nodeType },
+            },
+          ],
+        }).success,
+      ).toBe(true);
+    },
+  );
+
+  it("accepts bounded pen text and drawing operations", () => {
+    expect(
+      CanvasPatchSchema.safeParse({
+        ...patch,
+        operations: [
+          {
+            type: "writeText",
+            tempId: "tmp_answer",
+            position: { x: 100, y: 100 },
+            text: "x + 2 = 7\nx = 5",
+            fontSize: 28,
+            maxWidth: 480,
+          },
+          {
+            type: "createDrawing",
+            tempId: "tmp_mark",
+            position: { x: 100, y: 220 },
+            segments: [
+              {
+                type: "straight",
+                points: [
+                  { x: 0, y: 0 },
+                  { x: 100, y: 40 },
+                ],
+              },
+            ],
+          },
+        ],
+      }).success,
+    ).toBe(true);
+  });
+
   it("rejects stale bases and nodes outside the authorized snapshot", () => {
     const stale: CanvasPatch = {
       ...patch,

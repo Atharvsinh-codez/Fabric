@@ -12,7 +12,11 @@ const NODE_TYPES = new Set<CanvasNode["type"]>([
   "text",
   "rectangle",
   "ellipse",
+  "diamond",
+  "triangle",
+  "hexagon",
   "image",
+  "drawing",
   "summary",
 ]);
 

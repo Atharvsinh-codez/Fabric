@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { CanvasPatch } from "./canvas-patch";
+import { PEN_RENDERER_VERSION, renderPenText } from "./pen-renderer";
+import type { CanvasDocumentSnapshot } from "../boards/canvas-document";
 import {
   AiProposalApprovalRequestSchema,
   verifyApprovedPatchProjection,
@@ -121,6 +123,80 @@ describe("AI approval binding", () => {
     expect(verifyApprovedPatchProjection(patch, stale)).toEqual({
       ok: false,
       issueCodes: ["moved_node_mismatch"],
+    });
+  });
+
+  it("verifies the exact native draw record for deterministic pen writing", () => {
+    const drawing = renderPenText({ text: "7 + 3 = 10", fontSize: 28, maxWidth: 360 });
+    const penPatch: CanvasPatch = {
+      ...patch,
+      summary: "Write the answer with the pen.",
+      operations: [{
+        type: "writeText",
+        tempId: "tmp_answer",
+        position: { x: 120, y: 80 },
+        text: "7 + 3 = 10",
+        fontSize: 28,
+        maxWidth: 360,
+      }],
+    };
+    const penDocument = {
+      nodes: [{
+        id: "tmp_answer",
+        type: "drawing",
+        title: "7 + 3 = 10",
+        body: "7 + 3 = 10",
+        x: 120,
+        y: 80,
+        width: Math.max(8, drawing.width),
+        height: Math.max(8, drawing.height),
+        fill: "#111827",
+      }],
+      edges: [],
+      tldraw: {
+        version: 1,
+        snapshot: {
+          schema: {},
+          store: {
+            "shape:answer": {
+              id: "shape:answer",
+              typeName: "shape",
+              type: "draw",
+              props: {
+                color: "black",
+                fill: "none",
+                size: "m",
+                segments: drawing.segments,
+                isComplete: true,
+                isClosed: false,
+                isPen: true,
+              },
+              meta: {
+                fabric: {
+                  nodeId: "tmp_answer",
+                  penText: "7 + 3 = 10",
+                  penFontSize: 28,
+                  penMaxWidth: 360,
+                  penRenderer: PEN_RENDERER_VERSION,
+                  drawingFingerprint: drawing.fingerprint,
+                },
+              },
+            },
+          },
+        },
+      },
+    } as unknown as CanvasDocumentSnapshot;
+
+    expect(verifyApprovedPatchProjection(penPatch, penDocument)).toEqual({ ok: true });
+
+    const tampered = structuredClone(penDocument);
+    const record = tampered.tldraw!.snapshot.store["shape:answer"] as unknown as {
+      props: { segments: Array<{ points: Array<{ x: number }> }> };
+    };
+    record.props.segments[0]!.points[0]!.x += 1;
+    expect(verifyApprovedPatchProjection(penPatch, tampered)).toEqual({
+      ok: false,
+      issueCodes: ["native_drawing_mismatch"],
     });
   });
 });
