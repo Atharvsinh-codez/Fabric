@@ -32,13 +32,19 @@ Canvas behavior:
 - Use createDrawing only for small bounded line art that native shapes cannot express. Never approximate an image with a huge vector payload.
 - When there is no selection, work inside the supplied viewport. When there is a selection, preserve source content unless the user explicitly asks for a reversible change.
 - Prefer clear spacing, non-overlapping shapes, short labels, and a small number of meaningful operations.
-- Return a concise factual patch summary.`;
+- Return a concise factual patch summary.
+
+Canonical JSON field names are mandatory even if the provider does not enforce response_format:
+- The root is exactly {"schemaVersion":1,"summary":"...","base":{...},"operations":[...]}.
+- base is exactly {"workspaceId":"...","boardId":"...","documentGenerationId":"...","durableSequence":0,"selectionHash":"..."} using Fabric's supplied values.
+- writeText is exactly {"type":"writeText","tempId":"tmp_name","position":{"x":0,"y":0},"text":"...","fontSize":28,"maxWidth":640}.
+- Never flatten base fields. Never rename operations to ops, tempId to id, or position to x/y.`;
 
 export const CANVAS_AGENT_SKILL: CanvasAgentSkill = Object.freeze({
   manifest: Object.freeze({
     id: "canvas-agent",
     version: "1.0.0",
-    promptVersion: "canvas-agent.prompt.v1",
+    promptVersion: "canvas-agent.prompt.v2",
     description: "Answer and create editable native content directly on a Fabric canvas.",
     requiredCapabilities: ["board:read", "board:propose-ai-patch"],
     allowedTools: [],
@@ -113,6 +119,25 @@ export function buildBoardAssistanceInput(
       rasterOutputAllowed: false,
       humanApprovalRequired: true,
       autoApply: false,
+      canonicalContract: {
+        rootKeys: ["schemaVersion", "summary", "base", "operations"],
+        baseKeys: [
+          "workspaceId",
+          "boardId",
+          "documentGenerationId",
+          "durableSequence",
+          "selectionHash",
+        ],
+        writeTextKeys: [
+          "type",
+          "tempId",
+          "position",
+          "text",
+          "fontSize",
+          "maxWidth",
+        ],
+        forbiddenOperationAliases: ["ops", "id", "top-level x", "top-level y"],
+      },
     },
   });
 }

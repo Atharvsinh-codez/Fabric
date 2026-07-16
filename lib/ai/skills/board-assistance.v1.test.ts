@@ -31,6 +31,7 @@ describe("canvas-agent skill", () => {
   it("uses one skill with native diagram and deterministic pen operations", () => {
     expect(getBoardAssistanceSkill()).toBe(CANVAS_AGENT_SKILL);
     expect(CANVAS_AGENT_SKILL.manifest.id).toBe("canvas-agent");
+    expect(CANVAS_AGENT_SKILL.manifest.promptVersion).toBe("canvas-agent.prompt.v2");
     expect(CANVAS_AGENT_SKILL.manifest.allowedOperations).toEqual(
       expect.arrayContaining(["createNode", "createConnector", "writeText"]),
     );
@@ -60,6 +61,10 @@ describe("canvas-agent skill", () => {
         autoApply: boolean;
         imageCreationAllowed: boolean;
         rasterOutputAllowed: boolean;
+        canonicalContract: {
+          rootKeys: string[];
+          forbiddenOperationAliases: string[];
+        };
       };
     };
     expect(input.viewport).toEqual(request.viewport);
@@ -69,6 +74,10 @@ describe("canvas-agent skill", () => {
       autoApply: false,
       imageCreationAllowed: false,
       rasterOutputAllowed: false,
+      canonicalContract: {
+        rootKeys: ["schemaVersion", "summary", "base", "operations"],
+        forbiddenOperationAliases: ["ops", "id", "top-level x", "top-level y"],
+      },
     });
   });
 });

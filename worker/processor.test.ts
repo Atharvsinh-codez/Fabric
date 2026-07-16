@@ -165,6 +165,75 @@ describe("durable AI processor", () => {
     ).toBe(JSON.stringify(patch));
   });
 
+  it("normalizes the exact compact writeText gateway shape before strict validation", async () => {
+    const compactPatch = {
+      schemaVersion: 1,
+      summary: "Write the solution steps.",
+      workspaceId: job.workspaceId,
+      boardId: job.boardId,
+      documentGenerationId: job.documentGenerationId,
+      durableSequence: job.baseDurableSequence,
+      selectionHash,
+      ops: [
+        { type: "writeText", id: "tmp_step", x: 100, y: 200, text: "Step one" },
+        { type: "writeText", id: "tmp_answer", x: 100, y: 280, text: "Answer" },
+      ],
+    };
+    const provider: FabricModelProvider = {
+      provider: "openai-compatible",
+      model: "gcli/grok-4.5-medium",
+      async createTurn() {
+        return {
+          events: (async function* () {
+            yield { type: "interaction_started" as const, interactionId: "interaction-compact" };
+            yield { type: "text_delta" as const, text: JSON.stringify(compactPatch) };
+            yield { type: "interaction_completed" as const, usage: { totalTokens: 12 } };
+          })(),
+        };
+      },
+    };
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    try {
+      await processClaimedAiJob({
+        sql: {} as never,
+        job,
+        provider,
+        leaseMs: 60_000,
+      });
+    } finally {
+      warning.mockRestore();
+    }
+
+    expect(repository.recordProposalReady).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        proposal: expect.objectContaining({
+          patch: expect.objectContaining({
+            base: expect.objectContaining({ selectionHash }),
+            operations: [
+              expect.objectContaining({
+                type: "writeText",
+                tempId: "tmp_step",
+                position: { x: 100, y: 200 },
+                fontSize: 28,
+                maxWidth: 640,
+              }),
+              expect.objectContaining({
+                type: "writeText",
+                tempId: "tmp_answer",
+                position: { x: 100, y: 280 },
+                fontSize: 28,
+                maxWidth: 640,
+              }),
+            ],
+          }),
+        }),
+      }),
+    );
+    expect(repository.recordRunFailure).not.toHaveBeenCalled();
+  });
+
   it("uses the canvas agent contract and rejects image creation", async () => {
     const canvasJob = {
       ...job,

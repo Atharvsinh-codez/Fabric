@@ -197,3 +197,31 @@ Rules:
   - Visual inputs remain untrusted board evidence and cannot expand permissions or bypass human proposal approval.
 - Next Steps:
   - Commit and push the verified AI fix, deploy the exact revision to `fabric-s9rn`, and validate the production readiness and agent stream.
+
+### [2026-07-16 17:50 IST] - Accept the provider's safe canvas proposal shape
+- Request: Fix the production Fabric agent error `AI returned a proposal that did not match the canvas contract` after the timeout and multimodal deployment.
+- Plan: Inspect the latest production run without exposing board/model content, identify the exact structural rejection, add the narrowest safe provider compatibility path, and retain every canonical schema, semantic authorization, and human approval gate.
+- Actions:
+  - Confirmed the production model completed successfully in 161.609 seconds and streamed 830 bytes of valid JSON; this was not a timeout, media, HTTP, parsing, or semantic failure.
+  - Identified that the custom OpenAI-compatible gateway did not enforce `response_format.json_schema`: it flattened the five `base` fields onto the root, emitted `ops`, and represented four `writeText` records with `id`, top-level `x`/`y`, and no pen layout defaults.
+  - Added an explicit canonical root/base/writeText contract to the trusted system and user context, bumped the prompt provenance to `canvas-agent.prompt.v2`, and explicitly prohibited the observed aliases.
+  - Added a strict compatibility normalizer for only the exact observed compact writeText shape. It preserves all identifiers, text, coordinates, and base values; supplies only fixed pen presentation defaults; rejects mixed, unknown, extra, destructive, or unsupported operation shapes; and records sanitized compatibility telemetry.
+  - Kept the canonical CanvasPatch Zod parse, base snapshot comparison, semantic node/permission/bounds validation, proposal preview, and human approval checks unchanged after normalization.
+- Files Changed:
+  - `lib/ai/canvas-patch-normalizer.ts` and test - Exact compact-writeText translation with fail-closed handling.
+  - `lib/ai/skills/board-assistance.v1.ts` and test - Canonical field contract and v2 prompt provenance.
+  - `worker/processor.ts` and test - Apply the bounded translation before unchanged strict and semantic validation.
+  - `Context.md` - Record production evidence, correction, and release gates.
+- Diff Summary:
+  - Provider-invented compact aliases rejected after a successful 161-second generation -> canonical prompt output plus a narrow, observable compatibility translation.
+  - Generic structural mismatch with no recovery -> exact previous production response now passes strict schema and semantic authorization without a second model call.
+- Validation:
+  - The exact rejected production response was reconstructed in memory without logging content; compatibility mode was detected and both canonical schema and semantic validation passed with zero issue codes.
+  - A real request to the configured production provider returned canonical JSON directly in 7.337 seconds; JSON parse and CanvasPatch validation passed without compatibility mode.
+  - Focused tests passed: 3 files / 10 tests; TypeScript and scoped ESLint passed.
+  - `npm run verify` passed: tldraw `4.2.0` and reviewed patch verified; 115 application test files / 473 tests passed; all application, realtime, Cloudflare runtime, and AI Worker TypeScript checks passed; 15 Cloudflare Worker tests passed; ESLint and the production Next.js/server build passed.
+- Risks/Notes:
+  - The compatibility path does not search prose, strip unknown fields, invent identifiers, alter base scope, clamp values, or bypass semantic/human review.
+  - The repository has no pre-commit configuration; the complete npm verification and GitHub Actions workflow remain the enforced gates.
+- Next Steps:
+  - Commit and push the verified correction, redeploy `fabric-s9rn`, and ask the signed-in user to retry the same selected drawing request.

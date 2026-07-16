@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { CanvasPatchSchema, CANVAS_PATCH_JSON_SCHEMA } from "../lib/ai/canvas-patch";
+import { normalizeCanvasPatchCandidate } from "../lib/ai/canvas-patch-normalizer";
 import {
   FabricModelError,
   type FabricModelProvider,
@@ -320,7 +321,13 @@ export async function processClaimedAiJob(input: {
       });
       return;
     }
-    const patchResult = CanvasPatchSchema.safeParse(parsedOutput);
+    const normalizedOutput = normalizeCanvasPatchCandidate(parsedOutput);
+    if (normalizedOutput.compatibilityMode !== "none") {
+      console.warn("[fabric-ai-worker] normalized provider canvas patch", {
+        compatibilityMode: normalizedOutput.compatibilityMode,
+      });
+    }
+    const patchResult = CanvasPatchSchema.safeParse(normalizedOutput.value);
     if (!patchResult.success) {
       await recordRunFailure(sql, {
         job,
