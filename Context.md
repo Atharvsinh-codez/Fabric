@@ -135,3 +135,33 @@ Rules:
   - This deliberately normalizes line endings only; every other patch byte remains integrity-protected.
 - Next Steps:
   - Push the verifier correction, confirm the new CI run passes the tldraw gate, then continue the Fabric agent sidebar/loading milestone.
+
+### [2026-07-16 14:22 IST] - Polish the floating Fabric agent sidebar
+- Request: Keep the whiteboard AI sidebar on the left, make it minimal, smoothly animated, rounded and visually separated from the canvas, expose the model name exactly as `Fabric agent`, and use the GAIA Wave Spinner only as a small Ripple loading indicator.
+- Plan: Preserve the existing approved AI workflow and tldraw canvas, vendor the requested spinner, constrain it to non-blocking busy affordances, lock the responsive geometry and identity with focused tests, then run every release gate before publishing the milestone.
+- Actions:
+  - Converted the edge-to-edge desktop drawer into a floating left panel with mirrored canvas insets, a 20px radius, the existing subtle ring/shadow, and the project-standard 240ms quart easing.
+  - Renamed the visible header, composer model label, prompt copy, recovery copy, and accessible open/close labels to the exact `Fabric agent` identity.
+  - Added the MIT-licensed GAIA Wave Spinner and used only its `ripple` animation in the small streamed-progress and busy-trigger positions; idle, preview, applied, canceled, and error states remain free of loading overlays.
+  - Scoped the spinner's reduced-motion rule to its own dots, added stable diagnostic attributes, and kept the spinner decorative inside the existing live regions to avoid duplicate announcements.
+  - Added focused coverage for the floating left/rounded layout, exact identity, responsive classes, idle/preview/canceled absence, busy `aria-busy`, and Ripple-only loading behavior.
+- Files Changed:
+  - `components/fabric-whiteboard/ai-panel.tsx` and `components/fabric-whiteboard/status-controls.tsx` - Floating panel geometry, exact model identity, and small busy indicators.
+  - `components/fabric-whiteboard/ai-panel.test.tsx` and `components/fabric-whiteboard/status-controls.test.tsx` - Identity, geometry, accessibility, and loading-state regression coverage.
+  - `components/ui/wave-spinner.tsx` and `components/ui/wave-spinner.css` - Vendored, attributed, reduced-motion-safe loading component.
+  - `package.json` and `package-lock.json` - Added `class-variance-authority` and retained the npm 10-compatible cross-platform lock records.
+  - `Context.md` - Recorded the completed UI milestone and release evidence.
+- Diff Summary:
+  - Flush square desktop drawer and pulsing bolt/sparkles -> rounded floating left sidebar with smooth project-native motion and tiny Ripple activity cues.
+  - Mixed `Fabric AI` / `Canvas Agent` labels -> one exact user-facing model identity: `Fabric agent`.
+- Validation:
+  - Focused AI panel/status-control tests passed: 2 files / 10 tests.
+  - `npm run verify` passed: tldraw `4.2.0` and its reviewed patch verified; 109 application test files / 447 tests passed; all application, realtime, Cloudflare runtime, and AI Worker TypeScript checks passed; 15 Cloudflare Worker tests passed; ESLint and the production Next.js/server build passed.
+  - `npx npm@10.9.8 ci --dry-run --ignore-scripts`, `npm run db:check`, and `npm audit --omit=dev --audit-level=high` passed with 0 production vulnerabilities.
+  - Wrangler `4.111.0` production and development deployment dry-runs passed without deploying.
+  - GitHub Actions run `29484216168` passed every gate for the preceding cross-platform CI fixes; the tldraw patch remains unchanged.
+- Risks/Notes:
+  - The local browser reached Fabric successfully, but the authenticated board route correctly redirected to sign-in. No authentication bypass or disposable preview route was added; responsive layout behavior is protected by DOM invariants and the production build.
+  - The spinner is intentionally limited to compact AI activity feedback and never blocks editing or changes realtime behavior.
+- Next Steps:
+  - Commit and push this isolated sidebar/loading milestone, then confirm its GitHub Actions run remains green.

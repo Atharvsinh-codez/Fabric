@@ -30,6 +30,7 @@
     "@fontsource-variable/host-grotesk": "^5.2.8",
     "@fontsource-variable/instrument-sans": "^5.2.8",
     "@heroicons/react": "^2.2.0",
+    "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "drizzle-orm": "0.45.2",
     "framer-motion": "^12.42.2",

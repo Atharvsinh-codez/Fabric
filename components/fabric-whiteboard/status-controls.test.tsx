@@ -31,7 +31,7 @@ describe("whiteboard status controls", () => {
     act(() => root.render(node));
   }
 
-  it("opens and closes the single Fabric AI sidebar from an accessible trigger", () => {
+  it("opens and closes the single Fabric agent sidebar from an accessible trigger", () => {
     const onClick = vi.fn();
     render(
       <FabricAiTrigger
@@ -42,19 +42,21 @@ describe("whiteboard status controls", () => {
     );
 
     const trigger = container.querySelector<HTMLButtonElement>(
-      '[aria-label="Open Fabric AI"]',
+      '[aria-label="Open Fabric agent"]',
     );
     expect(trigger?.getAttribute("aria-controls")).toBe(
       "fabric-ai-assistance-panel",
     );
     expect(trigger?.getAttribute("aria-pressed")).toBe("false");
     expect(trigger?.getAttribute("aria-expanded")).toBe("false");
+    expect(trigger?.getAttribute("aria-busy")).toBe("false");
+    expect(trigger?.querySelector("[data-wave-spinner]")).toBeNull();
 
     act(() => trigger?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(onClick).toHaveBeenCalledOnce();
   });
 
-  it("keeps Fabric AI unavailable when editing is not authorized", () => {
+  it("keeps Fabric agent unavailable when editing is not authorized", () => {
     render(
       <FabricAiTrigger
         panelOpen={false}
@@ -66,9 +68,30 @@ describe("whiteboard status controls", () => {
 
     expect(
       container.querySelector<HTMLButtonElement>(
-        '[aria-label="Open Fabric AI"]',
+        '[aria-label="Open Fabric agent"]',
       )?.disabled,
     ).toBe(true);
+  });
+
+  it("uses only the Ripple micro-loader while Fabric agent is busy", () => {
+    render(
+      <FabricAiTrigger
+        panelOpen
+        busy
+        onClick={() => undefined}
+      />,
+    );
+
+    const trigger = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Close Fabric agent"]',
+    );
+    const spinner = container.querySelector<HTMLElement>("[data-wave-spinner]");
+    expect(trigger?.getAttribute("aria-busy")).toBe("true");
+    expect(spinner?.dataset.animation).toBe("ripple");
+    expect(spinner?.dataset.pattern).toBe("square3x3");
+    expect(
+      trigger?.querySelector('[data-wave-spinner]:not([data-animation="ripple"])'),
+    ).toBeNull();
   });
 
   it("keeps normal saved and syncing states out of the toolbar", () => {

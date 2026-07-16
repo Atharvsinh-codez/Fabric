@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  BoltIcon,
   CheckIcon,
   CursorArrowRaysIcon,
   ExclamationTriangleIcon,
@@ -21,6 +20,7 @@ import {
 import type { Editor, TLShape } from "tldraw";
 
 import { Button, IconButton, cx } from "@/components/ui";
+import { WaveSpinner } from "@/components/ui/wave-spinner";
 import {
   AiProposalClientError,
   cancelAiProposal,
@@ -199,7 +199,7 @@ function selectionContextLabel(
   if (selection.length === 0) {
     return {
       title: "No Selection",
-      detail: "Fabric AI will use the visible canvas.",
+      detail: "Fabric agent will use the visible canvas.",
     };
   }
 
@@ -466,7 +466,7 @@ export function FabricAiPanel({
       if (readChangeVersion() !== startChangeVersion) {
         setStage("error");
         setError(
-          "The board changed while Fabric AI was working. Review the board and send your request again.",
+          "The board changed while Fabric agent was working. Review the board and send your request again.",
         );
         return;
       }
@@ -486,7 +486,7 @@ export function FabricAiPanel({
       } else {
         const message = caught instanceof AiProposalClientError
           ? caught.message
-          : "Fabric AI could not prepare a preview. Check your connection and send the request again.";
+          : "Fabric agent could not prepare a preview. Check your connection and send the request again.";
         setStage("error");
         setError(message);
       }
@@ -583,7 +583,7 @@ export function FabricAiPanel({
   return (
     <aside
       id="fabric-ai-assistance-panel"
-      aria-label="Fabric AI"
+      aria-label="Fabric agent"
       aria-hidden={!open}
       inert={!open}
       onKeyDown={(event) => {
@@ -592,10 +592,10 @@ export function FabricAiPanel({
         onClose();
       }}
       className={cx(
-        "absolute inset-x-0 bottom-0 z-1100 flex max-h-[88dvh] flex-col overflow-hidden rounded-t-radius-xl bg-surface-white opacity-100 floating-shadow ring-1 ring-near-black-primary-text/8 transition-[transform,opacity] duration-200 ease-out motion-reduce:transition-none sm:inset-y-0 sm:right-auto sm:left-0 sm:max-h-none sm:w-[25rem] sm:rounded-none",
+        "absolute inset-x-2 bottom-2 z-1100 flex max-h-[calc(88dvh-1rem)] flex-col overflow-hidden rounded-radius-2xl bg-surface-white opacity-100 floating-shadow ring-1 ring-near-black-primary-text/8 transition-[transform,opacity] duration-(--motion-panel) ease-(--ease-out-quart) motion-reduce:transition-none sm:inset-x-auto sm:top-16 sm:right-auto sm:bottom-3 sm:left-3 sm:max-h-none sm:w-[25rem] sm:rounded-radius-2xl",
         open
           ? "translate-y-0 sm:translate-x-0"
-          : "pointer-events-none translate-y-full opacity-0 sm:translate-y-0 sm:-translate-x-full",
+          : "pointer-events-none translate-y-[calc(100%+0.5rem)] opacity-0 sm:translate-y-0 sm:-translate-x-[calc(100%+0.75rem)]",
       )}
     >
       <header className="flex shrink-0 items-start justify-between gap-3 border-b border-near-black-primary-text/8 px-4 py-3">
@@ -605,13 +605,13 @@ export function FabricAiPanel({
             aria-hidden="true"
           />
           <div className="min-w-0">
-            <h2 className="font-medium">Fabric AI</h2>
+            <h2 className="font-medium">Fabric agent</h2>
             <p className="text-pretty text-base text-muted-gray sm:text-sm">
               Writes and organizes directly on your board.
             </p>
           </div>
         </div>
-        <IconButton label="Close Fabric AI" tooltipSide="right" onClick={onClose}>
+        <IconButton label="Close Fabric agent" tooltipSide="right" onClick={onClose}>
           <XMarkIcon className="size-4 shrink-0 fill-current" aria-hidden="true" />
         </IconButton>
       </header>
@@ -675,10 +675,15 @@ export function FabricAiPanel({
               role="status"
               aria-live="polite"
             >
-              <BoltIcon
-                className="size-4 h-lh shrink-0 animate-pulse fill-current motion-reduce:animate-none"
-                aria-hidden="true"
-              />
+              <span className="grid size-4 h-lh shrink-0 place-items-center" aria-hidden="true">
+                <WaveSpinner
+                  animation="ripple"
+                  pattern="square3x3"
+                  dotShape="rounded"
+                  size="xs"
+                  color="var(--accent)"
+                />
+              </span>
               <p className="min-w-0 text-pretty text-base sm:text-sm">{progress}</p>
             </li>
           ) : null}
@@ -789,7 +794,7 @@ export function FabricAiPanel({
             className="pb-2 text-pretty text-base text-(--warning) sm:text-sm"
             role="status"
           >
-            Fabric AI will unlock when the board and live collaboration finish syncing.
+            Fabric agent will unlock when the board and live collaboration finish syncing.
           </p>
         ) : null}
 
@@ -798,7 +803,7 @@ export function FabricAiPanel({
           onSubmit={generateProposal}
         >
           <label htmlFor="fabric-ai-instruction" className="sr-only">
-            Ask Fabric AI
+            Ask Fabric agent
           </label>
           <textarea
             ref={composerRef}
@@ -809,7 +814,7 @@ export function FabricAiPanel({
             onKeyDown={handleComposerKeyDown}
             rows={3}
             maxLength={2_000}
-            placeholder="Ask Fabric AI to write on the board…"
+            placeholder="Ask Fabric agent to write on the board…"
             disabled={composerDisabled}
             className="max-h-40 min-h-20 w-full resize-none bg-transparent p-2 text-base text-near-black-primary-text outline-none placeholder:text-muted-gray disabled:cursor-not-allowed disabled:opacity-55"
           />
@@ -819,7 +824,12 @@ export function FabricAiPanel({
                 className="size-4 h-lh shrink-0 fill-current"
                 aria-hidden="true"
               />
-              <p className="truncate text-base sm:text-sm">Canvas Agent</p>
+              <p
+                className="truncate text-base sm:text-sm"
+                data-ai-model-name
+              >
+                Fabric agent
+              </p>
             </div>
             <div className="flex shrink-0 items-center gap-1">
               {stage === "running" ? (

@@ -94,7 +94,7 @@ function createEditorHarness() {
   };
 }
 
-describe("Fabric AI canvas sidebar", () => {
+describe("Fabric agent canvas sidebar", () => {
   let container: HTMLDivElement;
   let root: Root;
 
@@ -184,7 +184,25 @@ describe("Fabric AI canvas sidebar", () => {
     });
 
     expect(container.textContent).toContain("No Selection");
-    expect(container.textContent).toContain("Fabric AI will use the visible canvas.");
+    expect(container.textContent).toContain("Fabric agent will use the visible canvas.");
+    const panel = container.querySelector<HTMLElement>(
+      '[aria-label="Fabric agent"]',
+    );
+    expect(panel?.querySelector("h2")?.textContent).toBe("Fabric agent");
+    expect(
+      panel?.querySelector<HTMLElement>("[data-ai-model-name]")?.textContent?.trim(),
+    ).toBe("Fabric agent");
+    expect(
+      panel?.querySelector<HTMLTextAreaElement>("#fabric-ai-instruction")?.placeholder,
+    ).toBe("Ask Fabric agent to write on the board…");
+    expect(panel?.className).toContain("inset-x-2");
+    expect(panel?.className).toContain("bottom-2");
+    expect(panel?.className).toContain("rounded-radius-2xl");
+    expect(panel?.className).toContain("sm:left-3");
+    expect(panel?.className).toContain("sm:right-auto");
+    expect(panel?.className).toContain("sm:rounded-radius-2xl");
+    expect(panel?.className).not.toContain("sm:rounded-none");
+    expect(container.querySelector("[data-wave-spinner]")).toBeNull();
 
     writePrompt("Write a clear three-step launch plan.");
     await sendPrompt();
@@ -205,6 +223,7 @@ describe("Fabric AI canvas sidebar", () => {
     expect(container.textContent).toContain("Change Preview");
     expect(container.textContent).toContain("Apply Changes");
     expect(container.textContent).toContain("Discard");
+    expect(container.querySelector("[data-wave-spinner]")).toBeNull();
 
     act(() => root.render(null));
     expect(aiClient.cancelAiProposal).toHaveBeenCalledWith("run:canvas");
@@ -274,9 +293,15 @@ describe("Fabric AI canvas sidebar", () => {
     expect(container.textContent).toContain("Writing a structured answer…");
 
     const close = container.querySelector<HTMLButtonElement>(
-      '[aria-label="Close Fabric AI"]',
+      '[aria-label="Close Fabric agent"]',
     );
     expect(close?.disabled).toBe(false);
+    const spinner = container.querySelector<HTMLElement>("[data-wave-spinner]");
+    expect(spinner?.dataset.animation).toBe("ripple");
+    expect(spinner?.dataset.pattern).toBe("square3x3");
+    expect(
+      container.querySelector('[data-wave-spinner]:not([data-animation="ripple"])'),
+    ).toBeNull();
     act(() => close?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(onClose).toHaveBeenCalledOnce();
 
@@ -289,5 +314,6 @@ describe("Fabric AI canvas sidebar", () => {
     });
     expect(aiClient.cancelAiProposal).toHaveBeenCalledWith("run:streaming");
     expect(container.textContent).toContain("Request canceled.");
+    expect(container.querySelector("[data-wave-spinner]")).toBeNull();
   });
 });

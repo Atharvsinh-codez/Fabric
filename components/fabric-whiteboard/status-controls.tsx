@@ -9,6 +9,7 @@ import {
 import { useEffect, useState } from "react";
 
 import { IconButton, cx } from "@/components/ui";
+import { WaveSpinner } from "@/components/ui/wave-spinner";
 import type { BoardSyncState } from "@/lib/boards/use-board-document";
 
 const SYNC_NOTICE_DURATION_MS = 6_000;
@@ -39,10 +40,11 @@ export function FabricAiTrigger({
   return (
     <button
       type="button"
-      aria-label={panelOpen ? "Close Fabric AI" : "Open Fabric AI"}
+      aria-label={panelOpen ? "Close Fabric agent" : "Open Fabric agent"}
       aria-controls="fabric-ai-assistance-panel"
       aria-expanded={panelOpen}
       aria-pressed={panelOpen}
+      aria-busy={busy}
       disabled={disabled}
       onClick={onClick}
       className={cx(
@@ -52,13 +54,22 @@ export function FabricAiTrigger({
           : "text-muted-gray hover:bg-light-surface-tint hover:text-near-black-primary-text active:bg-light-surface-tint",
       )}
     >
-      <SparklesIcon
-        className={cx(
-          "size-4 h-lh shrink-0 fill-current",
-          busy && "animate-pulse motion-reduce:animate-none",
-        )}
-        aria-hidden="true"
-      />
+      {busy ? (
+        <span className="grid size-4 h-lh shrink-0 place-items-center" aria-hidden="true">
+          <WaveSpinner
+            animation="ripple"
+            pattern="square3x3"
+            dotShape="rounded"
+            size="xs"
+            color="currentColor"
+          />
+        </span>
+      ) : (
+        <SparklesIcon
+          className="size-4 h-lh shrink-0 fill-current"
+          aria-hidden="true"
+        />
+      )}
       <span>AI</span>
       <span
         className="pointer-events-none absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
