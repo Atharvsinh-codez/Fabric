@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const insertionMocks = vi.hoisted(() => ({
   insertCalculationCard: vi.fn(),
+  insertEducationTemplate: vi.fn(),
   insertFabricTemplate: vi.fn(),
   insertStudyKit: vi.fn(),
 }));
@@ -36,6 +37,19 @@ vi.mock("@/lib/boards/tldraw-templates", () => ({
     },
   ],
   insertFabricTemplate: insertionMocks.insertFabricTemplate,
+}));
+
+vi.mock("@/lib/boards/tldraw-education-templates", () => ({
+  EDUCATION_TEMPLATES: [
+    {
+      id: "lesson-plan",
+      name: "Lesson Plan",
+      description: "Plan an objective, learning sequence, assessment, and next steps.",
+      width: 1_240,
+      height: 820,
+    },
+  ],
+  insertEducationTemplate: insertionMocks.insertEducationTemplate,
 }));
 
 import { FabricBoardToolsPanel } from "./board-tools-panel";
@@ -68,6 +82,17 @@ describe("Fabric board tools panel", () => {
       },
       shapeIds: ["shape:brainstorm"],
     });
+    insertionMocks.insertEducationTemplate.mockReset().mockReturnValue({
+      ok: true,
+      template: {
+        id: "lesson-plan",
+        name: "Lesson Plan",
+        description: "Plan an objective, learning sequence, assessment, and next steps.",
+        width: 1_240,
+        height: 820,
+      },
+      shapeIds: ["shape:lesson-plan"],
+    });
     insertionMocks.insertCalculationCard.mockReset().mockReturnValue({
       ok: true,
       name: "Calculation",
@@ -98,6 +123,7 @@ describe("Fabric board tools panel", () => {
       root.render(
         <FabricBoardToolsPanel
           editor={panelEditor}
+          boardId="board:test"
           open={open}
           canEdit={canEdit}
           onOpen={onOpen}
@@ -130,7 +156,7 @@ describe("Fabric board tools panel", () => {
 
   function writeExpression(value: string) {
     const input = container.querySelector<HTMLInputElement>(
-      "#fabric-study-expression",
+      "#fabric-stem-calculation",
     );
     const valueSetter = Object.getOwnPropertyDescriptor(
       HTMLInputElement.prototype,
@@ -161,7 +187,8 @@ describe("Fabric board tools panel", () => {
     expect(tablist).toBeTruthy();
     expect(tabs.map((tab) => tab.textContent?.trim())).toEqual([
       "Study",
-      "Calculator",
+      "STEM",
+      "Navigate",
       "Focus",
       "Templates",
     ]);
@@ -170,22 +197,22 @@ describe("Fabric board tools panel", () => {
     expect(studyPanel?.getAttribute("role")).toBe("tabpanel");
     expect(studyPanel?.getAttribute("aria-labelledby")).toBe(studyTab.id);
 
-    const calculatorTab = tabWithText("Calculator");
-    click(calculatorTab);
-    const calculatorPanel = container.querySelector<HTMLElement>(
-      "#fabric-board-tools-calculator-panel",
+    const stemTab = tabWithText("STEM");
+    click(stemTab);
+    const stemPanel = container.querySelector<HTMLElement>(
+      "#fabric-board-tools-stem-panel",
     );
-    expect(calculatorTab.getAttribute("aria-selected")).toBe("true");
-    expect(calculatorTab.getAttribute("aria-controls")).toBe(
-      calculatorPanel?.id,
+    expect(stemTab.getAttribute("aria-selected")).toBe("true");
+    expect(stemTab.getAttribute("aria-controls")).toBe(
+      stemPanel?.id,
     );
-    expect(calculatorPanel?.getAttribute("aria-labelledby")).toBe(
-      calculatorTab.id,
+    expect(stemPanel?.getAttribute("aria-labelledby")).toBe(
+      stemTab.id,
     );
     expect(container.querySelector("#fabric-board-tools-study-panel")).toBeNull();
   });
 
-  it("adds a study kit and a workshop template through their native insertion adapters", () => {
+  it("adds a study kit plus education and planning templates through native insertion adapters", () => {
     renderPanel();
 
     click(buttonWithText("Add Layout"));
@@ -197,6 +224,14 @@ describe("Fabric board tools panel", () => {
 
     click(tabWithText("Templates"));
     click(buttonWithText("Add Template"));
+    expect(insertionMocks.insertEducationTemplate).toHaveBeenCalledWith(
+      editor,
+      "lesson-plan",
+    );
+    expect(container.textContent).toContain("Lesson Plan added to the board.");
+
+    click(buttonWithText("Planning"));
+    click(buttonWithText("Add Template"));
     expect(insertionMocks.insertFabricTemplate).toHaveBeenCalledWith(
       editor,
       "brainstorm",
@@ -206,17 +241,17 @@ describe("Fabric board tools panel", () => {
 
   it("handles typed and keypad calculations, errors, Enter, and Add to Board", () => {
     renderPanel();
-    click(tabWithText("Calculator"));
+    click(tabWithText("STEM"));
 
     const input = container.querySelector<HTMLInputElement>(
-      "#fabric-study-expression",
+      "#fabric-stem-calculation",
     );
     const label = container.querySelector<HTMLLabelElement>(
-      'label[for="fabric-study-expression"]',
+      'label[for="fabric-stem-calculation"]',
     );
-    const addToBoard = buttonWithText("Add to Board");
+    const addToBoard = buttonWithText("Add Result");
     expect(label?.textContent).toBe("Expression");
-    expect(input?.getAttribute("name")).toBe("study-expression");
+    expect(input?.getAttribute("name")).toBe("stem-calculation");
 
     writeExpression("1/0");
     expect(container.textContent).toContain("Cannot divide by zero.");

@@ -4,23 +4,25 @@ import {
   AcademicCapIcon,
   ArrowPathIcon,
   ArrowsRightLeftIcon,
-  BackspaceIcon,
+  BeakerIcon,
   BookOpenIcon,
-  CalculatorIcon,
+  CalendarDaysIcon,
   ClockIcon,
+  LanguageIcon,
   LightBulbIcon,
   PauseIcon,
   PlayIcon,
   QueueListIcon,
   RectangleStackIcon,
+  ScaleIcon,
   Squares2X2Icon,
+  TableCellsIcon,
   ViewColumnsIcon,
   XMarkIcon,
 } from "@heroicons/react/16/solid";
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -29,11 +31,16 @@ import {
 } from "react";
 import type { Editor } from "tldraw";
 
+import { FabricBoardNavigationPanel } from "@/components/fabric-whiteboard/board-navigation-panel";
+import { FabricStemToolkitPanel } from "@/components/fabric-whiteboard/stem-toolkit-panel";
 import { Button, IconButton, cx } from "@/components/ui";
-import { calculateStudyExpression } from "@/lib/boards/study-calculator";
+import {
+  EDUCATION_TEMPLATES,
+  insertEducationTemplate,
+  type EducationTemplateId,
+} from "@/lib/boards/tldraw-education-templates";
 import {
   STUDY_KITS,
-  insertCalculationCard,
   insertStudyKit,
   type StudyKitId,
 } from "@/lib/boards/tldraw-study-tools";
@@ -43,12 +50,14 @@ import {
   type FabricTemplateId,
 } from "@/lib/boards/tldraw-templates";
 
-type BoardToolsTab = "study" | "calculator" | "focus" | "templates";
+type BoardToolsTab = "study" | "stem" | "navigate" | "focus" | "templates";
+type TemplateGroup = "education" | "planning";
 type ToolIcon = ComponentType<SVGProps<SVGSVGElement>>;
 
 const tabs: readonly Readonly<{ id: BoardToolsTab; label: string }>[] = [
   { id: "study", label: "Study" },
-  { id: "calculator", label: "Calculator" },
+  { id: "stem", label: "STEM" },
+  { id: "navigate", label: "Navigate" },
   { id: "focus", label: "Focus" },
   { id: "templates", label: "Templates" },
 ];
@@ -67,28 +76,14 @@ const templateIcons: Record<FabricTemplateId, ToolIcon> = {
   swot: Squares2X2Icon,
 };
 
-const calculatorKeys = [
-  { label: "7", value: "7", name: "Seven" },
-  { label: "8", value: "8", name: "Eight" },
-  { label: "9", value: "9", name: "Nine" },
-  { label: "÷", value: "÷", name: "Divide" },
-  { label: "√", value: "sqrt(", name: "Square Root" },
-  { label: "4", value: "4", name: "Four" },
-  { label: "5", value: "5", name: "Five" },
-  { label: "6", value: "6", name: "Six" },
-  { label: "×", value: "×", name: "Multiply" },
-  { label: "^", value: "^", name: "Power" },
-  { label: "1", value: "1", name: "One" },
-  { label: "2", value: "2", name: "Two" },
-  { label: "3", value: "3", name: "Three" },
-  { label: "−", value: "−", name: "Subtract" },
-  { label: "(", value: "(", name: "Open Parenthesis" },
-  { label: "0", value: "0", name: "Zero" },
-  { label: ".", value: ".", name: "Decimal Point" },
-  { label: "π", value: "π", name: "Pi" },
-  { label: "+", value: "+", name: "Add" },
-  { label: ")", value: ")", name: "Close Parenthesis" },
-] as const;
+const educationTemplateIcons: Record<EducationTemplateId, ToolIcon> = {
+  "lesson-plan": AcademicCapIcon,
+  "kwl-chart": TableCellsIcon,
+  "vocabulary-map": LanguageIcon,
+  "lab-report": BeakerIcon,
+  "revision-timetable": CalendarDaysIcon,
+  "comparison-diagram": ScaleIcon,
+};
 
 const focusPresets = [15, 25, 50] as const;
 
@@ -148,28 +143,26 @@ function ToolListItem({
 
 export function FabricBoardToolsPanel({
   editor,
+  boardId,
   open,
   canEdit,
   onOpen,
   onClose,
 }: {
   editor: Editor | null;
+  boardId: string;
   open: boolean;
   canEdit: boolean;
   onOpen: () => void;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<BoardToolsTab>("study");
-  const [expression, setExpression] = useState("");
+  const [templateGroup, setTemplateGroup] = useState<TemplateGroup>("education");
   const [announcement, setAnnouncement] = useState("");
   const [selectedMinutes, setSelectedMinutes] = useState<number>(25);
   const [remainingSeconds, setRemainingSeconds] = useState(25 * 60);
   const [timerRunning, setTimerRunning] = useState(false);
   const deadlineRef = useRef<number | null>(null);
-  const calculation = useMemo(
-    () => calculateStudyExpression(expression),
-    [expression],
-  );
   const timerActive = timerRunning || remainingSeconds !== selectedMinutes * 60;
   const timerProgress = selectedMinutes > 0
     ? Math.min(100, Math.max(0, 100 - (remainingSeconds / (selectedMinutes * 60)) * 100))
@@ -259,17 +252,13 @@ export function FabricBoardToolsPanel({
     setAnnouncement(`${result.template.name} added to the board.`);
   };
 
-  const addCalculation = () => {
-    if (!calculation.ok) {
-      setAnnouncement(calculation.message);
-      return;
-    }
-    const result = insertCalculationCard(canEdit ? editor : null, calculation);
+  const addEducationTemplate = (id: EducationTemplateId) => {
+    const result = insertEducationTemplate(canEdit ? editor : null, id);
     if (!result.ok) {
       setAnnouncement(insertionFailureMessage(result.reason));
       return;
     }
-    setAnnouncement("Calculation added to the board.");
+    setAnnouncement(`${result.template.name} added to the board.`);
   };
 
   if (!canEdit) return null;
@@ -336,7 +325,7 @@ export function FabricBoardToolsPanel({
             <div className="min-w-0">
               <h2 className="font-medium">Board Tools</h2>
               <p className="text-pretty text-base text-muted-gray sm:text-sm">
-                Build study spaces, calculate, and stay focused.
+                Study, solve, and move around your board.
               </p>
             </div>
           </div>
@@ -346,7 +335,7 @@ export function FabricBoardToolsPanel({
         </header>
 
         <div
-          className="flex shrink-0 gap-1 overflow-x-auto border-b border-near-black-primary-text/8 p-2"
+          className="grid shrink-0 grid-cols-[repeat(5,minmax(4.25rem,1fr))] gap-1 overflow-x-auto border-b border-near-black-primary-text/8 p-2"
           role="tablist"
           aria-label="Board Tool Categories"
         >
@@ -359,7 +348,7 @@ export function FabricBoardToolsPanel({
               aria-selected={tab === item.id}
               aria-controls={`fabric-board-tools-${item.id}-panel`}
               className={cx(
-                "relative h-8 shrink-0 rounded-radius-md px-2.5 text-base font-medium outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent sm:text-sm",
+                "relative h-10 min-w-0 rounded-radius-md px-1 text-[0.8125rem] font-medium outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent sm:h-8 sm:text-sm",
                 tab === item.id
                   ? "bg-light-surface-tint text-near-black-primary-text"
                   : "text-muted-gray hover:bg-light-surface-tint hover:text-near-black-primary-text",
@@ -405,109 +394,16 @@ export function FabricBoardToolsPanel({
             </section>
           ) : null}
 
-          {tab === "calculator" ? (
+          {tab === "stem" ? (
             <section
-              id="fabric-board-tools-calculator-panel"
+              id="fabric-board-tools-stem-panel"
               role="tabpanel"
-              aria-labelledby="fabric-board-tools-calculator-tab"
-              className="flex flex-col gap-4"
+              aria-labelledby="fabric-board-tools-stem-tab"
             >
-              <div className="flex flex-col gap-2">
-                <label htmlFor="fabric-study-expression" className="font-medium">
-                  Expression
-                </label>
-                <div className="flex items-center gap-1 rounded-radius-lg bg-surface-white p-1 ring-1 ring-near-black-primary-text/10 focus-within:outline-2 focus-within:-outline-offset-1 focus-within:outline-sky-blue-accent">
-                  <CalculatorIcon className="size-4 shrink-0 fill-muted-gray" aria-hidden="true" />
-                  <input
-                    id="fabric-study-expression"
-                    name="study-expression"
-                    value={expression}
-                    maxLength={160}
-                    inputMode="text"
-                    autoComplete="off"
-                    spellCheck={false}
-                    placeholder="Try (12.5 × 4) + sqrt(81)"
-                    className="h-10 min-w-0 flex-1 bg-transparent px-2 text-base outline-none placeholder:text-muted-gray sm:h-8 sm:text-sm"
-                    onChange={(event) => setExpression(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && calculation.ok) {
-                        event.preventDefault();
-                        addCalculation();
-                      }
-                    }}
-                  />
-                  <IconButton
-                    label="Delete Last Calculator Character"
-                    tooltipSide="top"
-                    disabled={!expression}
-                    onClick={() => setExpression((current) => current.slice(0, -1))}
-                  >
-                    <BackspaceIcon className="size-4 shrink-0 fill-current" aria-hidden="true" />
-                  </IconButton>
-                </div>
-              </div>
-
-              <div
-                key={calculation.ok ? calculation.display : calculation.message}
-                className={cx(
-                  "min-h-20 rounded-radius-lg p-3 ring-1 review-panel-enter",
-                  calculation.ok
-                    ? "bg-(--accent-soft) ring-sky-blue-accent/20"
-                    : expression
-                      ? "bg-(--danger-soft) ring-(--danger-border)"
-                      : "bg-light-surface-tint ring-near-black-primary-text/5",
-                )}
-                role="status"
-                aria-live="polite"
-                aria-atomic="true"
-              >
-                {calculation.ok ? (
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <p className="truncate text-base text-muted-gray sm:text-sm">{calculation.expression}</p>
-                    <p className="break-all text-2xl font-medium tracking-tight tabular-nums text-sky-blue-accent">
-                      = {calculation.display}
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-pretty text-base text-muted-gray sm:text-sm">
-                    {expression
-                      ? calculation.message
-                      : "Enter an expression or use the keypad. Percent divides the value before it by 100."}
-                  </p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-5 gap-1.5" aria-label="Calculator Keypad">
-                {calculatorKeys.map((key) => (
-                  <button
-                    key={key.name}
-                    type="button"
-                    aria-label={key.name}
-                    className="relative h-12 rounded-radius-md bg-light-surface-tint text-base font-medium outline-none hover:bg-(--accent-soft) active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent motion-reduce:transform-none sm:h-9 sm:text-sm"
-                    onClick={() => setExpression((current) => `${current}${key.value}`.slice(0, 160))}
-                  >
-                    {key.label}
-                    <span
-                      className="pointer-events-none absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
-                      aria-hidden="true"
-                    />
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <Button tone="ghost" disabled={!expression} onClick={() => setExpression("")}>
-                  Clear Expression
-                </Button>
-                <Button
-                  tone="primary"
-                  disabled={!editor || !calculation.ok}
-                  leading={<CalculatorIcon className="size-4 shrink-0 fill-current" aria-hidden="true" />}
-                  onClick={addCalculation}
-                >
-                  Add to Board
-                </Button>
-              </div>
+              <FabricStemToolkitPanel
+                editor={editor}
+                onAnnouncement={setAnnouncement}
+              />
             </section>
           ) : null}
 
@@ -587,6 +483,20 @@ export function FabricBoardToolsPanel({
             </section>
           ) : null}
 
+          {tab === "navigate" ? (
+            <section
+              id="fabric-board-tools-navigate-panel"
+              role="tabpanel"
+              aria-labelledby="fabric-board-tools-navigate-tab"
+            >
+              <FabricBoardNavigationPanel
+                editor={editor}
+                boardId={boardId}
+                onAnnouncement={setAnnouncement}
+              />
+            </section>
+          ) : null}
+
           {tab === "templates" ? (
             <section
               id="fabric-board-tools-templates-panel"
@@ -597,21 +507,61 @@ export function FabricBoardToolsPanel({
               <div className="flex items-start gap-2.5 rounded-radius-lg bg-light-surface-tint p-3">
                 <RectangleStackIcon className="size-4 h-lh shrink-0 fill-sky-blue-accent" aria-hidden="true" />
                 <p className="text-pretty text-base text-muted-gray sm:text-sm">
-                  Start a workshop or planning flow without leaving the current board.
+                  Add a complete, editable learning or planning layout without leaving the board.
                 </p>
               </div>
-              <ul role="list">
-                {FABRIC_TEMPLATES.map((template) => (
-                  <ToolListItem
-                    key={template.id}
-                    icon={templateIcons[template.id]}
-                    title={template.name}
-                    description={template.description}
-                    actionLabel="Add Template"
-                    disabled={!editor}
-                    onInsert={() => addTemplate(template.id)}
-                  />
+              <div
+                className="grid grid-cols-2 gap-1 rounded-radius-lg bg-light-surface-tint p-1"
+                aria-label="Template Collections"
+              >
+                {([
+                  { id: "education", label: "Education" },
+                  { id: "planning", label: "Planning" },
+                ] as const).map((group) => (
+                  <button
+                    key={group.id}
+                    type="button"
+                    aria-pressed={templateGroup === group.id}
+                    className={cx(
+                      "relative h-10 rounded-radius-md px-3 text-base font-medium outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent sm:h-8 sm:text-sm",
+                      templateGroup === group.id
+                        ? "bg-surface-white text-near-black-primary-text ring-1 ring-near-black-primary-text/8"
+                        : "text-muted-gray hover:text-near-black-primary-text",
+                    )}
+                    onClick={() => setTemplateGroup(group.id)}
+                  >
+                    {group.label}
+                    <span
+                      className="pointer-events-none absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
+                      aria-hidden="true"
+                    />
+                  </button>
                 ))}
+              </div>
+              <ul role="list">
+                {templateGroup === "education"
+                  ? EDUCATION_TEMPLATES.map((template) => (
+                      <ToolListItem
+                        key={template.id}
+                        icon={educationTemplateIcons[template.id]}
+                        title={template.name}
+                        description={template.description}
+                        actionLabel="Add Template"
+                        disabled={!editor}
+                        onInsert={() => addEducationTemplate(template.id)}
+                      />
+                    ))
+                  : FABRIC_TEMPLATES.map((template) => (
+                      <ToolListItem
+                        key={template.id}
+                        icon={templateIcons[template.id]}
+                        title={template.name}
+                        description={template.description}
+                        actionLabel="Add Template"
+                        disabled={!editor}
+                        onInsert={() => addTemplate(template.id)}
+                      />
+                    ))}
               </ul>
             </section>
           ) : null}

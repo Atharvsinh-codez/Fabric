@@ -435,3 +435,54 @@ Rules:
   - No database migration, API, rate limit, environment variable, dependency, Worker, Cloudflare storage, deployment, commit, or push change was introduced.
 - Next Steps:
   - Exercise the native study layouts with two signed-in collaborators, then design shared classroom facilitation state separately before adding synchronized timers, voting, reactions, or presenter controls.
+
+### [2026-07-17 19:44 IST] - Cut Cloudflare origin policy over to fabric-athrix
+- Request: Replace the previous Vercel deployment origin in Cloudflare with `https://fabric-athrix.vercel.app`.
+- Actions:
+  - Replaced the production realtime Worker allowlist with the exact new HTTPS origin while keeping localhost confined to the explicit development environment.
+  - Regenerated the checked Cloudflare binding types and updated the production R2 signed-upload CORS policy plus its exact-origin regression test.
+  - Applied the new CORS rule to the existing `fabric` R2 bucket without changing objects, lifecycle rules, or credentials.
+  - Deployed `fabric-realtime` in place as Worker version `80258fed-6e29-4797-abaf-44ccd0ae1643`; Durable Object bindings, class names, migrations, and stored room data were preserved.
+- Files Changed:
+  - `wrangler.toml` and `cloudflare/realtime/worker-configuration.d.ts` - New production realtime origin and regenerated bindings.
+  - `cloudflare/r2-cors.production.json` and `lib/storage/r2/cors-policy.test.ts` - New exact R2 upload origin and regression expectation.
+- Validation:
+  - R2 CORS test, Worker TypeScript, generated binding check, 15 Cloudflare runtime tests, and production/development Wrangler dry-runs passed.
+  - Live Worker `/health` returned `status: ok` with Durable Objects transport.
+  - A request from the new origin passed the Worker origin gate and reached the expected WebSocket-upgrade response (`426` without an upgrade); the old origin was rejected with `403`.
+  - Live R2 preflight returned `204` with `Access-Control-Allow-Origin: https://fabric-athrix.vercel.app`; the old origin returned `403` with no allow-origin header.
+- Risks/Notes:
+  - No tldraw, application code, database, secret, rate limit, bucket object, or Durable Object storage change was introduced.
+  - The source-of-truth Cloudflare origin files are local changes and have not been committed or pushed in this step.
+
+### [2026-07-17 20:36 IST] - Add STEM, education, and board navigation tools
+- Request: Expand Board Tools with a complete STEM toolkit, six education templates, and fast object navigation while preserving the polished responsive canvas UI and every frozen tldraw/watermark constraint.
+- Plan: Keep the feature client-side, use only public tldraw 4.2 Editor APIs and synchronized native shapes, bound every parser/index/shape batch, separate device-local navigation state honestly, and verify real tldraw records plus desktop/mobile UI before the full release gates.
+- Actions:
+  - Reorganized Board Tools into Study, STEM, Navigate, Focus, and Templates without changing the centered canvas toolbar or right-side style controls.
+  - Added a safe graphing engine with bounded parsing, sampling, discontinuity handling, live SVG preview, configurable axes, and editable native graph insertion. No `eval`, generated code, API request, model call, or edit-rate limit is involved.
+  - Added validated equation cards and a typed converter for length, mass, temperature, time, area, volume, and data, with reusable conversion cards on the board.
+  - Added editable ruler, 180-degree protractor, and labelled coordinate-plane instruments as capacity-checked native draw/geo/text shapes with one collapsed undo action.
+  - Added Lesson Plan, KWL Chart, Vocabulary Map, Lab Report, Revision Timetable, and Comparison Diagram collections beside the existing planning templates. Every field remains editable and joins the existing Yjs multiplayer document automatically.
+  - Added current-page object search and outline, a bounded interactive minimap, board-scoped device-local bookmarks, and Return to Last View camera history. Document indexing is capped at 2,000 objects and throttled separately from 100ms viewport updates so panning never re-runs text extraction at frame rate.
+  - Kept synchronized instance provenance bounded, bookmarks validated/capped at 20, search results capped at 40, minimap geometry capped at 180 objects, and the complete learning-tool integration below 150 native records in the real-store batch test.
+- Files Changed:
+  - `components/fabric-whiteboard/board-tools-panel.tsx`, `components/fabric-whiteboard/stem-toolkit-panel.tsx`, `components/fabric-whiteboard/board-navigation-panel.tsx`, `components/fabric-whiteboard.tsx`, and focused component tests - Responsive feature organization, STEM interactions, navigation, announcements, and board-scoped wiring.
+  - `lib/boards/stem-math.ts`, `lib/boards/tldraw-stem-tools.ts`, and tests - Safe graph/conversion/equation engines plus native graph and measurement insertion.
+  - `lib/boards/tldraw-education-templates.ts`, `lib/boards/board-navigation.ts`, focused tests, and `lib/boards/tldraw-learning-tools.integration.test.ts` - Six native education layouts, bounded navigation/bookmark models, and real tldraw store coverage.
+- Diff Summary:
+  - Arithmetic-only student calculator -> complete Calculator, Graph, Convert, Equation, and Tools workspace.
+  - Four planning templates -> a clearly separated Education collection with six classroom-ready layouts plus the existing Planning collection.
+  - Manual pan-and-zoom only -> searchable outline, minimap, saved views, and reversible navigation.
+- Validation:
+  - Focused STEM, education, navigation, component, rollback/history, and real tldraw 4.2 store tests passed. The integration test inserted all six education templates, all three instruments, and a graph together, validated every resulting record, and stayed below 150 records.
+  - Desktop 1280x720 and mobile 390x844 browser checks exercised all five outer categories and every STEM mode. The panel stayed inside the viewport with no horizontal panel overflow; long content scrolls only inside the panel and genuinely narrow tab rows retain bounded horizontal access.
+  - Full `npm run verify` passed 141 application test files / 694 tests, all application/realtime/Cloudflare/AI Worker TypeScript targets, 15 Cloudflare runtime tests, ESLint, the production build, and the tldraw invariant.
+  - `npm run db:check`, `npm audit --omit=dev` with zero vulnerabilities, generated Worker binding verification, Wrangler 4.111.0 production/development dry-runs, and `git diff --check` passed.
+  - tldraw remains pinned at `4.2.0`; `package.json`, `package-lock.json`, `patches/@tldraw+editor+4.2.0.patch`, editor internals, shape behavior, and watermark handling are unchanged.
+- Risks/Notes:
+  - Bookmarks and Return to Last View are intentionally personal/device-local; they do not create misleading shared document state.
+  - View-only boards retain the existing policy of hiding insertion-oriented Board Tools. A future navigation-only viewer entry can be added separately if product policy calls for it.
+  - No database migration, API, realtime protocol, authenticated rate limit, dependency, environment variable, Worker, Cloudflare storage, deployment, commit, or push change was introduced by this milestone.
+- Next Steps:
+  - Exercise search/bookmarks and several inserted learning layouts with two signed-in collaborators, then commit/push and deploy only when requested.

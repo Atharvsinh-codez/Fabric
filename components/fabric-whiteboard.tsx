@@ -431,6 +431,7 @@ export function FabricWhiteboard({
 
       <FabricBoardToolsPanel
         editor={editor}
+        boardId={boardId}
         open={visiblePanel === "tools"}
         canEdit={canEdit}
         onOpen={() => setPanel("tools")}
