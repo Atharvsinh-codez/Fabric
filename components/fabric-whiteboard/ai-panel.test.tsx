@@ -14,11 +14,19 @@ const aiClient = vi.hoisted(() => ({
 vi.mock("@/lib/ai/client", () => ({
   AiProposalClientError: class AiProposalClientError extends Error {
     readonly code: string;
+    readonly retryable: boolean;
+    readonly status?: number;
 
-    constructor(code: string, message: string) {
+    constructor(
+      code: string,
+      message: string,
+      options: { retryable?: boolean; status?: number } = {},
+    ) {
       super(message);
       this.name = "AiProposalClientError";
       this.code = code;
+      this.retryable = options.retryable ?? false;
+      this.status = options.status;
     }
   },
   ...aiClient,
@@ -550,6 +558,52 @@ describe("Fabric agent canvas sidebar", () => {
     expect(container.querySelector('[data-ai-activity-stage="finalizing"]')).toBeNull();
     expect(container.textContent).toContain("Board Updated");
     expect(container.textContent).toContain("Changes applied and safely saved.");
+  });
+
+  it("retries a transient receipt failure without applying the board change twice", async () => {
+    vi.useFakeTimers();
+    const { editor } = createEditorHarness();
+    const applyProposal = vi.fn(async () => undefined);
+    aiClient.finalizeAiProposal
+      .mockRejectedValueOnce(new AiProposalClientError(
+        "internal_error",
+        "The request could not be completed.",
+        { retryable: true, status: 500 },
+      ))
+      .mockResolvedValueOnce({ status: "approved" });
+    aiClient.streamAiProposal.mockImplementation(
+      ({ onRunId }: { onRunId?: (runId: string) => void }) => {
+        onRunId?.("run:transient-confirmation");
+        return Promise.resolve(canvasPreview);
+      },
+    );
+    renderPanel({ editor, applyProposal });
+
+    writePrompt("Create a launch plan from this canvas.");
+    await sendPrompt();
+
+    const apply = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === "Apply Changes",
+    );
+    await act(async () => {
+      apply?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(applyProposal).toHaveBeenCalledTimes(1);
+    expect(aiClient.finalizeAiProposal).toHaveBeenCalledTimes(1);
+    expect(container.textContent).not.toContain("Save Confirmation Pending");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+
+    expect(aiClient.finalizeAiProposal).toHaveBeenCalledTimes(2);
+    expect(applyProposal).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain("Board Updated");
+    expect(container.textContent).toContain("Changes applied and safely saved.");
+    expect(container.textContent).not.toContain("Save Confirmation Pending");
   });
 
   it("shows streamed progress, supports cancel, and keeps close available", async () => {

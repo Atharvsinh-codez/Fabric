@@ -183,7 +183,11 @@ export async function finalizeAiProposalApproval(
         ),
       )
       .where(and(eq(boards.id, run.boardId), isNull(boards.archivedAt)))
-      .for("update")
+      // PostgreSQL cannot lock the nullable sides of these membership joins.
+      // The board row is the serialization boundary for revision/projection
+      // approval, so scope the lock explicitly instead of failing after the
+      // approved canvas change has already been applied in the browser.
+      .for("update", { of: boards })
       .limit(1);
 
     const access = board

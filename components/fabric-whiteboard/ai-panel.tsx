@@ -241,7 +241,7 @@ export function FabricAiPanel({
         } catch (caught) {
           if (
             caught instanceof AiProposalClientError &&
-            caught.code === "approval_not_durable"
+            (caught.code === "approval_not_durable" || caught.retryable)
           ) {
             await wait();
             continue;

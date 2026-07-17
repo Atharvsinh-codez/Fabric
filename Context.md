@@ -753,3 +753,42 @@ Rules:
   - No Worker, database, API authorization, dependency, rate limit, tldraw version, patch, internals, shape, or watermark change was introduced.
 - Next Steps:
   - Publish through GitHub main and verify one agent request after a two-browser collaboration checkpoint on the production custom domain.
+
+### [2026-07-18 00:27 IST] - Lock AI approval to the non-null board row
+- Request: Add focused regression coverage for the AI save-confirmation query after PostgreSQL rejected a row lock across nullable membership joins.
+- Plan: Exercise successful approval through a fully mocked transaction and assert the exact Drizzle lock scope without touching production data.
+- Actions:
+  - Added a repository-level approval test with valid proposal binding, access, durable projection, status transitions, and completion receipt.
+  - Made the membership-join mock require the board-only `FOR UPDATE` configuration.
+- Files Changed:
+  - `lib/ai/server/approval-repository.test.ts` - Successful finalization and board-scoped lock regression.
+- Diff Summary:
+  - Approval locking behavior untested -> exact `.for("update", { of: boards })` contract protected through the successful repository path.
+- Validation:
+  - Focused Vitest passed: 1 file / 1 test.
+  - Scoped ESLint and `git diff --check` passed.
+- Risks/Notes:
+  - The test uses no production database or network access.
+- Next Steps:
+  - Keep this regression with the scoped production query correction.
+
+### [2026-07-18 00:29 IST] - Stop false save-confirmation failures after AI apply
+- Request: Fix the Fabric agent warning that appears after an approved AI change is already visible and correctly applied to the board.
+- Plan: Trace the post-apply receipt independently from AI generation, reproduce the database failure safely, correct only the lock scope, and keep transient receipt failures quiet within the existing bounded confirmation loop.
+- Actions:
+  - Confirmed recent proposals remained in `waiting_for_approval` after their board checkpoints advanced, proving generation and canvas application had succeeded while receipt finalization failed.
+  - Reproduced PostgreSQL SQLSTATE `0A000`: a bare `FOR UPDATE` attempted to lock nullable rows from the workspace, board, and project membership `LEFT JOIN`s.
+  - Scoped the approval transaction lock to `boards`, the row that serializes document revision and projection verification.
+  - Retried typed transient server failures inside the existing bounded receipt loop without reapplying the proposal or duplicating board changes.
+- Files Changed:
+  - `lib/ai/server/approval-repository.ts` and test - Board-only row lock plus a full successful finalization regression.
+  - `components/fabric-whiteboard/ai-panel.tsx` and test - Quiet retry for transient receipt failures with apply-once coverage.
+- Validation:
+  - The previously failing membership-join lock was reproduced against the configured PostgreSQL database; the corrected `FOR UPDATE OF boards` query completed and returned the expected board row.
+  - Focused approval repository, route, and panel tests passed: 3 files / 18 tests.
+  - Application TypeScript, scoped ESLint, and `git diff --check` passed.
+- Risks/Notes:
+  - Authorization, exact proposal projection verification, approval expiry, and non-retryable binding/generation/access failures remain unchanged.
+  - No board content, AI run, database schema/data, Worker, dependency, rate limit, tldraw version, patch, internals, shape, or watermark was changed.
+- Next Steps:
+  - Publish through GitHub main, then use Retry Confirmation on an existing pending proposal or apply a fresh proposal after deployment.
