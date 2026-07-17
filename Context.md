@@ -261,7 +261,7 @@ Rules:
 - Plan: Deploy the exact verified revision on the repository's supported runtime, inspect live service readiness, reproduce the GitHub clean-install failure with its npm version, and change only the lock metadata responsible for that failure.
 - Actions:
   - Pushed AI engine commit `8d4d4de`, aligned the Vercel project from Node `24.x` to the documented Node `22.x` target, and rebuilt production without the old runtime cache.
-  - Confirmed the new production deployment is Ready and aliased to `fabric-s9rn.vercel.app`; protected readiness reports the database, serverless AI dispatcher, private R2 configuration, realtime coordinator, and external realtime service ready and accepting AI runs.
+  - Confirmed the production deployment was ready; protected readiness reported the database, serverless AI dispatcher, private R2 configuration, realtime coordinator, and external realtime service ready and accepting AI runs.
   - Confirmed Cloudflare realtime health reports Durable Objects transport ready and left Worker code/storage unchanged.
   - Traced GitHub Actions run `29560308693` to npm 10 rejecting a missing `@emnapi/core@1.11.2` peer record before any application test ran.
   - Regenerated only `package-lock.json` with npm `10.9.8`, adding the missing peer record and correcting three dependency classifications without changing `package.json`, installed versions, or tldraw.

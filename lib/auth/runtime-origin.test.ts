@@ -8,10 +8,10 @@ describe("installCanonicalAuthOrigin", () => {
   it("forces every production OAuth callback to the Fabric domain", () => {
     const environment = {
       FABRIC_ENV: "production",
-      NEXT_PUBLIC_APP_URL: "https://fabric-s9rn.vercel.app",
-      APP_URL: "https://fabric-s9rn.vercel.app",
-      AUTH_URL: "https://fabric-s9rn.vercel.app",
-      NEXTAUTH_URL: "https://fabric-s9rn.vercel.app",
+      NEXT_PUBLIC_APP_URL: "https://legacy.fabric.example",
+      APP_URL: "https://legacy.fabric.example",
+      AUTH_URL: "https://legacy.fabric.example",
+      NEXTAUTH_URL: "https://legacy.fabric.example",
     };
 
     const resolved = installCanonicalAuthOrigin(environment);
