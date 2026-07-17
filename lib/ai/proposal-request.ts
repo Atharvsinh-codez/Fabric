@@ -5,6 +5,7 @@ import {
   CanvasNodeTypeSchema,
   CanvasSourceGeometrySchema,
 } from "./canvas-patch";
+import { AuthorizedBoardSceneSchema } from "./engine/authorized-scene";
 
 const SnapshotCoordinateSchema = z.number().finite().min(-100_000).max(100_000);
 const SnapshotDimensionSchema = z.number().finite().min(1).max(10_000);
@@ -63,6 +64,11 @@ export const AiProposalRequestSchema = z
       )
       .max(12)
       .default([]),
+    /**
+     * Populated exclusively from the durable board by the proposal route.
+     * Any browser-supplied value is replaced during authorization.
+     */
+    scene: AuthorizedBoardSceneSchema.optional(),
   })
   .strict()
   .superRefine((value, context) => {
@@ -91,4 +97,5 @@ export const AiProposalRequestSchema = z
     }
   });
 
+export type ProposalNodeSnapshot = z.infer<typeof ProposalNodeSnapshotSchema>;
 export type AiProposalRequest = z.infer<typeof AiProposalRequestSchema>;

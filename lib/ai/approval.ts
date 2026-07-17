@@ -17,7 +17,7 @@ export const AiProposalApprovalRequestSchema = z
     patchHash: Sha256Schema,
     documentGenerationId: z.string().uuid(),
     baseDurableSequence: z.number().int().nonnegative().safe(),
-    observedDurableSequence: z.number().int().positive().safe(),
+    observedDurableSequence: z.number().int().nonnegative().safe(),
   })
   .strict();
 
@@ -34,7 +34,7 @@ export const AiProposalApprovalResultSchema = z
         boardId: z.string().uuid(),
         documentGenerationId: z.string().uuid(),
         baseDurableSequence: z.number().int().nonnegative().safe(),
-        appliedDurableSequence: z.number().int().positive().safe(),
+        appliedDurableSequence: z.number().int().nonnegative().safe(),
         finalizedAt: z.string().datetime(),
       })
       .strict(),
@@ -85,6 +85,10 @@ function sameNumber(left: number, right: number): boolean {
 
 function resolvedId(id: string | undefined | null): string | undefined {
   return id === null || id === undefined ? undefined : id;
+}
+
+function normalizeOptionalText(value: string | undefined | null): string | undefined {
+  return value === undefined || value === null || value === "" ? undefined : value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -229,9 +233,9 @@ export function verifyApprovedPatchProjection(
       const matches =
         node.type === operation.nodeType &&
         node.title === operation.content.title &&
-        (node.body ?? undefined) === (operation.content.body ?? undefined) &&
+        normalizeOptionalText(node.body) === normalizeOptionalText(operation.content.body) &&
         (node.tag ?? undefined) === (operation.content.tag ?? undefined) &&
-        (node.meta ?? undefined) === (operation.content.meta ?? undefined) &&
+        (operation.content.meta === undefined || node.meta === operation.content.meta) &&
         sameNumber(node.x, operation.position.x) &&
         sameNumber(node.y, operation.position.y) &&
         sameNumber(node.width, operation.size.width) &&
@@ -318,7 +322,8 @@ export function verifyApprovedPatchProjection(
       const content = operation.content;
       const matches =
         (!content?.title || node.title === content.title) &&
-        (content?.body === undefined || (node.body ?? undefined) === content.body) &&
+        (content?.body === undefined ||
+          normalizeOptionalText(node.body) === normalizeOptionalText(content.body)) &&
         (content?.tag === undefined || (node.tag ?? undefined) === content.tag) &&
         (content?.meta === undefined || (node.meta ?? undefined) === content.meta) &&
         appearanceMatches(node, operation.appearance);

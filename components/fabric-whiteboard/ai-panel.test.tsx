@@ -258,6 +258,26 @@ describe("Fabric agent canvas sidebar", () => {
     );
   });
 
+  it("shows a model clarification as chat without an empty change preview", async () => {
+    const { editor } = createEditorHarness();
+    aiClient.streamAiProposal.mockResolvedValue({
+      kind: "clarification",
+      reason: "missing-selection",
+      question: "Which notes should I organize?",
+      choices: ["Use my current selection", "Create a new group"],
+    });
+    renderPanel({ editor, getSelection: () => [] });
+
+    writePrompt("Organize this.");
+    await sendPrompt();
+
+    expect(container.textContent).toContain("Which notes should I organize?");
+    expect(container.textContent).toContain("1. Use my current selection");
+    expect(container.textContent).toContain("2. Create a new group");
+    expect(container.textContent).not.toContain("Change Preview");
+    expect(container.textContent).not.toContain("Apply Changes");
+  });
+
   it("shows streamed progress, supports cancel, and keeps close available", async () => {
     const { editor } = createEditorHarness();
     const onClose = vi.fn();

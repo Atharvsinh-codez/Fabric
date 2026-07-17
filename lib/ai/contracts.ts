@@ -1,4 +1,5 @@
 import type { CanvasPatch } from "./canvas-patch";
+import type { BoardClarification } from "./engine/board-plan";
 import type { PatchRiskClass } from "./semantic-validator";
 
 import type { FabricAiModel, FabricAiProvider } from "./config";
@@ -21,6 +22,27 @@ export type ModelUsage = Readonly<{
   thoughtTokens?: number;
   toolTokens?: number;
   totalTokens?: number;
+  fabric?: Readonly<{
+    engineVersion: "board-plan.v1";
+    compilerVersion: string;
+    sceneVersion: number;
+    sceneNodeCount: number;
+    sceneEdgeCount: number;
+    selectedNodeCount: number;
+    visualInputCount: number;
+    modelInputBytes: number;
+    sceneNodesOmitted: number;
+    sceneEdgesOmitted: number;
+    sceneTextCharactersOmitted: number;
+    conversationMessagesOmitted: number;
+    planActionCount: number;
+    compiledOperationCount: number;
+    contextPreparationMs: number;
+    modelLatencyMs: number;
+    timeToFirstContentMs?: number;
+    compileMs: number;
+    outputBytes: number;
+  }>;
 }>;
 
 export type ModelStreamEvent =
@@ -101,3 +123,12 @@ export type ProposalReadyPayload = Readonly<{
   affectedNodeIds: readonly string[];
   riskClass: PatchRiskClass;
 }>;
+
+export type ClarificationReadyPayload = Readonly<{
+  kind: "clarification";
+  reason: BoardClarification["reason"];
+  question: string;
+  choices: readonly string[];
+}>;
+
+export type AiAgentReadyResult = ProposalReadyPayload | ClarificationReadyPayload;

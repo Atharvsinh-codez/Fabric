@@ -48,6 +48,7 @@ export function canTransitionAiRun(from: AiRunStatus, to: AiRunStatus): boolean 
     validating_proposal: [
       "preparing_context",
       "waiting_for_approval",
+      "completed",
       "validation_failed",
       "stale_generation",
     ],

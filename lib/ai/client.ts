@@ -6,7 +6,11 @@ import {
   type AiProposalApprovalResult,
 } from "./approval";
 import { CanvasPatchSchema } from "./canvas-patch";
-import type { ProposalReadyPayload } from "./contracts";
+import type {
+  AiAgentReadyResult,
+  ClarificationReadyPayload,
+  ProposalReadyPayload,
+} from "./contracts";
 import type { AiProposalRequest } from "./proposal-request";
 import type {
   FabricAiSseEnvelope,
@@ -24,6 +28,7 @@ const EnvelopeSchema = z
       "run.progress",
       "proposal.delta",
       "proposal.ready",
+      "clarification.ready",
       "run.completed",
       "run.canceled",
       "run.error",
@@ -39,6 +44,15 @@ const ProposalReadyPayloadSchema = z
     patchBytes: z.number().int().positive(),
     affectedNodeIds: z.array(z.string().min(1)),
     riskClass: z.enum(["low", "medium", "high"]),
+  })
+  .strict();
+
+const ClarificationReadyPayloadSchema = z
+  .object({
+    kind: z.literal("clarification"),
+    reason: z.enum(["ambiguous", "missing-context", "missing-selection", "unsupported"]),
+    question: z.string().trim().min(1).max(400),
+    choices: z.array(z.string().trim().min(1).max(120)).max(4),
   })
   .strict();
 
@@ -105,6 +119,7 @@ function validatePayload(
   payload: unknown,
 ): unknown {
   if (type === "proposal.ready") return ProposalReadyPayloadSchema.parse(payload);
+  if (type === "clarification.ready") return ClarificationReadyPayloadSchema.parse(payload);
   if (type === "run.progress") return ProgressPayloadSchema.parse(payload);
   if (type === "run.error") return ErrorPayloadSchema.parse(payload);
   if (type === "run.canceled") return CanceledPayloadSchema.parse(payload);
@@ -167,7 +182,7 @@ export async function streamAiProposal({
   signal: AbortSignal;
   onEvent?: (event: AiClientEvent) => void;
   onRunId?: (runId: string) => void;
-}): Promise<ProposalReadyPayload> {
+}): Promise<AiAgentReadyResult> {
   let response = await fetch("/api/ai/proposal", {
     method: "POST",
     credentials: "same-origin",
@@ -184,7 +199,7 @@ export async function streamAiProposal({
   let runId = response.headers.get("x-fabric-ai-run-id")?.trim() || null;
   if (runId) onRunId?.(runId);
   let lastSequence = 0;
-  let readyProposal: ProposalReadyPayload | null = null;
+  let readyResult: AiAgentReadyResult | null = null;
   let cancelRequestStarted = false;
   const cancelRunAfterAbort = () => {
     if (!runId || cancelRequestStarted) return;
@@ -226,7 +241,9 @@ export async function streamAiProposal({
     onEvent?.(event);
 
     if (event.type === "proposal.ready") {
-      readyProposal = event.payload as ProposalReadyPayload;
+      readyResult = event.payload as ProposalReadyPayload;
+    } else if (event.type === "clarification.ready") {
+      readyResult = event.payload as ClarificationReadyPayload;
     } else if (event.type === "run.error") {
       const payload = ErrorPayloadSchema.parse(event.payload);
       throw new AiProposalClientError(payload.code, payload.message, {
@@ -277,7 +294,7 @@ export async function streamAiProposal({
   };
 
   try {
-    for (let attempt = 0; attempt <= 3 && !readyProposal; attempt += 1) {
+    for (let attempt = 0; attempt <= 3 && !readyResult; attempt += 1) {
       try {
         await readStream(response);
       } catch (error) {
@@ -291,7 +308,7 @@ export async function streamAiProposal({
         }
       }
 
-      if (readyProposal) break;
+      if (readyResult) break;
       if (!runId || attempt >= 3) break;
       await new Promise<void>((resolve, reject) => {
         const onAbort = () => {
@@ -319,14 +336,14 @@ export async function streamAiProposal({
       );
     }
 
-    if (!readyProposal) {
+    if (!readyResult) {
       throw new AiProposalClientError(
         "incomplete_stream",
         "The AI stream ended before a reviewable proposal was ready. Try again.",
         { retryable: true },
       );
     }
-    return readyProposal;
+    return readyResult;
   } finally {
     signal.removeEventListener("abort", cancelRunAfterAbort);
   }

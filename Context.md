@@ -225,3 +225,33 @@ Rules:
   - The repository has no pre-commit configuration; the complete npm verification and GitHub Actions workflow remain the enforced gates.
 - Next Steps:
   - Commit and push the verified correction, redeploy `fabric-s9rn`, and ask the signed-in user to retry the same selected drawing request.
+
+### [2026-07-17 11:59 IST] - Rebuild Fabric agent as a deterministic multimodal canvas planner
+- Request: Replace the unreliable direct-patch AI path with a fast, measurable agent that understands selected drawings and uploaded images, produces correct editable board content, writes durably after approval, and leaves tldraw internals and tenant safety unchanged.
+- Plan: Make the model responsible only for semantic intent, rebuild authoritative scene context on the server, compile intent deterministically into native canvas operations, validate the exact projected result before approval, and prove the complete path with adversarial tests plus the configured real provider.
+- Actions:
+  - Introduced versioned `BoardPlan` v1 as the model contract and a deterministic compiler that owns IDs, placement, dimensions, text fitting, topology, collision handling, operation ordering, and stable retry output.
+  - Rebuilt selected and visible board context from the authorized durable document, prioritized selected objects within a fixed byte budget, and supplied opaque semantic handles instead of tenant IDs or model-controlled coordinates.
+  - Added a bounded semantic scene preview, a high-resolution selected-drawing crop, and exact R2 image inputs. Every media capability is short lived and bound to the active run, board, selection or asset hash, and authorization state.
+  - Made generated answers editable native text/geo shapes instead of lossy pen strokes, preserved Unicode, and verified real tldraw store serialization through projection and approval.
+  - Added clarification as a first-class non-error result, strict runtime schema and semantic validation, provenance checks, deterministic duplicate-ID recovery, exact no-op durable finalization, and sanitized structured timing/usage telemetry for success and failure paths.
+  - Kept `AUTH_SECRET` as the purpose-separated media-signing root, retained human approval and server-owned authorization, and did not add a secret, user-visible rate limit, tldraw change, or browser-controlled provider setting.
+- Files Changed:
+  - `lib/ai/engine/*` and `lib/ai/evals/*` - BoardPlan schema, compiler, scene builder, deterministic layouts, and golden/adversarial evaluation cases.
+  - `worker/processor.ts`, `worker/media-context.ts`, and repositories - Versioned planning execution, bounded multimodal context, telemetry, provenance, and persisted outcomes.
+  - `lib/ai/skills/board-assistance.v1.ts`, provider/client/contracts/SSE files, and AI routes - Contract-first prompts, portable structured streaming, clarification delivery, and signed visual context.
+  - `lib/boards/tldraw-ai-adapter.ts`, approval/projection code, and focused tests - Exact native object creation and durable approval verification.
+  - `docs/production-runbook.md` and `scripts/ai-v2-smoke.ts` - Production architecture, visual budgets, and real-provider smoke procedure.
+- Diff Summary:
+  - Model-authored low-level CanvasPatch aliases and pen-text output -> semantic BoardPlan compiled into deterministic, editable native canvas changes.
+  - Metadata-only visual context -> global scene understanding plus a selected handwriting crop and exact authorized images.
+  - Generic contract failures -> clarification, precise fail-closed validation, and content-free operational metrics.
+- Validation:
+  - `npm run verify` passed: tldraw remains pinned at `4.2.0` with its reviewed patch unchanged; 119 application test files / 533 tests passed; all application, realtime, Cloudflare runtime, and AI Worker TypeScript checks passed; 15 Worker runtime tests passed; ESLint and the production build passed.
+  - The configured real provider returned a valid proposal in 3.856 seconds with 3.307-second first content, 3,177 input tokens, 344 output tokens, one compiled operation, the expected answer, and no lossy pen text.
+  - `npm run db:check`, `npm audit --omit=dev`, generated Worker binding verification, Wrangler `4.111.0` production/development dry-runs, and `git diff --check` passed; the audit found zero production vulnerabilities.
+- Risks/Notes:
+  - Production rollout still requires an authenticated selected-handwriting request and an exact R2-image request so the deployed gateway's `image_url` fetching is proven end to end.
+  - Non-blocking follow-ups are connector-label comparison in approval, friendlier preview labels, a larger versioned live-provider evaluation set, and clearer per-stroke attribution when one crop contains several drawings.
+- Next Steps:
+  - Publish the verified revision, deploy it to `fabric-s9rn`, run the two authenticated visual production checks, and monitor validation failures, clarification rate, first-content latency, visual input count, token usage, and durable-approval completion.

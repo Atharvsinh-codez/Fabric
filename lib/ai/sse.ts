@@ -1,4 +1,8 @@
-import type { ModelUsage, ProposalReadyPayload } from "./contracts";
+import type {
+  ClarificationReadyPayload,
+  ModelUsage,
+  ProposalReadyPayload,
+} from "./contracts";
 
 import {
   FABRIC_AI_PROTOCOL_VERSION,
@@ -27,6 +31,7 @@ export type FabricAiSsePayloads = {
     text: string;
   };
   "proposal.ready": ProposalReadyPayload;
+  "clarification.ready": ClarificationReadyPayload;
   "run.completed": {
     usage: ModelUsage;
   };
@@ -57,6 +62,7 @@ export const FABRIC_AI_SSE_EVENT_NAMES = Object.freeze([
   "run.progress",
   "proposal.delta",
   "proposal.ready",
+  "clarification.ready",
   "run.completed",
   "run.canceled",
   "run.error",

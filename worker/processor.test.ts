@@ -5,7 +5,7 @@ import type { FabricModelProvider } from "../lib/ai/contracts";
 const repository = vi.hoisted(() => ({
   baseSnapshotIsCurrent: vi.fn(),
   readAiRunControl: vi.fn(),
-  recordProposalDelta: vi.fn(),
+  recordClarificationReady: vi.fn(),
   recordProposalReady: vi.fn(),
   recordProviderInteractionId: vi.fn(),
   recordRunCanceled: vi.fn(),
@@ -28,6 +28,8 @@ const job = {
   attempt: 1,
   maxAttempts: 1,
   runStatus: "queued" as const,
+  skillVersion: "2.0.0",
+  promptVersion: "canvas-agent.plan.v2",
   provider: "openai-compatible",
   model: "gcli/grok-4.5-medium",
   principalId: "33333333-3333-4333-8333-333333333333",
@@ -53,6 +55,22 @@ const job = {
   deadlineAt: new Date(Date.now() + 30_000),
 };
 
+function providerOutput(output: unknown, usage = { totalTokens: 42 }): FabricModelProvider {
+  return {
+    provider: "openai-compatible",
+    model: "gcli/grok-4.5-medium",
+    async createTurn() {
+      return {
+        events: (async function* () {
+          yield { type: "interaction_started" as const, interactionId: "interaction-1" };
+          yield { type: "text_delta" as const, text: JSON.stringify(output) };
+          yield { type: "interaction_completed" as const, usage };
+        })(),
+      };
+    },
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   repository.baseSnapshotIsCurrent.mockResolvedValue(true);
@@ -62,65 +80,50 @@ beforeEach(() => {
     deadlineAt: job.deadlineAt,
   });
   repository.recordRunProgress.mockResolvedValue(true);
-  repository.recordProposalDelta.mockResolvedValue(true);
   repository.recordProposalReady.mockResolvedValue(true);
+  repository.recordClarificationReady.mockResolvedValue(true);
   repository.refreshAiJobLease.mockResolvedValue(true);
 });
 
-describe("durable AI processor", () => {
-  it("persists only a validated proposal ready for approval", async () => {
-    const patch = {
-      schemaVersion: 1 as const,
-      summary: "Grouped two notes into one theme.",
-      base: {
-        workspaceId: job.workspaceId,
-        boardId: job.boardId,
-        documentGenerationId: job.documentGenerationId,
-        durableSequence: job.baseDurableSequence,
-        selectionHash,
-      },
-      operations: [
+describe("durable AI processor v2", () => {
+  it("compiles a semantic BoardPlan into an ordered native CanvasPatch", async () => {
+    const plan = {
+      schemaVersion: 1,
+      kind: "proposal",
+      summary: "Grouped the selected notes and added a review flow.",
+      placement: "selection-below",
+      flow: "vertical",
+      actions: [
         {
-          type: "createNode" as const,
-          tempId: "tmp_theme",
-          nodeType: "frame" as const,
-          position: { x: 40, y: 40 },
-          size: { width: 640, height: 420 },
-          content: { title: "Theme" },
-          appearance: { fill: "fog" as const },
+          kind: "arrangeSelection",
+          selectionRefs: ["s1", "s2"],
+          arrangement: "row",
+          spacing: "comfortable",
         },
         {
-          type: "moveNode" as const,
-          nodeId: "node_1",
-          position: { x: 80, y: 110 },
-          parentId: "tmp_theme",
-        },
-        {
-          type: "moveNode" as const,
-          nodeId: "node_2",
-          position: { x: 320, y: 110 },
-          parentId: "tmp_theme",
+          kind: "addDiagram",
+          key: "review_flow",
+          title: "Review flow",
+          layout: "flow-horizontal",
+          nodes: [
+            { key: "draft", shape: "note", label: "Draft" },
+            { key: "review", shape: "diamond", label: "Review" },
+          ],
+          connections: [{ from: "draft", to: "review" }],
         },
       ],
     };
+    let observedTurn: Parameters<FabricModelProvider["createTurn"]>[0] | undefined;
     let observedImages: unknown;
+    const baseProvider = providerOutput(plan);
     const provider: FabricModelProvider = {
-      provider: "openai-compatible",
-      model: "gcli/grok-4.5-medium",
+      ...baseProvider,
       async createTurn(turn) {
+        observedTurn = turn;
         observedImages = turn.images;
-        return {
-          events: (async function* () {
-            yield { type: "interaction_started" as const, interactionId: "interaction-1" };
-            for (const text of JSON.stringify(patch)) {
-              yield { type: "text_delta" as const, text };
-            }
-            yield { type: "interaction_completed" as const, usage: { totalTokens: 42 } };
-          })(),
-        };
+        return baseProvider.createTurn(turn);
       },
     };
-
     const buildModelImages = vi.fn().mockResolvedValue([
       {
         url: "https://fabric.example.test/api/ai/media/signed-preview",
@@ -128,123 +131,103 @@ describe("durable AI processor", () => {
         detail: "high" as const,
       },
     ]);
+
     await processClaimedAiJob({
       sql: {} as never,
       job,
       provider,
       leaseMs: 60_000,
-      media: {
-        baseUrl: "https://fabric.example.test",
-        signingKey: "m".repeat(64),
-      },
+      media: { baseUrl: "https://fabric.example.test", signingKey: "m".repeat(64) },
       buildModelImages,
     });
 
     expect(repository.recordProposalReady).toHaveBeenCalledOnce();
-    expect(repository.recordProposalReady.mock.calls[0]?.[1]).toMatchObject({
+    const stored = repository.recordProposalReady.mock.calls[0]?.[1];
+    expect(stored).toMatchObject({
       job,
-      proposal: { patch, patchHash: expect.stringMatching(/^[a-f0-9]{64}$/) },
+      proposal: {
+        patch: {
+          schemaVersion: 1,
+          summary: plan.summary,
+          base: {
+            workspaceId: job.workspaceId,
+            boardId: job.boardId,
+            documentGenerationId: job.documentGenerationId,
+            durableSequence: job.baseDurableSequence,
+            selectionHash,
+          },
+        },
+        patchHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      },
       usage: { totalTokens: 42 },
     });
-    expect(repository.recordRunFailure).not.toHaveBeenCalled();
-    expect(repository.recordRunCanceled).not.toHaveBeenCalled();
-    expect(buildModelImages).toHaveBeenCalledWith(
-      expect.objectContaining({ job, request: job.executionInput }),
-    );
+    const operations = stored?.proposal.patch.operations as Array<Record<string, unknown>>;
+    expect(operations.map((operation) => operation.type)).toEqual([
+      "moveNode",
+      "moveNode",
+      "createNode",
+      "createNode",
+      "createNode",
+      "createConnector",
+    ]);
+    expect(observedTurn?.maxOutputTokens).toBe(4_096);
+    expect(JSON.stringify(observedTurn?.responseSchema)).toContain('"const":"proposal"');
+    expect(JSON.stringify(observedTurn?.responseSchema)).not.toContain("workspaceId");
+    expect(observedTurn?.input).not.toContain(job.workspaceId);
     expect(observedImages).toEqual([
       expect.objectContaining({
         url: "https://fabric.example.test/api/ai/media/signed-preview",
         detail: "high",
       }),
     ]);
-    expect(repository.recordProposalDelta).toHaveBeenCalledTimes(2);
-    expect(
-      repository.recordProposalDelta.mock.calls
-        .map((call) => call[2])
-        .join(""),
-    ).toBe(JSON.stringify(patch));
-  });
-
-  it("normalizes the exact compact writeText gateway shape before strict validation", async () => {
-    const compactPatch = {
-      schemaVersion: 1,
-      summary: "Write the solution steps.",
-      workspaceId: job.workspaceId,
-      boardId: job.boardId,
-      documentGenerationId: job.documentGenerationId,
-      durableSequence: job.baseDurableSequence,
-      selectionHash,
-      ops: [
-        { type: "writeText", id: "tmp_step", x: 100, y: 200, text: "Step one" },
-        { type: "writeText", id: "tmp_answer", x: 100, y: 280, text: "Answer" },
-      ],
-    };
-    const provider: FabricModelProvider = {
-      provider: "openai-compatible",
-      model: "gcli/grok-4.5-medium",
-      async createTurn() {
-        return {
-          events: (async function* () {
-            yield { type: "interaction_started" as const, interactionId: "interaction-compact" };
-            yield { type: "text_delta" as const, text: JSON.stringify(compactPatch) };
-            yield { type: "interaction_completed" as const, usage: { totalTokens: 12 } };
-          })(),
-        };
-      },
-    };
-    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-
-    try {
-      await processClaimedAiJob({
-        sql: {} as never,
-        job,
-        provider,
-        leaseMs: 60_000,
-      });
-    } finally {
-      warning.mockRestore();
-    }
-
-    expect(repository.recordProposalReady).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        proposal: expect.objectContaining({
-          patch: expect.objectContaining({
-            base: expect.objectContaining({ selectionHash }),
-            operations: [
-              expect.objectContaining({
-                type: "writeText",
-                tempId: "tmp_step",
-                position: { x: 100, y: 200 },
-                fontSize: 28,
-                maxWidth: 640,
-              }),
-              expect.objectContaining({
-                type: "writeText",
-                tempId: "tmp_answer",
-                position: { x: 100, y: 280 },
-                fontSize: 28,
-                maxWidth: 640,
-              }),
-            ],
-          }),
-        }),
-      }),
-    );
     expect(repository.recordRunFailure).not.toHaveBeenCalled();
   });
 
-  it("uses the canvas agent contract and rejects image creation", async () => {
-    const canvasJob = {
-      ...job,
-      executionInput: {
-        ...job.executionInput,
-        instruction: "Generate an image of this idea.",
-      },
+  it("completes a clarification without creating or applying a canvas patch", async () => {
+    const clarification = {
+      schemaVersion: 1,
+      kind: "clarification",
+      reason: "missing-selection",
+      question: "Which notes should I organize?",
+      choices: ["Use my current selection", "Create new notes"],
     };
+
+    await processClaimedAiJob({
+      sql: {} as never,
+      job,
+      provider: providerOutput(clarification, { totalTokens: 18 }),
+      leaseMs: 60_000,
+    });
+
+    expect(repository.recordClarificationReady).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        job,
+        clarification: {
+          kind: "clarification",
+          reason: "missing-selection",
+          question: "Which notes should I organize?",
+          choices: clarification.choices,
+        },
+        usage: expect.objectContaining({
+          totalTokens: 18,
+          fabric: expect.objectContaining({
+            engineVersion: "board-plan.v1",
+            planActionCount: 0,
+            compiledOperationCount: 0,
+          }),
+        }),
+        responseHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      }),
+    );
+    expect(repository.recordProposalReady).not.toHaveBeenCalled();
+    expect(repository.recordRunFailure).not.toHaveBeenCalled();
+  });
+
+  it("rejects a provider-authored low-level CanvasPatch", async () => {
     const unsafePatch = {
-      schemaVersion: 1 as const,
-      summary: "Tried to create a raster image.",
+      schemaVersion: 1,
+      summary: "Bypassed the planner.",
       base: {
         workspaceId: job.workspaceId,
         boardId: job.boardId,
@@ -254,39 +237,20 @@ describe("durable AI processor", () => {
       },
       operations: [
         {
-          type: "createNode" as const,
-          tempId: "tmp_image",
-          nodeType: "image" as const,
+          type: "createNode",
+          tempId: "tmp_model",
+          nodeType: "image",
           position: { x: 80, y: 110 },
           size: { width: 320, height: 240 },
           content: { title: "Generated image" },
         },
       ],
     };
-    const provider: FabricModelProvider = {
-      provider: "openai-compatible",
-      model: "gcli/grok-4.5-medium",
-      async createTurn(turn) {
-        expect(turn.systemInstruction).toContain("canvas-agent");
-        expect(JSON.parse(turn.input)).toMatchObject({
-          viewport: job.executionInput.viewport,
-          outputRules: { imageCreationAllowed: false, rasterOutputAllowed: false },
-        });
-        expect(JSON.parse(turn.input)).not.toHaveProperty("assistanceMode");
-        expect(turn.keyRotationOrdinal).toBe(job.providerKeyOrdinal - 1);
-        return {
-          events: (async function* () {
-            yield { type: "text_delta" as const, text: JSON.stringify(unsafePatch) };
-            yield { type: "interaction_completed" as const, usage: {} };
-          })(),
-        };
-      },
-    };
 
     await processClaimedAiJob({
       sql: {} as never,
-      job: canvasJob,
-      provider,
+      job,
+      provider: providerOutput(unsafePatch),
       leaseMs: 60_000,
     });
 
@@ -295,9 +259,14 @@ describe("durable AI processor", () => {
       expect.anything(),
       expect.objectContaining({
         status: "validation_failed",
-        error: expect.objectContaining({
-          code: "invalid_model_output",
+        responseHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        usage: expect.objectContaining({
+          fabric: expect.objectContaining({
+            modelInputBytes: expect.any(Number),
+            outputBytes: expect.any(Number),
+          }),
         }),
+        error: expect.objectContaining({ code: "invalid_model_output" }),
       }),
     );
   });
@@ -323,12 +292,33 @@ describe("durable AI processor", () => {
       expect.anything(),
       expect.objectContaining({
         status: "provider_unavailable",
-        error: expect.objectContaining({
-          code: "provider_misconfigured",
-          retryable: false,
-        }),
+        error: expect.objectContaining({ code: "provider_misconfigured", retryable: false }),
       }),
     );
   });
 
+  it("fails closed when a queued run belongs to an older agent contract", async () => {
+    const createTurn = vi.fn();
+    const provider: FabricModelProvider = {
+      provider: "openai-compatible",
+      model: job.model,
+      createTurn,
+    };
+
+    await processClaimedAiJob({
+      sql: {} as never,
+      job: { ...job, skillVersion: "1.0.0", promptVersion: "board-solve.prompt.v1" },
+      provider,
+      leaseMs: 60_000,
+    });
+
+    expect(createTurn).not.toHaveBeenCalled();
+    expect(repository.recordRunFailure).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        status: "provider_unavailable",
+        error: expect.objectContaining({ code: "provider_error", retryable: true }),
+      }),
+    );
+  });
 });

@@ -4,8 +4,10 @@ vi.mock("server-only", () => ({}));
 
 import {
   AI_SELECTION_PREVIEW_MAX_DIMENSION,
+  renderAiScenePreview,
   renderAiSelectionPreview,
 } from "./selection-preview";
+import { buildAuthorizedBoardScene } from "@/lib/ai/engine/authorized-scene";
 
 const drawing = {
   id: "drawing-1",
@@ -55,5 +57,43 @@ describe("AI selection preview", () => {
         },
       ]),
     ).rejects.toThrow("no renderable drawing geometry");
+  });
+
+  it("renders bounded semantic shapes, edges, handles, and hostile labels safely", async () => {
+    const scene = buildAuthorizedBoardScene({
+      snapshot: {
+        nodes: [
+          {
+            id: "one",
+            type: "note",
+            title: '<script>alert("untrusted")</script>',
+            x: 0,
+            y: 0,
+            width: 220,
+            height: 140,
+            fill: "yellow",
+          },
+          {
+            id: "two",
+            type: "diamond",
+            title: "Decision",
+            x: 360,
+            y: 20,
+            width: 220,
+            height: 140,
+            fill: "blue",
+          },
+        ],
+        edges: [{ id: "edge", sourceId: "one", targetId: "two", route: "straight" }],
+      },
+      selection: [],
+      viewport: { x: -40, y: -40, width: 800, height: 500 },
+    });
+
+    const bytes = await renderAiScenePreview(scene);
+    const metadata = await (await import("sharp")).default(bytes).metadata();
+    expect(metadata.format).toBe("png");
+    expect(metadata.width).toBeLessThanOrEqual(AI_SELECTION_PREVIEW_MAX_DIMENSION);
+    expect(metadata.height).toBeLessThanOrEqual(AI_SELECTION_PREVIEW_MAX_DIMENSION);
   });
 });

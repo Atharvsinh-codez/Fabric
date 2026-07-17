@@ -14,6 +14,8 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+import type { ModelUsage } from "../../lib/ai/contracts";
+
 import { users } from "./auth";
 import { boards, workspaces } from "./product";
 
@@ -74,14 +76,7 @@ export type AiRunExecutionInput = {
   }>;
 } | { redacted: true };
 
-export type AiRunUsage = {
-  inputTokens?: number;
-  outputTokens?: number;
-  cachedTokens?: number;
-  thoughtTokens?: number;
-  toolTokens?: number;
-  totalTokens?: number;
-};
+export type AiRunUsage = ModelUsage;
 
 export type AiRunSafeError = {
   code: string;

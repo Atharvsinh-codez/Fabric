@@ -1,6 +1,10 @@
 import type { AiRunStatus } from "../db/schema/ai";
 import type { FabricAiModel } from "../lib/ai/config";
-import type { ModelUsage, ProposalReadyPayload } from "../lib/ai/contracts";
+import type {
+  ClarificationReadyPayload,
+  ModelUsage,
+  ProposalReadyPayload,
+} from "../lib/ai/contracts";
 import type { AiProposalRequest } from "../lib/ai/proposal-request";
 import {
   canTransitionAiRun,
@@ -25,6 +29,8 @@ export type ClaimedAiJob = {
   attempt: number;
   maxAttempts: number;
   runStatus: AiRunStatus;
+  skillVersion: string;
+  promptVersion: string;
   provider: string;
   model: FabricAiModel;
   principalId: string;
@@ -159,6 +165,8 @@ export async function claimNextAiJob(
       c.attempts as attempt,
       c.max_attempts as "maxAttempts",
       r.status as "runStatus",
+      r.skill_version as "skillVersion",
+      r.prompt_version as "promptVersion",
       r.provider as provider,
       r.model as model,
       r.principal_id as "principalId",
@@ -224,6 +232,8 @@ export async function claimAiJobByRunId(
       c.attempts as attempt,
       c.max_attempts as "maxAttempts",
       r.status as "runStatus",
+      r.skill_version as "skillVersion",
+      r.prompt_version as "promptVersion",
       r.provider as provider,
       r.model as model,
       r.principal_id as "principalId",
@@ -430,6 +440,64 @@ export async function recordProposalReady(
   });
 }
 
+export async function recordClarificationReady(
+  sql: WorkerSql,
+  input: {
+    job: ClaimedAiJob;
+    clarification: ClarificationReadyPayload;
+    responseHash: string;
+    usage: ModelUsage;
+    now?: Date;
+  },
+): Promise<boolean> {
+  const now = input.now ?? new Date();
+  return sql.begin(async (transaction) => {
+    const run = await lockRun(transaction, input.job.runId);
+    if (!run || run.cancelRequestedAt || isSettledAiStreamStatus(run.status)) return false;
+    if (!canTransitionAiRun(run.status, "completed")) return false;
+    const clarificationSequence = Number(run.lastEventSequence) + 1;
+    const completedSequence = clarificationSequence + 1;
+    await transaction`
+      update ai_runs
+      set
+        status = 'completed',
+        response_hash = ${input.responseHash},
+        usage = ${transaction.json(asJson(input.usage))},
+        execution_input = ${transaction.json({ redacted: true })},
+        finished_at = ${now},
+        last_event_sequence = ${completedSequence},
+        updated_at = ${now}
+      where id = ${input.job.runId}
+    `;
+    await transaction`
+      update ai_jobs
+      set
+        status = 'succeeded',
+        lease_owner = null,
+        lease_expires_at = null,
+        updated_at = ${now}
+      where id = ${input.job.jobId} and lease_owner = ${input.job.leaseOwner}
+    `;
+    await insertEvent(
+      transaction,
+      input.job.runId,
+      clarificationSequence,
+      "clarification.ready",
+      input.clarification,
+      now,
+    );
+    await insertEvent(
+      transaction,
+      input.job.runId,
+      completedSequence,
+      "run.completed",
+      { usage: input.usage },
+      now,
+    );
+    return true;
+  });
+}
+
 export async function recordRunCanceled(
   sql: WorkerSql,
   input: {
@@ -480,6 +548,8 @@ export async function recordRunFailure(
       "provider_unavailable" | "budget_exceeded" | "validation_failed" | "stale_generation"
     >;
     error: FabricAiSsePayloads["run.error"];
+    responseHash?: string;
+    usage?: ModelUsage;
     now?: Date;
   },
 ): Promise<boolean> {
@@ -494,6 +564,8 @@ export async function recordRunFailure(
       set
         status = ${input.status},
         safe_error = ${transaction.json(asJson(input.error))},
+        response_hash = coalesce(${input.responseHash ?? null}, response_hash),
+        usage = coalesce(${input.usage ? transaction.json(asJson(input.usage)) : null}, usage),
         execution_input = ${transaction.json({ redacted: true })},
         finished_at = ${now},
         last_event_sequence = ${sequence},

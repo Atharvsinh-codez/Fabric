@@ -184,4 +184,81 @@ describe("CanvasPatch", () => {
       expect(result.issues.map((issue) => issue.code)).toContain("node_type_not_allowed");
     }
   });
+
+  it("rejects temporary references that the sequential adapter cannot resolve yet", () => {
+    const frameOperation = patch.operations[0];
+    if (frameOperation.type !== "createNode") throw new Error("Invalid test fixture");
+    const forwardReference: CanvasPatch = {
+      ...patch,
+      operations: [
+        {
+          type: "createNode",
+          tempId: "tmp_child",
+          nodeType: "frame",
+          position: { x: 80, y: 80 },
+          size: { width: 240, height: 160 },
+          content: { title: "Child" },
+          parentId: "tmp_parent",
+        },
+        { ...frameOperation, tempId: "tmp_parent" },
+      ],
+    };
+
+    const result = validateCanvasPatchSemantics(forwardReference, context);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.issues.map((issue) => issue.code)).toContain("forward_reference");
+    }
+  });
+
+  it("treats persisted AI-prefixed node ids as existing durable references", () => {
+    const durableAiNode = "tmp_ai_abcdef123456_001";
+    const durableContext = {
+      ...context,
+      nodes: [
+        ...context.nodes,
+        { id: durableAiNode, type: "frame" as const, width: 320, height: 240 },
+      ],
+      allowedOperations: [
+        "createNode",
+        "createConnector",
+        "updateNode",
+        "moveNode",
+      ] as const,
+    };
+    const durableReferencePatch: CanvasPatch = {
+      ...patch,
+      operations: [
+        {
+          type: "updateNode",
+          nodeId: durableAiNode,
+          content: { title: "Updated existing AI frame" },
+        },
+        {
+          type: "moveNode",
+          nodeId: durableAiNode,
+          position: { x: 120, y: 140 },
+        },
+        {
+          type: "createNode",
+          tempId: "tmp_child",
+          nodeType: "frame",
+          position: { x: 160, y: 180 },
+          size: { width: 180, height: 120 },
+          content: { title: "Child" },
+          parentId: durableAiNode,
+        },
+        {
+          type: "createConnector",
+          tempId: "tmp_connector",
+          sourceId: durableAiNode,
+          targetId: "tmp_child",
+          route: "straight",
+        },
+      ],
+    };
+
+    const result = validateCanvasPatchSemantics(durableReferencePatch, durableContext);
+    expect(result.ok).toBe(true);
+  });
 });

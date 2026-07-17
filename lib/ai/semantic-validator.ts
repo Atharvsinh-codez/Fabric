@@ -37,6 +37,7 @@ export type SemanticValidationIssue = Readonly<{
     | "too_many_operations"
     | "too_many_affected_nodes"
     | "duplicate_identifier"
+    | "forward_reference"
     | "unknown_node"
     | "locked_node"
     | "protected_node"
@@ -109,6 +110,17 @@ export function validateCanvasPatchSemantics(
     }
 
     if (operation.type === "createNode") {
+      if (
+        operation.parentId?.startsWith("tmp_") &&
+        !existingNodes.has(operation.parentId) &&
+        !createdIdentifiers.has(operation.parentId)
+      ) {
+        addIssue(
+          "forward_reference",
+          `${path}.parentId`,
+          "Temporary references must be created before the sequential canvas operation uses them",
+        );
+      }
       if (allowedCreatedNodeTypes && !allowedCreatedNodeTypes.has(operation.nodeType)) {
         addIssue(
           "node_type_not_allowed",
@@ -125,6 +137,43 @@ export function validateCanvasPatchSemantics(
       if (operation.parentId) parentByNode.set(operation.tempId, operation.parentId);
       affectedNodeIds.add(operation.tempId);
       return;
+    }
+
+    const executionReferences: Array<{ value: string; path: string }> = [];
+    if (
+      (operation.type === "writeText" ||
+        operation.type === "createDrawing") &&
+      operation.parentId
+    ) {
+      executionReferences.push({ value: operation.parentId, path: `${path}.parentId` });
+    } else if (operation.type === "createConnector") {
+      executionReferences.push(
+        { value: operation.sourceId, path: `${path}.sourceId` },
+        { value: operation.targetId, path: `${path}.targetId` },
+      );
+    } else if (
+      operation.type === "updateNode" ||
+      operation.type === "moveNode" ||
+      operation.type === "resizeNode" ||
+      operation.type === "deleteNode"
+    ) {
+      executionReferences.push({ value: operation.nodeId, path: `${path}.nodeId` });
+      if (operation.type === "moveNode" && operation.parentId) {
+        executionReferences.push({ value: operation.parentId, path: `${path}.parentId` });
+      }
+    }
+    for (const reference of executionReferences) {
+      if (
+        reference.value.startsWith("tmp_") &&
+        !existingNodes.has(reference.value) &&
+        !createdIdentifiers.has(reference.value)
+      ) {
+        addIssue(
+          "forward_reference",
+          reference.path,
+          "Temporary references must be created before the sequential canvas operation uses them",
+        );
+      }
     }
 
     if (operation.type === "writeText" || operation.type === "createDrawing") {

@@ -22,8 +22,8 @@ import {
 import type { AiProposalRequest } from "@/lib/ai/proposal-request";
 import { captureTldrawCheckpoint } from "@/lib/boards/tldraw-store-adapter";
 import {
-  canvasNodeIdForTldrawShapeRecord,
   canvasSourceGeometryForTldrawShapeRecord,
+  projectedCanvasNodeIdMapForTldrawShapeRecords,
 } from "@/lib/boards/tldraw-document";
 import type { CanvasNode } from "@/lib/types";
 
@@ -46,14 +46,11 @@ function resolveNodeId(
   const direct = id.startsWith("shape:") && editor.getShape(id as TLShapeId)
     ? id as TLShapeId
     : null;
-  const semantic = editor
-    .getCurrentPageShapes()
-    .find(
-      (shape) =>
-        canvasNodeIdForTldrawShapeRecord(
-          shape as unknown as Record<string, unknown>,
-        ) === id,
-    )?.id;
+  const pageShapes = editor.getCurrentPageShapes();
+  const projectedIds = projectedCanvasNodeIdMapForTldrawShapeRecords(
+    pageShapes as unknown as Record<string, unknown>[],
+  );
+  const semantic = pageShapes.find((shape) => projectedIds.get(shape.id) === id)?.id;
   const resolved = temporaryIds.get(id) ?? direct ?? semantic ?? null;
   if (!resolved) throw new Error(`The proposal references an unknown tldraw shape: ${id}`);
   return resolved;
@@ -108,8 +105,21 @@ function shapePropsForNode(operation: Extract<CanvasOperation, { type: "createNo
   }
   if (operation.nodeType === "note") {
     return {
-      type: "note",
-      props: { color, labelColor: "black", richText: toRichText(text) },
+      // tldraw notes have fixed geometry (`resizeMode: "none"`) and project as
+      // 200x200, so they cannot faithfully represent the compiler contract.
+      // Keep Fabric's semantic note type in metadata while using an editable
+      // native geo shape whose persisted dimensions are exact. This is scoped
+      // to AI-created nodes; ordinary board notes remain native note shapes.
+      type: "geo",
+      props: {
+        geo: "rectangle",
+        w: operation.size.width,
+        h: operation.size.height,
+        color,
+        labelColor: "black",
+        fill: "semi",
+        richText: toRichText(text),
+      },
     } as const;
   }
   if (operation.nodeType === "text") {
@@ -170,16 +180,6 @@ function createNode(
     },
   } as TLShapePartial);
   if (parentId) editor.reparentShapes([id], parentId);
-  if (operation.nodeType === "note") {
-    const created = editor.getShape(id);
-    const bounds = created ? editor.getShapePageBounds(created) : null;
-    if (created && bounds && bounds.w > 0 && bounds.h > 0) {
-      editor.resizeShape(created, {
-        x: operation.size.width / bounds.w,
-        y: operation.size.height / bounds.h,
-      });
-    }
-  }
 }
 
 function createNativeDrawing(
@@ -524,13 +524,15 @@ export function serializeTldrawAiSelection(
   nodes: readonly CanvasNode[],
 ): AiProposalRequest["selection"] {
   const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  const projectedIds = projectedCanvasNodeIdMapForTldrawShapeRecords(
+    editor.getCurrentPageShapes() as unknown as Record<string, unknown>[],
+  );
   const includedNodeIds = new Set<string>();
   const selection: AiProposalRequest["selection"][number][] = [];
 
   for (const shape of selectedLeafShapes(editor)) {
-    const nodeId = canvasNodeIdForTldrawShapeRecord(
-      shape as unknown as Record<string, unknown>,
-    );
+    const nodeId = projectedIds.get(shape.id);
+    if (!nodeId) continue;
     if (includedNodeIds.has(nodeId)) continue;
     const node = nodesById.get(nodeId);
     if (!node) continue;

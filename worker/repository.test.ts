@@ -4,6 +4,7 @@ import type { WorkerSql } from "./database";
 import {
   claimAiJobByRunId,
   claimNextAiJob,
+  recordClarificationReady,
 } from "./repository";
 
 const runId = "22222222-2222-4222-8222-222222222222";
@@ -17,6 +18,8 @@ function claimedRow(overrides: Record<string, unknown> = {}) {
     attempt: "1",
     maxAttempts: "1",
     runStatus: "queued" as const,
+    skillVersion: "2.0.0",
+    promptVersion: "canvas-agent.plan.v2",
     provider: "openai-compatible",
     model: "gcli/grok-4.5-medium",
     principalId: "33333333-3333-4333-8333-333333333333",
@@ -68,6 +71,8 @@ describe("serverless AI job claiming", () => {
     );
     expect(statement).toContain("r.model as model");
     expect(statement).toContain("r.provider as provider");
+    expect(statement).toContain('r.skill_version as "skillVersion"');
+    expect(statement).toContain('r.prompt_version as "promptVersion"');
     expect(statement.match(/nextval/gu)).toHaveLength(1);
     expect(values).toContain(runId);
     expect(query).toHaveBeenCalledOnce();
@@ -109,5 +114,61 @@ describe("serverless AI job claiming", () => {
       workerId: "serverless-worker",
       leaseMs: 60_000,
     })).rejects.toThrow(/ordinal.*safe range/i);
+  });
+
+  it("completes a clarification with one safe result event and one terminal event", async () => {
+    const statements: Array<{ text: string; values: unknown[] }> = [];
+    const transaction = Object.assign(
+      vi.fn(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+        const text = strings.join("?").replace(/\s+/gu, " ").trim();
+        statements.push({ text, values });
+        if (text.includes("from ai_runs") && text.includes("for update")) {
+          return [{
+            status: "validating_proposal",
+            lastEventSequence: "5",
+            cancelRequestedAt: null,
+          }];
+        }
+        return [];
+      }),
+      { json: (value: unknown) => value },
+    );
+    const sql = Object.assign(vi.fn(), {
+      json: (value: unknown) => value,
+      begin: async <Result>(callback: (client: typeof transaction) => Promise<Result>) =>
+        callback(transaction),
+    });
+    const row = claimedRow();
+    const claimed = {
+      ...row,
+      providerKeyOrdinal: 1,
+      attempt: 1,
+      maxAttempts: 1,
+      baseDurableSequence: 9,
+    };
+
+    await expect(recordClarificationReady(sql as unknown as WorkerSql, {
+      job: claimed,
+      clarification: {
+        kind: "clarification",
+        reason: "missing-selection",
+        question: "Which cards should I organize?",
+        choices: ["Use my selection"],
+      },
+      responseHash: "b".repeat(64),
+      usage: { totalTokens: 12 },
+    })).resolves.toBe(true);
+
+    expect(statements.some((statement) =>
+      statement.text.includes("update ai_runs") && statement.text.includes("status = 'completed'"),
+    )).toBe(true);
+    const insertedEventTypes = statements
+      .filter((statement) => statement.text.includes("insert into ai_run_events"))
+      .flatMap((statement) => statement.values)
+      .filter((value) => typeof value === "string");
+    expect(insertedEventTypes).toEqual(expect.arrayContaining([
+      "clarification.ready",
+      "run.completed",
+    ]));
   });
 });

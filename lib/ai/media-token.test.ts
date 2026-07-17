@@ -24,6 +24,12 @@ const assetClaim = {
   assetId: "33333333-3333-4333-8333-333333333333",
   contentHash: "a".repeat(64),
 } satisfies AiMediaClaim;
+const selectedDrawingClaim = {
+  kind: "selected-drawing-preview",
+  runId: selectionClaim.runId,
+  boardId: selectionClaim.boardId,
+  selectionHash: "b".repeat(64),
+} satisfies AiMediaClaim;
 
 describe("AI media tokens", () => {
   it("derives deterministic purpose-separated JWT material from the existing auth secret", () => {
@@ -37,7 +43,7 @@ describe("AI media tokens", () => {
     expect(deriveAiMediaSigningKey("a".repeat(32))).not.toContain("a".repeat(16));
   });
 
-  it.each([selectionClaim, assetClaim])(
+  it.each([selectionClaim, selectedDrawingClaim, assetClaim])(
     "round-trips a short-lived $kind capability without adding unrelated authority",
     async (claim) => {
       const token = await issueAiMediaToken({ signingKey, claim, now });

@@ -8,6 +8,7 @@ import { db } from "@/db/clients/web";
 import { aiJobs, aiRunEvents, aiRuns, type AiRunStatus } from "@/db/schema/ai";
 import { boards } from "@/db/schema/product";
 import { hashCanonicalJson } from "@/lib/ai/hash";
+import { buildAuthorizedBoardScene } from "@/lib/ai/engine/authorized-scene";
 import {
   hashIdempotencyKey,
   resolveIdempotentRun,
@@ -24,8 +25,8 @@ import { requireBoardCapability } from "@/lib/boards/authorization";
 import { readCanvasDocument } from "@/lib/boards/canvas-document";
 import { BoardApiError } from "@/lib/boards/http";
 import {
-  canvasNodeIdForTldrawShapeRecord,
   canvasSourceGeometryForTldrawShapeRecord,
+  projectedCanvasNodeIdMapForTldrawShapeRecords,
 } from "@/lib/boards/tldraw-document";
 
 const SDK_VERSION = "native-fetch-sse.v1";
@@ -51,11 +52,15 @@ function canonicalSelection(
   const snapshot = readCanvasDocument(document);
   const currentNodes = new Map(snapshot.nodes.map((node) => [node.id, node]));
   const durableShapes = new Map<string, Record<string, unknown>>();
-  for (const record of Object.values(snapshot.tldraw?.snapshot.store ?? {})) {
+  const shapeRecords = Object.values(snapshot.tldraw?.snapshot.store ?? {})
+    .filter((record) => record.typeName === "shape") as Record<string, unknown>[];
+  const projectedIds = projectedCanvasNodeIdMapForTldrawShapeRecords(shapeRecords);
+  for (const record of shapeRecords) {
     if (record.typeName !== "shape" || record.type === "arrow" || record.type === "group") {
       continue;
     }
-    const nodeId = canvasNodeIdForTldrawShapeRecord(record as Record<string, unknown>);
+    const nodeId = projectedIds.get(String(record.id));
+    if (!nodeId) continue;
     // The semantic projection keeps the first valid node id and assigns a
     // deterministic fallback to duplicate metadata. Mirror that behavior so
     // a duplicate shape cannot replace the selected shape's durable geometry.
@@ -131,13 +136,20 @@ export async function authorizeProposalSnapshot(
     throw staleSnapshot("stale_sequence", "The board changed before the AI run was created.");
   }
 
+  const selection = canonicalSelection(request, current.document);
+  const snapshot = readCanvasDocument(current.document);
   return {
     ...request,
     workspaceId: current.workspaceId,
     boardId: current.id,
     documentGenerationId: current.documentGenerationId,
     durableSequence,
-    selection: canonicalSelection(request, current.document),
+    selection,
+    scene: buildAuthorizedBoardScene({
+      snapshot,
+      selection,
+      viewport: request.viewport,
+    }),
   };
 }
 

@@ -1,18 +1,23 @@
 import { createHash } from "node:crypto";
 
-import { CanvasPatchSchema, CANVAS_PATCH_JSON_SCHEMA } from "../lib/ai/canvas-patch";
-import { normalizeCanvasPatchCandidate } from "../lib/ai/canvas-patch-normalizer";
 import {
   FabricModelError,
   type FabricModelProvider,
   type ModelUsage,
 } from "../lib/ai/contracts";
+import { BoardPlanSchema, BOARD_PLAN_JSON_SCHEMA } from "../lib/ai/engine/board-plan";
+import { buildSelectionOnlyAuthorizedScene } from "../lib/ai/engine/authorized-scene";
+import {
+  BoardPlanCompileError,
+  CANVAS_COMPILER_VERSION,
+  compileBoardProposal,
+} from "../lib/ai/engine/compiler";
 import { hashCanonicalJson } from "../lib/ai/hash";
 import { AiProposalRequestSchema } from "../lib/ai/proposal-request";
 import { retryDelayMs } from "../lib/ai/run-state";
 import { validateCanvasPatchSemantics } from "../lib/ai/semantic-validator";
 import {
-  buildBoardAssistanceInput,
+  buildBoardAssistanceTurnInput,
   getBoardAssistanceSkill,
 } from "../lib/ai/skills/board-assistance.v1";
 
@@ -25,7 +30,7 @@ import {
   baseSnapshotIsCurrent,
   type ClaimedAiJob,
   readAiRunControl,
-  recordProposalDelta,
+  recordClarificationReady,
   recordProposalReady,
   recordProviderInteractionId,
   recordRunCanceled,
@@ -34,9 +39,6 @@ import {
   refreshAiJobLease,
   releaseAiJobForRetry,
 } from "./repository";
-
-const PROPOSAL_DELTA_FLUSH_BYTES = 8 * 1_024;
-const PROPOSAL_DELTA_FLUSH_MS = 750;
 
 type AbortReason = "canceled" | "deadline_exceeded" | "lease_lost";
 
@@ -129,6 +131,7 @@ export async function processClaimedAiJob(input: {
   buildModelImages?: typeof buildAiModelImages;
 }): Promise<void> {
   const { sql, job, provider } = input;
+  const processingStartedAt = Date.now();
   const requestResult = AiProposalRequestSchema.safeParse(job.executionInput);
   if (!requestResult.success) {
     await recordRunFailure(sql, {
@@ -172,6 +175,18 @@ export async function processClaimedAiJob(input: {
   const request = requestResult.data;
   const skill = getBoardAssistanceSkill();
   const manifest = skill.manifest;
+  if (job.skillVersion !== manifest.version || job.promptVersion !== manifest.promptVersion) {
+    await recordRunFailure(sql, {
+      job,
+      status: "provider_unavailable",
+      error: {
+        code: "provider_error",
+        message: "Fabric agent was upgraded while this request was queued. Please try again.",
+        retryable: true,
+      },
+    });
+    return;
+  }
   const maxAccumulatedOutputBytes = manifest.limits.maxPatchBytes * 2;
   const patchBase = {
     workspaceId: job.workspaceId,
@@ -230,6 +245,7 @@ export async function processClaimedAiJob(input: {
           media: input.media,
         })
       : [];
+    const contextPreparedAt = Date.now();
 
     await recordRunProgress(sql, {
       runId: job.runId,
@@ -237,13 +253,15 @@ export async function processClaimedAiJob(input: {
       phase: "calling_model",
       message: skill.progressMessage,
     });
+    const modelStartedAt = Date.now();
+    const modelInput = buildBoardAssistanceTurnInput(request);
     const turn = await provider.createTurn({
-      input: buildBoardAssistanceInput(request, patchBase),
+      input: modelInput.input,
       ...(modelImages.length > 0 ? { images: modelImages } : {}),
       systemInstruction: skill.systemInstruction,
       thinkingLevel: manifest.thinkingLevel,
       maxOutputTokens: manifest.limits.maxOutputTokens,
-      responseSchema: CANVAS_PATCH_JSON_SCHEMA,
+      responseSchema: BOARD_PLAN_JSON_SCHEMA,
       timeoutMs: Math.max(1_000, job.deadlineAt.getTime() - Date.now()),
       keyRotationOrdinal: job.providerKeyOrdinal - 1,
       signal: controller.signal,
@@ -251,54 +269,61 @@ export async function processClaimedAiJob(input: {
 
     let output = "";
     let outputBytes = 0;
-    let pendingDelta = "";
-    let pendingDeltaBytes = 0;
-    let hasPersistedDelta = false;
-    let lastDeltaPersistedAt = 0;
-    const flushProposalDelta = async (force = false): Promise<void> => {
-      if (!pendingDelta) return;
-      const now = Date.now();
-      if (
-        !force &&
-        hasPersistedDelta &&
-        pendingDeltaBytes < PROPOSAL_DELTA_FLUSH_BYTES &&
-        now - lastDeltaPersistedAt < PROPOSAL_DELTA_FLUSH_MS
-      ) {
-        return;
-      }
-
-      const text = pendingDelta;
-      pendingDelta = "";
-      pendingDeltaBytes = 0;
-      if (!(await recordProposalDelta(sql, job.runId, text))) {
-        controller.abort("canceled");
-        controller.signal.throwIfAborted();
-      }
-      hasPersistedDelta = true;
-      lastDeltaPersistedAt = now;
-    };
-
+    let firstContentAt: number | null = null;
     for await (const event of turn.events) {
       controller.signal.throwIfAborted();
       if (event.type === "interaction_started") {
         await recordProviderInteractionId(sql, job.runId, event.interactionId);
       } else if (event.type === "text_delta") {
+        firstContentAt ??= Date.now();
         output += event.text;
         const deltaBytes = new TextEncoder().encode(event.text).byteLength;
         outputBytes += deltaBytes;
-        pendingDelta += event.text;
-        pendingDeltaBytes += deltaBytes;
         if (outputBytes > maxAccumulatedOutputBytes) {
           throw new FabricModelError("invalid_request", "The response exceeded its byte budget");
         }
-        await flushProposalDelta();
       } else if (event.type === "interaction_completed") {
         usage = event.usage;
       }
     }
-    await flushProposalDelta(true);
+    const modelCompletedAt = Date.now();
 
     if (await cancelIfRequested(sql, job.runId)) return;
+    const responseHash = createHash("sha256").update(output, "utf8").digest("hex");
+    const scene = request.scene ?? buildSelectionOnlyAuthorizedScene({
+      selection: request.selection,
+      viewport: request.viewport,
+    });
+    const measuredUsage = (input: {
+      planActionCount: number;
+      compiledOperationCount: number;
+      compileMs: number;
+    }): ModelUsage => ({
+      ...usage,
+      fabric: {
+        engineVersion: "board-plan.v1",
+        compilerVersion: CANVAS_COMPILER_VERSION,
+        sceneVersion: scene.version,
+        sceneNodeCount: scene.nodes.length,
+        sceneEdgeCount: scene.edges.length,
+        selectedNodeCount: scene.nodes.filter((node) => node.role === "selected").length,
+        visualInputCount: modelImages.length,
+        modelInputBytes: modelInput.metrics.inputBytes,
+        sceneNodesOmitted: modelInput.metrics.sceneNodesOmitted,
+        sceneEdgesOmitted: modelInput.metrics.sceneEdgesOmitted,
+        sceneTextCharactersOmitted: modelInput.metrics.sceneTextCharactersOmitted,
+        conversationMessagesOmitted: modelInput.metrics.conversationMessagesOmitted,
+        planActionCount: input.planActionCount,
+        compiledOperationCount: input.compiledOperationCount,
+        contextPreparationMs: Math.max(0, contextPreparedAt - processingStartedAt),
+        modelLatencyMs: Math.max(0, modelCompletedAt - modelStartedAt),
+        ...(firstContentAt === null
+          ? {}
+          : { timeToFirstContentMs: Math.max(0, firstContentAt - modelStartedAt) }),
+        compileMs: input.compileMs,
+        outputBytes,
+      },
+    });
     await recordRunProgress(sql, {
       runId: job.runId,
       status: "building_proposal",
@@ -313,6 +338,12 @@ export async function processClaimedAiJob(input: {
       await recordRunFailure(sql, {
         job,
         status: "validation_failed",
+        responseHash,
+        usage: measuredUsage({
+          planActionCount: 0,
+          compiledOperationCount: 0,
+          compileMs: 0,
+        }),
         error: {
           code: "invalid_model_output",
           message: "AI returned a proposal that could not be reviewed safely.",
@@ -321,20 +352,20 @@ export async function processClaimedAiJob(input: {
       });
       return;
     }
-    const normalizedOutput = normalizeCanvasPatchCandidate(parsedOutput);
-    if (normalizedOutput.compatibilityMode !== "none") {
-      console.warn("[fabric-ai-worker] normalized provider canvas patch", {
-        compatibilityMode: normalizedOutput.compatibilityMode,
-      });
-    }
-    const patchResult = CanvasPatchSchema.safeParse(normalizedOutput.value);
-    if (!patchResult.success) {
+    const planResult = BoardPlanSchema.safeParse(parsedOutput);
+    if (!planResult.success) {
       await recordRunFailure(sql, {
         job,
         status: "validation_failed",
+        responseHash,
+        usage: measuredUsage({
+          planActionCount: 0,
+          compiledOperationCount: 0,
+          compileMs: 0,
+        }),
         error: {
           code: "invalid_model_output",
-          message: "AI returned a proposal that did not match the canvas contract.",
+          message: "AI returned a plan that did not match the Fabric agent contract.",
           retryable: false,
         },
       });
@@ -351,6 +382,12 @@ export async function processClaimedAiJob(input: {
       await recordRunFailure(sql, {
         job,
         status: "stale_generation",
+        responseHash,
+        usage: measuredUsage({
+          planActionCount: planResult.data.kind === "proposal" ? planResult.data.actions.length : 0,
+          compiledOperationCount: 0,
+          compileMs: 0,
+        }),
         error: {
           code: "stale_generation",
           message: "The board changed while the proposal was being generated.",
@@ -359,7 +396,58 @@ export async function processClaimedAiJob(input: {
       });
       return;
     }
-    const semanticResult = validateCanvasPatchSemantics(patchResult.data, {
+    if (planResult.data.kind === "clarification") {
+      await recordClarificationReady(sql, {
+        job,
+        clarification: {
+          kind: "clarification",
+          reason: planResult.data.reason,
+          question: planResult.data.question,
+          choices: planResult.data.choices,
+        },
+        responseHash,
+        usage: measuredUsage({
+          planActionCount: 0,
+          compiledOperationCount: 0,
+          compileMs: 0,
+        }),
+      });
+      return;
+    }
+
+    let patch;
+    let compileMs = 0;
+    const compileStartedAt = Date.now();
+    try {
+      patch = compileBoardProposal({
+        proposal: planResult.data,
+        scene,
+        base: patchBase,
+      });
+      compileMs = Math.max(0, Date.now() - compileStartedAt);
+    } catch (error) {
+      compileMs = Math.max(0, Date.now() - compileStartedAt);
+      const issueCode = error instanceof BoardPlanCompileError ? error.code : "compile_failed";
+      await recordRunFailure(sql, {
+        job,
+        status: "validation_failed",
+        responseHash,
+        usage: measuredUsage({
+          planActionCount: planResult.data.actions.length,
+          compiledOperationCount: 0,
+          compileMs,
+        }),
+        error: {
+          code: "semantic_validation_failed",
+          message: "Fabric agent could not compile a readable change for this board snapshot.",
+          retryable: false,
+          issueCodes: [issueCode],
+        },
+      });
+      return;
+    }
+
+    const semanticResult = validateCanvasPatchSemantics(patch, {
       base: patchBase,
       nodes: request.selection.map((node) => ({
         id: node.id,
@@ -381,6 +469,12 @@ export async function processClaimedAiJob(input: {
       await recordRunFailure(sql, {
         job,
         status: "validation_failed",
+        responseHash,
+        usage: measuredUsage({
+          planActionCount: planResult.data.actions.length,
+          compiledOperationCount: patch.operations.length,
+          compileMs,
+        }),
         error: {
           code: "semantic_validation_failed",
           message: "AI returned a proposal that is not safe for this board snapshot.",
@@ -392,8 +486,8 @@ export async function processClaimedAiJob(input: {
     }
 
     const proposal = {
-      patch: patchResult.data,
-      patchHash: hashCanonicalJson(patchResult.data),
+      patch,
+      patchHash: hashCanonicalJson(patch),
       patchBytes: semanticResult.patchBytes,
       affectedNodeIds: semanticResult.affectedNodeIds,
       riskClass: semanticResult.riskClass,
@@ -401,8 +495,12 @@ export async function processClaimedAiJob(input: {
     await recordProposalReady(sql, {
       job,
       proposal,
-      responseHash: createHash("sha256").update(output, "utf8").digest("hex"),
-      usage,
+      responseHash,
+      usage: measuredUsage({
+        planActionCount: planResult.data.actions.length,
+        compiledOperationCount: patch.operations.length,
+        compileMs,
+      }),
     });
   } catch (error) {
     const reason = abortReason(controller.signal);

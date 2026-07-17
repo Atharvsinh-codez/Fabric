@@ -24,6 +24,14 @@ const AiMediaClaimSchema = z.discriminatedUnion("kind", [
     .strict(),
   z
     .object({
+      kind: z.literal("selected-drawing-preview"),
+      runId: UuidSchema,
+      boardId: UuidSchema,
+      selectionHash: ContentHashSchema,
+    })
+    .strict(),
+  z
+    .object({
       kind: z.literal("board-asset"),
       runId: UuidSchema,
       boardId: UuidSchema,
@@ -39,6 +47,18 @@ const AiMediaTokenPayloadSchema = z.discriminatedUnion("kind", [
       kind: z.literal("selection-preview"),
       runId: UuidSchema,
       boardId: UuidSchema,
+      iat: z.number().int().nonnegative(),
+      exp: z.number().int().positive(),
+      iss: z.literal(AI_MEDIA_TOKEN_ISSUER),
+      aud: z.literal(AI_MEDIA_TOKEN_AUDIENCE),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("selected-drawing-preview"),
+      runId: UuidSchema,
+      boardId: UuidSchema,
+      selectionHash: ContentHashSchema,
       iat: z.number().int().nonnegative(),
       exp: z.number().int().positive(),
       iss: z.literal(AI_MEDIA_TOKEN_ISSUER),
@@ -140,6 +160,13 @@ export async function verifyAiMediaToken(
           assetId: parsed.data.assetId,
           contentHash: parsed.data.contentHash,
         }
+      : parsed.data.kind === "selected-drawing-preview"
+        ? {
+            kind: parsed.data.kind,
+            runId: parsed.data.runId,
+            boardId: parsed.data.boardId,
+            selectionHash: parsed.data.selectionHash,
+          }
       : {
           kind: parsed.data.kind,
           runId: parsed.data.runId,

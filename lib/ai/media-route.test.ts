@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   select: vi.fn(),
   verifyAiMediaToken: vi.fn(),
   renderAiSelectionPreview: vi.fn(),
+  renderAiScenePreview: vi.fn(),
   createBoardAssetResponse: vi.fn(),
 }));
 
@@ -15,18 +16,21 @@ vi.mock("@/lib/ai/media-token", async (importOriginal) => {
 });
 vi.mock("@/lib/ai/server/selection-preview", () => ({
   renderAiSelectionPreview: mocks.renderAiSelectionPreview,
+  renderAiScenePreview: mocks.renderAiScenePreview,
 }));
 vi.mock("@/lib/boards/assets/response", () => ({
   createBoardAssetResponse: mocks.createBoardAssetResponse,
 }));
 
 import { GET } from "@/app/api/ai/media/[token]/route";
+import { buildAuthorizedBoardScene } from "@/lib/ai/engine/authorized-scene";
 import { deriveAiMediaSigningKey } from "@/lib/ai/media-token";
 
 const previousAuthSecret = process.env.AUTH_SECRET;
 const authSecret = "auth-secret-with-at-least-thirty-two-random-characters";
 const runId = "11111111-1111-4111-8111-111111111111";
 const boardId = "22222222-2222-4222-8222-222222222222";
+const selectionHash = "a".repeat(64);
 const selection = [
   {
     id: "drawing-1",
@@ -61,6 +65,25 @@ const executionInput = {
   viewport: { x: 0, y: 0, width: 800, height: 600 },
   conversation: [],
 };
+const scene = buildAuthorizedBoardScene({
+  snapshot: {
+    nodes: [
+      {
+        id: selection[0]!.id,
+        type: selection[0]!.type,
+        title: selection[0]!.title,
+        x: selection[0]!.x,
+        y: selection[0]!.y,
+        width: selection[0]!.width,
+        height: selection[0]!.height,
+        fill: "#ffffff",
+      },
+    ],
+    edges: [],
+  },
+  selection,
+  viewport: executionInput.viewport,
+});
 
 function selectResults(...results: unknown[][]): void {
   const limit = vi.fn();
@@ -88,7 +111,8 @@ beforeEach(() => {
     boardId,
   });
   mocks.renderAiSelectionPreview.mockResolvedValue(new Uint8Array([137, 80, 78, 71]));
-  selectResults([{ boardId, executionInput }]);
+  mocks.renderAiScenePreview.mockResolvedValue(new Uint8Array([137, 80, 78, 71]));
+  selectResults([{ boardId, selectionHash, executionInput }]);
 });
 
 afterEach(() => {
@@ -114,6 +138,60 @@ describe("AI media route", () => {
     expect(mocks.renderAiSelectionPreview).toHaveBeenCalledWith(selection);
   });
 
+  it("serves a selection-hash-bound drawing crop even when the run also has a scene", async () => {
+    mocks.verifyAiMediaToken.mockResolvedValue({
+      kind: "selected-drawing-preview",
+      runId,
+      boardId,
+      selectionHash,
+    });
+    selectResults([{
+      boardId,
+      selectionHash,
+      executionInput: { ...executionInput, scene },
+    }]);
+
+    const response = await GET(request(), context());
+
+    expect(response.status).toBe(200);
+    expect(mocks.renderAiSelectionPreview).toHaveBeenCalledWith(selection);
+    expect(mocks.renderAiScenePreview).not.toHaveBeenCalled();
+  });
+
+  it("serves the global scene for the existing scene-preview capability", async () => {
+    selectResults([{
+      boardId,
+      selectionHash,
+      executionInput: { ...executionInput, scene },
+    }]);
+
+    const response = await GET(request(), context());
+
+    expect(response.status).toBe(200);
+    expect(mocks.renderAiScenePreview).toHaveBeenCalledWith(scene);
+    expect(mocks.renderAiSelectionPreview).not.toHaveBeenCalled();
+  });
+
+  it("hides a selected-drawing capability whose selection hash no longer matches", async () => {
+    mocks.verifyAiMediaToken.mockResolvedValue({
+      kind: "selected-drawing-preview",
+      runId,
+      boardId,
+      selectionHash,
+    });
+    selectResults([{
+      boardId,
+      selectionHash: "b".repeat(64),
+      executionInput: { ...executionInput, scene },
+    }]);
+
+    const response = await GET(request(), context());
+
+    expect(response.status).toBe(404);
+    expect(mocks.renderAiSelectionPreview).not.toHaveBeenCalled();
+    expect(mocks.renderAiScenePreview).not.toHaveBeenCalled();
+  });
+
   it("hides an absent, terminal, archived, or expired run behind one not-found response", async () => {
     selectResults([]);
     const response = await GET(request(), context());
@@ -121,6 +199,7 @@ describe("AI media route", () => {
     expect(response.status).toBe(404);
     expect(response.headers.get("cache-control")).toContain("no-store");
     expect(mocks.renderAiSelectionPreview).not.toHaveBeenCalled();
+    expect(mocks.renderAiScenePreview).not.toHaveBeenCalled();
   });
 
   it("fails closed when the source auth secret is missing", async () => {

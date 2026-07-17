@@ -107,13 +107,14 @@ describe("OpenAiCompatibleChatProvider", () => {
       stream: true,
       stream_options: { include_usage: true },
       max_tokens: 16_384,
+      reasoning_effort: "medium",
       messages: [
         { role: "system", content: "system contract" },
         { role: "user", content: "bounded input" },
       ],
       response_format: {
         type: "json_schema",
-        json_schema: { name: "fabric_canvas_patch", strict: true },
+        json_schema: { name: "fabric_board_plan", strict: false },
       },
     });
     expect(body).not.toHaveProperty("store");

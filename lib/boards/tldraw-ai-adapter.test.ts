@@ -1,5 +1,17 @@
+// @vitest-environment happy-dom
+
+import Document from "@tiptap/extension-document";
+import Paragraph from "@tiptap/extension-paragraph";
+import Text from "@tiptap/extension-text";
 import { describe, expect, it } from "vitest";
-import type { Editor, TLShape, TLShapeId } from "tldraw";
+import {
+  createTLStore,
+  defaultBindingUtils,
+  defaultShapeUtils,
+  Editor,
+  type TLShape,
+  type TLShapeId,
+} from "tldraw";
 import { drawShapeProps } from "@tldraw/tlschema";
 
 import {
@@ -7,6 +19,16 @@ import {
   serializeTldrawAiSelection,
 } from "./tldraw-ai-adapter";
 import type { CanvasNode, NodeType } from "../types";
+import { BoardProposalSchema } from "../ai/engine/board-plan";
+import { buildAuthorizedBoardScene } from "../ai/engine/authorized-scene";
+import { compileBoardProposal } from "../ai/engine/compiler";
+import { verifyApprovedPatchProjection } from "../ai/approval";
+import {
+  canvasNodeIdForTldrawShapeRecord,
+  createFabricTldrawDocument,
+  projectTldrawDocument,
+} from "./tldraw-document";
+import type { CanvasPatch } from "../ai/canvas-patch";
 
 function shape(
   id: string,
@@ -43,6 +65,7 @@ function selectionEditor(input: {
   const shapesById = new Map(input.shapes.map((entry) => [entry.id, entry]));
   return {
     getSelectedShapes: () => input.selected,
+    getCurrentPageShapes: () => input.shapes,
     getShape: (id: TLShapeId) => shapesById.get(id),
     getSortedChildIdsForParent: (parent: TLShapeId) => input.children?.[parent] ?? [],
   } as unknown as Editor;
@@ -108,6 +131,58 @@ describe("tldraw AI selection serialization", () => {
     expect(
       serializeTldrawAiSelection(editor, [node("node-only-child", "text")]),
     ).toHaveLength(1);
+  });
+
+  it("selects and applies to the repaired id of a historical duplicate AI shape", async () => {
+    const duplicateId = "tmp_ai_historical_001";
+    const first = shape("historical-first", "geo", duplicateId);
+    const second = shape("historical-second", "geo", duplicateId);
+    const secondFallbackId = canvasNodeIdForTldrawShapeRecord({
+      ...(second as unknown as Record<string, unknown>),
+      meta: {},
+    });
+    const editor = selectionEditor({
+      selected: [first, second],
+      shapes: [first, second],
+    });
+
+    expect(serializeTldrawAiSelection(editor, [
+      node(duplicateId, "rectangle"),
+      node(secondFallbackId, "rectangle"),
+    ]).map((entry) => entry.id)).toEqual([duplicateId, secondFallbackId]);
+
+    const updates: Array<Record<string, unknown>> = [];
+    const applyEditor = {
+      getInstanceState: () => ({ isReadonly: false }),
+      markHistoryStoppingPoint: () => "mark:historical",
+      run: (callback: () => void) => callback(),
+      getCurrentPageShapes: () => [first, second],
+      getShape: (id: TLShapeId) => id === first.id ? first : id === second.id ? second : undefined,
+      updateShape: (input: Record<string, unknown>) => updates.push(input),
+      bailToMark: () => undefined,
+    } as unknown as Editor;
+    await applyTldrawProposal({
+      patch: {
+        schemaVersion: 1,
+        summary: "Update the repaired historical shape.",
+        base: {
+          workspaceId: "workspace-1",
+          boardId: "board-1",
+          documentGenerationId: "generation-1",
+          durableSequence: 1,
+        },
+        operations: [{
+          type: "updateNode",
+          nodeId: secondFallbackId,
+          content: { title: "Second shape" },
+        }],
+      },
+      patchHash: "c".repeat(64),
+      patchBytes: 256,
+      affectedNodeIds: [secondFallbackId],
+      riskClass: "low",
+    }, applyEditor);
+    expect(updates[0]?.id).toBe(second.id);
   });
 
   it("serializes bounded source geometry for a selected pen stroke", () => {
@@ -200,5 +275,191 @@ describe("tldraw AI selection serialization", () => {
     const props = created[0]?.props as Record<string, unknown>;
     expect(Array.isArray(props.segments) && props.segments.length > 1).toBe(true);
     expect(() => drawShapeProps.segments.validate(props.segments)).not.toThrow();
+  });
+
+  it("applies a compiled Unicode answer as visible native rich-text canvas content", async () => {
+    const created: Array<Record<string, unknown>> = [];
+    const editor = {
+      getInstanceState: () => ({ isReadonly: false }),
+      markHistoryStoppingPoint: () => "mark:test",
+      run: (callback: () => void) => callback(),
+      createShape: (input: Record<string, unknown>) => created.push(input),
+      reparentShapes: () => undefined,
+      bailToMark: () => undefined,
+    } as unknown as Editor;
+    const context = buildAuthorizedBoardScene({
+      snapshot: { nodes: [], edges: [] },
+      selection: [],
+      viewport: { x: 0, y: 0, width: 1_200, height: 800 },
+    });
+    const proposal = BoardProposalSchema.parse({
+      schemaVersion: 1,
+      kind: "proposal",
+      summary: "Write the exact mathematical answer.",
+      placement: "viewport-center",
+      flow: "vertical",
+      actions: [
+        {
+          kind: "composeText",
+          key: "answer",
+          presentation: "typed",
+          blocks: [{ role: "answer", text: "x = 4 ⇒ ∀ x ∈ ℝ" }],
+        },
+      ],
+    });
+    const patch = compileBoardProposal({
+      proposal,
+      scene: context,
+      base: {
+        workspaceId: "workspace-1",
+        boardId: "board-1",
+        documentGenerationId: "generation-1",
+        durableSequence: 1,
+      },
+    });
+    const createdOperation = patch.operations[0];
+    if (createdOperation?.type !== "createNode") throw new Error("Invalid compiled fixture");
+
+    await applyTldrawProposal(
+      {
+        patch,
+        patchHash: "b".repeat(64),
+        patchBytes: JSON.stringify(patch).length,
+        affectedNodeIds: [createdOperation.tempId],
+        riskClass: "low",
+      },
+      editor,
+    );
+
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({
+      type: "geo",
+      meta: {
+        fabric: {
+          nodeId: createdOperation.tempId,
+          nodeType: "summary",
+          title: "x = 4 ⇒ ∀ x ∈ ℝ",
+        },
+      },
+    });
+    expect(JSON.stringify(created[0])).toContain("x = 4 ⇒ ∀ x ∈ ℝ");
+    expect(created[0]?.type).not.toBe("draw");
+
+    const createdRecord = created[0]!;
+    const storedRecord = {
+      typeName: "shape",
+      rotation: 0,
+      index: "a1",
+      parentId: "page:main",
+      isLocked: false,
+      opacity: 1,
+      ...createdRecord,
+    };
+    const document = createFabricTldrawDocument({
+      store: { [String(createdRecord.id)]: storedRecord },
+      schema: { schemaVersion: 2, sequences: {} },
+    });
+    expect(document).not.toBeNull();
+    const projection = projectTldrawDocument(document!);
+    expect(projection.nodes[0]?.meta).toBe("tldraw:geo");
+    expect(verifyApprovedPatchProjection(patch, projection)).toEqual({ ok: true });
+  });
+
+  it("round-trips an AI note through a real tldraw store with exact contract dimensions", async () => {
+    const shapeUtils = [...defaultShapeUtils];
+    const bindingUtils = [...defaultBindingUtils];
+    const store = createTLStore({ shapeUtils, bindingUtils });
+    const container = document.createElement("div");
+    document.body.append(container);
+    const editor = new Editor({
+      store,
+      shapeUtils,
+      bindingUtils,
+      tools: [],
+      getContainer: () => container,
+      textOptions: {
+        addFontsFromNode: (_node, state) => state,
+        tipTapConfig: { extensions: [Document, Paragraph, Text] },
+      },
+    });
+    const patch = {
+      schemaVersion: 1,
+      summary: "Add an exact-size decision note.",
+      base: {
+        workspaceId: "workspace-1",
+        boardId: "board-1",
+        documentGenerationId: "generation-1",
+        durableSequence: 1,
+      },
+      operations: [
+        {
+          type: "createNode",
+          tempId: "tmp_ai_note_001",
+          nodeType: "note",
+          position: { x: 140, y: 90 },
+          size: { width: 320, height: 180 },
+          content: { title: "Decision", body: "Ship the reliable agent." },
+          appearance: { fill: "butter" },
+        },
+      ],
+    } satisfies CanvasPatch;
+
+    try {
+      await applyTldrawProposal(
+        {
+          patch,
+          patchHash: "d".repeat(64),
+          patchBytes: JSON.stringify(patch).length,
+          affectedNodeIds: ["tmp_ai_note_001"],
+          riskClass: "low",
+        },
+        editor,
+      );
+
+      const nativeShape = editor.getCurrentPageShapes()[0];
+      if (!nativeShape) throw new Error("AI note was not created");
+      expect(nativeShape).toMatchObject({
+        type: "geo",
+        x: 140,
+        y: 90,
+        props: {
+          geo: "rectangle",
+          w: 320,
+          h: 180,
+        },
+        meta: {
+          fabric: {
+            kind: "node",
+            nodeId: "tmp_ai_note_001",
+            nodeType: "note",
+            title: "Decision",
+            body: "Ship the reliable agent.",
+          },
+        },
+      });
+
+      const document = createFabricTldrawDocument(
+        editor.store.getStoreSnapshot("document"),
+      );
+      expect(document).not.toBeNull();
+      const projection = projectTldrawDocument(document!);
+      expect(projection.nodes).toEqual([
+        expect.objectContaining({
+          id: "tmp_ai_note_001",
+          type: "note",
+          title: "Decision",
+          body: "Ship the reliable agent.",
+          x: 140,
+          y: 90,
+          width: 320,
+          height: 180,
+          meta: "tldraw:geo",
+        }),
+      ]);
+      expect(verifyApprovedPatchProjection(patch, projection)).toEqual({ ok: true });
+    } finally {
+      editor.dispose();
+      container.remove();
+    }
   });
 });

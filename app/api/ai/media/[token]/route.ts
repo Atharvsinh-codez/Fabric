@@ -10,7 +10,10 @@ import {
   verifyAiMediaToken,
 } from "@/lib/ai/media-token";
 import { AiProposalRequestSchema } from "@/lib/ai/proposal-request";
-import { renderAiSelectionPreview } from "@/lib/ai/server/selection-preview";
+import {
+  renderAiScenePreview,
+  renderAiSelectionPreview,
+} from "@/lib/ai/server/selection-preview";
 import { createBoardAssetResponse } from "@/lib/boards/assets/response";
 
 export const runtime = "nodejs";
@@ -79,6 +82,7 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
     const [run] = await db
       .select({
         boardId: aiRuns.boardId,
+        selectionHash: aiRuns.selectionHash,
         executionInput: aiRuns.executionInput,
       })
       .from(aiRuns)
@@ -125,12 +129,18 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
     const executionInput = AiProposalRequestSchema.safeParse(run.executionInput);
     if (
       !executionInput.success ||
-      executionInput.data.boardId !== claim.boardId
+      executionInput.data.boardId !== claim.boardId ||
+      (claim.kind === "selected-drawing-preview" &&
+        run.selectionHash !== claim.selectionHash)
     ) {
       return notFoundResponse();
     }
     return selectionPreviewResponse(
-      await renderAiSelectionPreview(executionInput.data.selection),
+      claim.kind === "selected-drawing-preview"
+        ? await renderAiSelectionPreview(executionInput.data.selection)
+        : executionInput.data.scene
+        ? await renderAiScenePreview(executionInput.data.scene)
+        : await renderAiSelectionPreview(executionInput.data.selection),
     );
   } catch (error) {
     return error instanceof AiMediaTokenError && error.code === "configuration"

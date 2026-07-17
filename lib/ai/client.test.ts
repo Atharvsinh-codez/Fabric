@@ -114,6 +114,28 @@ describe("streamAiProposal", () => {
     );
   });
 
+  it("returns a validated clarification without pretending a canvas patch exists", async () => {
+    const clarification = {
+      kind: "clarification",
+      reason: "missing-selection",
+      question: "Which cards should I organize?",
+      choices: ["Use my current selection", "Create a new group"],
+    } as const;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        streamResponse([
+          eventRecord("clarification.ready", 1, clarification),
+          eventRecord("run.completed", 2, { usage: { totalTokens: 12 } }),
+        ]),
+      ),
+    );
+
+    await expect(
+      streamAiProposal({ request, signal: new AbortController().signal }),
+    ).resolves.toEqual(clarification);
+  });
+
   it("surfaces streamed rate limits as retryable safe errors", async () => {
     vi.stubGlobal(
       "fetch",

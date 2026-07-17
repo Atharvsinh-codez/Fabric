@@ -432,11 +432,20 @@ export class OpenAiCompatibleChatProvider implements FabricModelProvider {
         },
       ],
       max_tokens: request.maxOutputTokens,
+      reasoning_effort:
+        request.thinkingLevel === "high"
+          ? "high"
+          : request.thinkingLevel === "medium"
+            ? "medium"
+            : "low",
       response_format: {
         type: "json_schema",
         json_schema: {
-          name: "fabric_canvas_patch",
-          strict: true,
+          name: "fabric_board_plan",
+          // Runtime Zod validation remains authoritative. Non-strict mode is
+          // intentional because OpenAI-compatible gateways implement different
+          // strict-schema subsets (notably root unions and optional fields).
+          strict: false,
           schema: request.responseSchema,
         },
       },

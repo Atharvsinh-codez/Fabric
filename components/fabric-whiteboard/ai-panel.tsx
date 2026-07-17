@@ -335,10 +335,7 @@ export function FabricAiPanel({
       const baseDurableSequence = pendingApproval.proposal.patch.base.durableSequence;
       for (let attempt = 0; attempt < 60 && !canceled; attempt += 1) {
         const observedDurableSequence = durableSequenceRef.current;
-        if (
-          !persistenceReadyRef.current ||
-          observedDurableSequence <= baseDurableSequence
-        ) {
+        if (!persistenceReadyRef.current) {
           await wait();
           continue;
         }
@@ -438,7 +435,7 @@ export function FabricAiPanel({
     runIdRef.current = null;
 
     try {
-      const nextProposal = await streamAiProposal({
+      const nextResult = await streamAiProposal({
         request: {
           skill: "canvas-agent",
           boardId,
@@ -463,6 +460,21 @@ export function FabricAiPanel({
           }
         },
       });
+      if (!("patch" in nextResult)) {
+        const choiceText = nextResult.choices.length > 0
+          ? `\n\n${nextResult.choices.map((choice, index) => `${index + 1}. ${choice}`).join("\n")}`
+          : "";
+        setMessages((current) => appendMessage(
+          current,
+          createMessage("assistant", `${nextResult.question}${choiceText}`),
+        ));
+        setStage("idle");
+        setProgress("Fabric agent needs one detail before changing the board.");
+        setSelection(selectionSnapshot);
+        runIdRef.current = null;
+        return;
+      }
+      const nextProposal = nextResult;
       if (readChangeVersion() !== startChangeVersion) {
         setStage("error");
         setError(

@@ -101,6 +101,15 @@ describe("AI approval binding", () => {
         boardId: patch.base.boardId,
       }).success,
     ).toBe(false);
+    expect(
+      AiProposalApprovalRequestSchema.safeParse({
+        runId: "22222222-2222-4222-8222-222222222222",
+        patchHash: "a".repeat(64),
+        documentGenerationId: patch.base.documentGenerationId,
+        baseDurableSequence: 0,
+        observedDurableSequence: 0,
+      }).success,
+    ).toBe(true);
   });
 
   it("verifies the exact approved create and move results in the stored projection", () => {
@@ -124,6 +133,24 @@ describe("AI approval binding", () => {
       ok: false,
       issueCodes: ["moved_node_mismatch"],
     });
+  });
+
+  it("accepts durable adapter metadata and normalizes an explicitly cleared body", () => {
+    const metadataDocument = structuredClone(reflectedDocument) as CanvasDocumentSnapshot;
+    metadataDocument.nodes[0]!.meta = "tldraw:geo";
+    expect(verifyApprovedPatchProjection(patch, metadataDocument)).toEqual({ ok: true });
+
+    const clearBodyPatch: CanvasPatch = {
+      ...patch,
+      operations: [{
+        type: "updateNode",
+        nodeId: "node_1",
+        content: { body: "" },
+      }],
+    };
+    const clearedDocument = structuredClone(reflectedDocument) as CanvasDocumentSnapshot;
+    delete clearedDocument.nodes[1]!.body;
+    expect(verifyApprovedPatchProjection(clearBodyPatch, clearedDocument)).toEqual({ ok: true });
   });
 
   it("verifies the exact native draw record for deterministic pen writing", () => {

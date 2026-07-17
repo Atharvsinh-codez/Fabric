@@ -238,9 +238,13 @@ export async function finalizeAiProposalApproval(
 
     const appliedDurableSequence = board.revision;
 
+    // Equality with the signed base is valid only when the exact projection
+    // below already satisfies the approved patch (an intentional no-op). This
+    // avoids a 30-second client wait for already-arranged/styled content while
+    // still rejecting every unsaved mutation through projection verification.
     if (
       input.observedDurableSequence !== appliedDurableSequence ||
-      appliedDurableSequence <= run.baseDurableSequence
+      appliedDurableSequence < run.baseDurableSequence
     ) {
       throw new BoardApiError(
         409,

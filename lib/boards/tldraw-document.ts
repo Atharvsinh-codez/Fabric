@@ -492,6 +492,25 @@ export function canvasNodeIdForTldrawShapeRecord(
   return safeCanvasId(readFabricMeta(shape).nodeId, String(shape.id ?? "shape"));
 }
 
+/** Canonical shape-to-node projection, including deterministic legacy duplicate repair. */
+export function projectedCanvasNodeIdMapForTldrawShapeRecords(
+  shapes: readonly Record<string, unknown>[],
+): ReadonlyMap<string, string> {
+  const result = new Map<string, string>();
+  const usedNodeIds = new Set<string>();
+  for (const shape of shapes) {
+    if (shape.type === "arrow" || shape.type === "group" || typeof shape.id !== "string") {
+      continue;
+    }
+    let nodeId = canvasNodeIdForTldrawShapeRecord(shape);
+    if (usedNodeIds.has(nodeId)) nodeId = safeCanvasId(undefined, shape.id);
+    if (usedNodeIds.has(nodeId)) continue;
+    usedNodeIds.add(nodeId);
+    result.set(shape.id, nodeId);
+  }
+  return result;
+}
+
 function shapeText(shape: Record<string, unknown>): string {
   const props = isRecord(shape.props) ? shape.props : {};
   if (shape.type === "frame") return sanitizeText(props.name, 50_000);
@@ -719,16 +738,9 @@ export function projectTldrawDocument(
   }
 
   const nodes: CanvasNode[] = [];
-  const shapeToNodeId = new Map<string, string>();
-  const usedNodeIds = new Set<string>();
-  for (const shape of shapeRecords.values()) {
-    if (shape.type === "arrow" || shape.type === "group") continue;
-    let nodeId = canvasNodeIdForTldrawShapeRecord(shape);
-    if (usedNodeIds.has(nodeId)) nodeId = safeCanvasId(undefined, shape.id as string);
-    if (usedNodeIds.has(nodeId)) continue;
-    usedNodeIds.add(nodeId);
-    shapeToNodeId.set(shape.id as string, nodeId);
-  }
+  const shapeToNodeId = projectedCanvasNodeIdMapForTldrawShapeRecords(
+    [...shapeRecords.values()],
+  );
 
   for (const shape of shapeRecords.values()) {
     const nodeId = shapeToNodeId.get(shape.id as string);

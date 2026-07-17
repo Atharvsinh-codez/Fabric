@@ -27,7 +27,7 @@ describe("worker configuration boundary", () => {
       ],
       model: "gcli/grok-4.5-medium",
       streamOnly: true,
-      requestTimeoutMs: 180_000,
+      requestTimeoutMs: 60_000,
     });
     expect(config.media.baseUrl).toBe("https://fabric.example.test");
     expect(config.media.signingKey).not.toBe(baseEnvironment.AUTH_SECRET);
