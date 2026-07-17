@@ -255,3 +255,29 @@ Rules:
   - Non-blocking follow-ups are connector-label comparison in approval, friendlier preview labels, a larger versioned live-provider evaluation set, and clearer per-stroke attribution when one crop contains several drawings.
 - Next Steps:
   - Publish the verified revision, deploy it to `fabric-s9rn`, run the two authenticated visual production checks, and monitor validation failures, clarification rate, first-content latency, visual input count, token usage, and durable-approval completion.
+
+### [2026-07-17 12:16 IST] - Align the AI release runtime and restore clean-install CI
+- Request: Publish the rebuilt Fabric agent to production and finish every release gate instead of accepting a deployment that works only from the local dependency tree.
+- Plan: Deploy the exact verified revision on the repository's supported runtime, inspect live service readiness, reproduce the GitHub clean-install failure with its npm version, and change only the lock metadata responsible for that failure.
+- Actions:
+  - Pushed AI engine commit `8d4d4de`, aligned the Vercel project from Node `24.x` to the documented Node `22.x` target, and rebuilt production without the old runtime cache.
+  - Confirmed the new production deployment is Ready and aliased to `fabric-s9rn.vercel.app`; protected readiness reports the database, serverless AI dispatcher, private R2 configuration, realtime coordinator, and external realtime service ready and accepting AI runs.
+  - Confirmed Cloudflare realtime health reports Durable Objects transport ready and left Worker code/storage unchanged.
+  - Traced GitHub Actions run `29560308693` to npm 10 rejecting a missing `@emnapi/core@1.11.2` peer record before any application test ran.
+  - Regenerated only `package-lock.json` with npm `10.9.8`, adding the missing peer record and correcting three dependency classifications without changing `package.json`, installed versions, or tldraw.
+- Files Changed:
+  - `package-lock.json` - Make npm 10 clean installs deterministic on GitHub Actions and the supported Node 22 toolchain.
+  - `Context.md` - Record deployment, readiness, CI evidence, and the isolated correction.
+- Diff Summary:
+  - Locally installable npm 11 lock metadata rejected by CI -> npm 10-compatible lock metadata accepted by a genuine clean install.
+  - Vercel Node 24 project setting -> repository-supported Node 22 production runtime.
+- Validation:
+  - `npx npm@10.9.8 ci` passed from a clean dependency tree and reapplied the reviewed `@tldraw/editor@4.2.0` patch.
+  - `npm run verify` passed from that clean tree: 119 test files / 533 tests, all application/realtime/Worker typechecks, 15 Cloudflare runtime tests, ESLint, and a Node 22 production build.
+  - `npm run db:check`, `npm audit --omit=dev`, generated Cloudflare binding verification, and `git diff --check` passed; production audit found zero vulnerabilities.
+  - Live `/api/health/live`, protected `/api/health/ready`, and Cloudflare `/health` checks passed after deployment.
+- Risks/Notes:
+  - The production configuration is R2-ready, but current production board images are not yet stored as `r2_ready`, so an honest exact-R2 agent image smoke requires a newly uploaded or promoted R2 asset.
+  - The Codex in-app browser runtime failed before page navigation with a local kernel setup error; this did not affect Fabric or its deployed health checks.
+- Next Steps:
+  - Push the lock-only correction, require the replacement GitHub Actions run to pass, then execute the authenticated selected-drawing and exact-R2 visual checks when a signed-in browser session and R2-backed board asset are available.
