@@ -1,3 +1,5 @@
+import { SITE_URL } from "@/lib/site";
+
 export class BoardApiError extends Error {
   constructor(
     readonly status: number,
@@ -46,7 +48,10 @@ export async function readJsonBody(request: Request, maxBytes: number): Promise<
 
 export function requireSameOrigin(
   request: Request,
-  configuredApplicationUrl = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL,
+  configuredApplicationUrl =
+    process.env.FABRIC_ENV === "production"
+      ? SITE_URL.origin
+      : process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL,
 ): void {
   if (request.headers.get("sec-fetch-site") === "cross-site") {
     throw new BoardApiError(403, "forbidden_origin", "This request origin is not allowed.");

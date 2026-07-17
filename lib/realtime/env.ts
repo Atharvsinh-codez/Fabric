@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { SITE_URL } from "@/lib/site";
+
 import { parseAllowedOrigins } from "./origin";
 
 const commonSchema = z.object({
@@ -60,7 +62,10 @@ export function getRealtimeIssuerEnvironment(
   source: NodeJS.ProcessEnv = process.env,
 ): RealtimeIssuerEnvironment {
   const environment = commonSchema.parse(source);
-  const allowedOrigins = parseAllowedOrigins(allowedOriginValue(environment));
+  const allowedOrigins =
+    environment.FABRIC_ENV === "production"
+      ? parseAllowedOrigins(SITE_URL.origin)
+      : parseAllowedOrigins(allowedOriginValue(environment));
   assertProductionOrigins(environment.FABRIC_ENV, allowedOrigins);
   return {
     signingKey: environment.REALTIME_TICKET_SIGNING_KEY,

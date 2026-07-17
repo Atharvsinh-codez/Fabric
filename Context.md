@@ -595,3 +595,30 @@ Rules:
   - No tldraw dependency, patch, editor internals, watermark behavior, database, environment variable, secret, deployment, or Durable Object storage migration changed.
 - Next Steps:
   - Publish the verified source revision; deploy the Worker separately only when explicitly requested.
+
+### [2026-07-17 22:27 IST] - Restore realtime tickets for workspace members
+- Request: Fix `403 Forbidden` from `/api/realtime/ticket` so invited workspace members can collaborate on workspace-shared boards through the final `fabric.athrix.me` domain.
+- Plan: Reproduce the live status without user credentials, distinguish origin rejection from membership denial, pin production app checks to the canonical site, and verify editor/viewer workspace inheritance plus the deployed Worker origin gate.
+- Actions:
+  - Reproduced the live app response as `forbidden_origin`; the request was rejected before authentication or board access resolution.
+  - Confirmed the deployed Cloudflare Worker accepts `https://fabric.athrix.me` and rejects the retired deployment origin.
+  - Made production same-origin mutation checks ignore stale `APP_URL` and `NEXT_PUBLIC_APP_URL` values in favor of `SITE_URL.origin`.
+  - Made the production realtime ticket issuer use only the canonical Fabric origin even when realtime origin environment values are stale.
+  - Added ticket route coverage proving non-owner workspace editors receive read/write/awareness and workspace viewers receive read/awareness on workspace-shared boards.
+- Files Changed:
+  - `lib/boards/http.ts` and test - Canonical production same-origin validation with local/dev behavior preserved.
+  - `lib/realtime/env.ts` and test - Canonical production ticket origin allowlist.
+  - `app/api/realtime/ticket/route.test.ts` - Workspace-member realtime capability regression coverage.
+- Diff Summary:
+  - Stale deployment URL could reject the final custom domain before access checks -> production requests from `fabric.athrix.me` pass exact-origin validation.
+  - Workspace membership behavior was untested at the ticket boundary -> editor and viewer inheritance is now locked by route tests.
+- Validation:
+  - Focused origin and ticket route verification passed: 3 files / 13 tests.
+  - Application TypeScript passed during both scoped implementations.
+  - Live app diagnosis returned `forbidden_origin`; live Worker checks returned the expected allowed-origin upgrade response for `fabric.athrix.me` and `403` for the retired origin.
+  - `git diff --check` passed.
+- Risks/Notes:
+  - Effective board access, tenant scoping, hidden `404` behavior, ticket signing, read-only capabilities, and Worker authorization remain unchanged. No rate limit or database mutation was introduced.
+  - No Cloudflare Worker source, Durable Object storage, tldraw dependency/patch, secret, environment setting, or direct deployment was changed.
+- Next Steps:
+  - Publish the source fix through GitHub main and verify the custom-domain ticket endpoint returns authentication/access results instead of `forbidden_origin` after deployment.

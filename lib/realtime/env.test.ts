@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { getRealtimeRuntimeEnvironment } from "./env";
+import {
+  getRealtimeIssuerEnvironment,
+  getRealtimeRuntimeEnvironment,
+} from "./env";
 
 const baseEnvironment = {
   NODE_ENV: "test",
@@ -40,5 +43,31 @@ describe("realtime runtime environment", () => {
           baseEnvironment.REALTIME_TICKET_SIGNING_KEY,
       }),
     ).toThrow("purpose-separated");
+  });
+});
+
+describe("realtime issuer environment", () => {
+  it("uses only the canonical app origin in production when deployment URLs are stale", () => {
+    const environment = getRealtimeIssuerEnvironment({
+      ...baseEnvironment,
+      FABRIC_ENV: "production",
+      APP_URL: "https://old.fabric.example",
+      REALTIME_ALLOWED_ORIGINS: "https://old.fabric.example",
+    });
+
+    expect([...environment.allowedOrigins]).toEqual([
+      "https://fabric.athrix.me",
+    ]);
+    expect(environment.allowedOrigins.has("https://fabric.athrix.me/")).toBe(
+      false,
+    );
+  });
+
+  it("preserves configured exact origins outside production", () => {
+    const environment = getRealtimeIssuerEnvironment(baseEnvironment);
+
+    expect([...environment.allowedOrigins]).toEqual([
+      baseEnvironment.REALTIME_ALLOWED_ORIGINS,
+    ]);
   });
 });
