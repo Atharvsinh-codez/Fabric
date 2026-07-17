@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { CanvasNode } from "../../types";
+import type { CanvasOperation } from "../canvas-patch";
 import { buildBoardAssistanceInput } from "../skills/board-assistance.v1";
 import { BoardProposalSchema } from "../engine/board-plan";
 import { buildAuthorizedBoardScene } from "../engine/authorized-scene";
@@ -12,6 +13,8 @@ const base = {
   documentGenerationId: "eval-generation",
   durableSequence: 1,
 } as const;
+
+type CreateNodeOperation = Extract<CanvasOperation, { type: "createNode" }>;
 
 function note(id: string, x: number, y: number): CanvasNode {
   return {
@@ -111,12 +114,23 @@ describe("Fabric agent golden quality scenarios", () => {
 
     const patch = compileBoardProposal({ proposal, scene, base });
     const nodeOperations = patch.operations.filter(
-      (operation) => operation.type === "createNode" && operation.nodeType !== "frame",
+      (operation): operation is CreateNodeOperation =>
+        operation.type === "createNode" && operation.nodeType !== "frame",
+    );
+    const frame = patch.operations.find(
+      (operation): operation is CreateNodeOperation =>
+        operation.type === "createNode" && operation.nodeType === "frame",
     );
     const connectorStart = patch.operations.findIndex(
       (operation) => operation.type === "createConnector",
     );
     expect(nodeOperations).toHaveLength(6);
+    expect(frame?.type === "createNode" ? frame.size.width : Number.POSITIVE_INFINITY)
+      .toBeLessThan(1_600);
+    expect(new Set(nodeOperations.map((operation) => operation.position.y)).size)
+      .toBeGreaterThan(1);
+    expect(nodeOperations[0]?.appearance?.fill).toBe("sky");
+    expect(nodeOperations.at(-1)?.appearance?.fill).toBe("mint");
     expect(patch.operations.slice(connectorStart).every(
       (operation) => operation.type === "createConnector",
     )).toBe(true);

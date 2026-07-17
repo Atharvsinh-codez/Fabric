@@ -80,8 +80,9 @@ export const BoardPlanKeySchema = z
   );
 
 /**
- * An opaque reference copied from the authorized selection supplied to the
- * model. The compiler must still verify membership in that selection.
+ * An opaque reference copied from the authorized writable scene supplied to
+ * the model. The versioned field name remains selectionRefs, while the
+ * compiler verifies every reference against writableHandles.
  */
 export const BoardSelectionReferenceSchema = z
   .string()
@@ -225,6 +226,92 @@ const AddDiagramActionSchema = z
     });
   });
 
+type DiagramAction = z.infer<typeof AddDiagramActionSchema>;
+
+// Connection notes are deterministic compiler output, so their operation
+// count must be derivable while the semantic plan is still being validated.
+// Escaping line controls keeps every label losslessly represented without
+// letting newline-heavy, otherwise-valid input create an unbounded note.
+const CONNECTION_NOTE_BODY_LIMIT = 1_000;
+
+function escapedConnectionNoteText(value: string): string {
+  return value
+    .replaceAll("\\", "\\\\")
+    .replaceAll("\r", "\\r")
+    .replaceAll("\n", "\\n")
+    .replaceAll("\t", "\\t");
+}
+
+function hasSimpleLinearLabelCorridor(action: DiagramAction): boolean {
+  if (
+    action.layout !== "flow-vertical" &&
+    !(action.layout === "flow-horizontal" && action.nodes.length < 5)
+  ) {
+    return false;
+  }
+  if (action.connections.length > Math.max(0, action.nodes.length - 1)) return false;
+
+  const indexByKey = new Map(action.nodes.map((node, index) => [node.key, index]));
+  const incoming = action.nodes.map(() => 0);
+  const outgoing = action.nodes.map(() => 0);
+  const edges = new Set<string>();
+  for (const connection of action.connections) {
+    const from = indexByKey.get(connection.from);
+    const to = indexByKey.get(connection.to);
+    if (from === undefined || to === undefined || to !== from + 1) return false;
+    const edge = `${from}:${to}`;
+    if (edges.has(edge)) return false;
+    edges.add(edge);
+    outgoing[from] += 1;
+    incoming[to] += 1;
+    if (outgoing[from] > 1 || incoming[to] > 1) return false;
+  }
+  return true;
+}
+
+export function inlineDiagramConnectionLabel(
+  action: DiagramAction,
+  value: string | undefined,
+): string | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim();
+  if (normalized.length === 0 || normalized.length > 18 || /[\r\n]/.test(normalized)) {
+    return undefined;
+  }
+
+  // Native arrow text has a reliable corridor only for simple linear flows.
+  // Hierarchies, radial layouts, and wrapped horizontal flows use notes so a
+  // label can never cover a node or another connector.
+  return hasSimpleLinearLabelCorridor(action) ? normalized : undefined;
+}
+
+export function compiledConnectionNoteBodies(action: DiagramAction): string[] {
+  const labelByKey = new Map(action.nodes.map((node) => [node.key, node.label]));
+  const entries = action.connections.flatMap((connection, index) => {
+    const label = connection.label?.trim();
+    if (!label || inlineDiagramConnectionLabel(action, label)) return [];
+    const source = escapedConnectionNoteText(labelByKey.get(connection.from)!);
+    const target = escapedConnectionNoteText(labelByKey.get(connection.to)!);
+    return [
+      `${index + 1}. ${source} \u2192 ${target}\n${escapedConnectionNoteText(label)}`,
+    ];
+  });
+
+  const bodies: string[] = [];
+  let current = "";
+  for (const entry of entries) {
+    const candidate = current ? `${current}\n\n${entry}` : entry;
+    if (current && candidate.length > CONNECTION_NOTE_BODY_LIMIT) {
+      bodies.push(current);
+      current = entry;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current) bodies.push(current);
+  return bodies;
+}
+
 const UniqueSelectionReferencesSchema = z
   .array(BoardSelectionReferenceSchema)
   .min(1)
@@ -353,10 +440,13 @@ export const BoardProposalSchema = z
           generatedElements += action.shapes.length;
           estimatedOperations += action.shapes.length;
           break;
-        case "addDiagram":
+        case "addDiagram": {
           topLevelKeys.push({ key: action.key, path: ["actions", actionIndex, "key"] });
-          generatedElements += action.nodes.length + action.connections.length;
-          estimatedOperations += action.nodes.length + action.connections.length + 1;
+          const connectionNoteCount = compiledConnectionNoteBodies(action).length;
+          generatedElements +=
+            action.nodes.length + action.connections.length + connectionNoteCount;
+          estimatedOperations +=
+            action.nodes.length + action.connections.length + connectionNoteCount + 1;
           textCharacters +=
             (action.title?.length ?? 0) +
             action.nodes.reduce(
@@ -368,6 +458,7 @@ export const BoardProposalSchema = z
               0,
             );
           break;
+        }
         case "arrangeSelection":
         case "styleSelection":
           selectionReferences += action.selectionRefs.length;

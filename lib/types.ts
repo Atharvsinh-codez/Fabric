@@ -40,6 +40,10 @@ export type CanvasNode = {
   fill: string;
   textColor?: string;
   locked?: boolean;
+  /** False when page-space containment cannot be proven from the durable projection. */
+  viewportWriteSafe?: boolean;
+  /** True when moving this node would also move one or more durable descendants. */
+  hasDescendants?: boolean;
   parentId?: string;
   tag?: string;
   meta?: string;

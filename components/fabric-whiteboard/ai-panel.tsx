@@ -2,10 +2,8 @@
 
 import {
   CheckIcon,
-  CursorArrowRaysIcon,
   ExclamationTriangleIcon,
   PaperAirplaneIcon,
-  PencilSquareIcon,
   SparklesIcon,
   StopIcon,
   XMarkIcon,
@@ -17,7 +15,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
-import type { Editor, TLShape } from "tldraw";
+import type { Editor } from "tldraw";
 
 import { Button, IconButton, cx } from "@/components/ui";
 import { WaveSpinner } from "@/components/ui/wave-spinner";
@@ -27,12 +25,10 @@ import {
   finalizeAiProposal,
   streamAiProposal,
 } from "@/lib/ai/client";
-import type { CanvasNodeType } from "@/lib/ai/canvas-patch";
 import type { ProposalReadyPayload } from "@/lib/ai/contracts";
 import type { AiProposalRequest } from "@/lib/ai/proposal-request";
 
 export type FabricWhiteboardAiAdapter = Readonly<{
-  getSelection?: (editor: Editor) => AiProposalRequest["selection"];
   applyProposal: (
     proposal: ProposalReadyPayload,
     editor: Editor,
@@ -73,101 +69,6 @@ type CanvasViewport = Readonly<{
 const MAX_VISIBLE_MESSAGES = 50;
 const MAX_REQUEST_CONVERSATION = 12;
 
-const nodeTypeLabels: Record<
-  CanvasNodeType,
-  Readonly<{ singular: string; plural: string }>
-> = {
-  frame: { singular: "frame", plural: "frames" },
-  note: { singular: "note", plural: "notes" },
-  text: { singular: "text block", plural: "text blocks" },
-  rectangle: { singular: "shape", plural: "shapes" },
-  ellipse: { singular: "shape", plural: "shapes" },
-  diamond: { singular: "shape", plural: "shapes" },
-  triangle: { singular: "shape", plural: "shapes" },
-  hexagon: { singular: "shape", plural: "shapes" },
-  image: { singular: "image", plural: "images" },
-  drawing: { singular: "drawing", plural: "drawings" },
-  summary: { singular: "summary", plural: "summaries" },
-};
-
-function recordProps(shape: TLShape): Record<string, unknown> {
-  return shape.props as unknown as Record<string, unknown>;
-}
-
-function richTextValue(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (!value || typeof value !== "object") return "";
-  const record = value as Record<string, unknown>;
-  const ownText = typeof record.text === "string" ? record.text : "";
-  const content = Array.isArray(record.content)
-    ? record.content.map(richTextValue).join("")
-    : "";
-  return `${ownText}${content}`;
-}
-
-function shapeText(shape: TLShape): string {
-  const props = recordProps(shape);
-  const candidates = [props.richText, props.text, props.name, props.url];
-  for (const candidate of candidates) {
-    const text = richTextValue(candidate).trim();
-    if (text) return text;
-  }
-  return "";
-}
-
-function canvasNodeType(shape: TLShape): CanvasNodeType | null {
-  if (shape.type === "frame") return "frame";
-  if (shape.type === "note") return "note";
-  if (shape.type === "text") return "text";
-  if (shape.type === "image") return "image";
-  if (
-    shape.type === "draw" ||
-    shape.type === "highlight" ||
-    shape.type === "line"
-  ) return "drawing";
-  if (shape.type !== "geo") return null;
-  const geo = recordProps(shape).geo;
-  if (geo === "ellipse" || geo === "oval") return "ellipse";
-  if (geo === "diamond") return "diamond";
-  if (geo === "triangle") return "triangle";
-  if (geo === "hexagon") return "hexagon";
-  return "rectangle";
-}
-
-function defaultAiSelection(editor: Editor): AiProposalRequest["selection"] {
-  return editor
-    .getSelectedShapes()
-    .slice(0, 40)
-    .flatMap((shape, index) => {
-      const type = canvasNodeType(shape);
-      const bounds = editor.getShapePageBounds(shape);
-      if (!type || !bounds) return [];
-      const text = shapeText(shape);
-      const lines = text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
-      const title = (lines[0] || `${type} ${index + 1}`).slice(0, 200);
-      const body = lines.slice(1).join("\n").slice(0, 4_000);
-      return [{
-        id: shape.id,
-        type,
-        title,
-        ...(body ? { body } : {}),
-        x: clampCoordinate(bounds.x),
-        y: clampCoordinate(bounds.y),
-        width: clampDimension(bounds.w),
-        height: clampDimension(bounds.h),
-        ...(shape.isLocked ? { locked: true } : {}),
-        ...(shape.parentId.startsWith("shape:") ? { parentId: shape.parentId } : {}),
-      }];
-    });
-}
-
-function currentAiSelection(
-  editor: Editor,
-  adapter: FabricWhiteboardAiAdapter,
-): AiProposalRequest["selection"] {
-  return adapter.getSelection?.(editor) ?? defaultAiSelection(editor);
-}
-
 function currentViewport(editor: Editor): CanvasViewport {
   const viewport = editor.getViewportPageBounds();
   return {
@@ -191,37 +92,6 @@ function appendMessage(
   message: ChatMessage,
 ): ChatMessage[] {
   return [...messages, message].slice(-MAX_VISIBLE_MESSAGES);
-}
-
-function selectionContextLabel(
-  selection: AiProposalRequest["selection"],
-): Readonly<{ title: string; detail: string }> {
-  if (selection.length === 0) {
-    return {
-      title: "No Selection",
-      detail: "Fabric agent will use the visible canvas.",
-    };
-  }
-
-  const counts = new Map<string, number>();
-  for (const node of selection) {
-    const label = nodeTypeLabels[node.type];
-    const key = label.singular === "shape" ? "shape" : node.type;
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  const detail = [...counts.entries()]
-    .map(([key, count]) => {
-      const type = key === "shape"
-        ? nodeTypeLabels.rectangle
-        : nodeTypeLabels[key as CanvasNodeType];
-      return `${count} ${count === 1 ? type.singular : type.plural}`;
-    })
-    .join(" · ");
-
-  return {
-    title: `${selection.length} ${selection.length === 1 ? "Object" : "Objects"} Selected`,
-    detail,
-  };
 }
 
 export function FabricAiPanel({
@@ -251,7 +121,6 @@ export function FabricAiPanel({
 }) {
   const [instruction, setInstruction] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [selection, setSelection] = useState<AiProposalRequest["selection"]>([]);
   const [stage, setStage] = useState<AiStage>("idle");
   const [progress, setProgress] = useState("Ready for your direction.");
   const [proposal, setProposal] = useState<ProposalReadyPayload | null>(null);
@@ -266,7 +135,6 @@ export function FabricAiPanel({
   const messageIdRef = useRef(0);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const conversationRef = useRef<HTMLDivElement | null>(null);
-  const selectionCopy = selectionContextLabel(selection);
   const busy = stage === "running" || stage === "applying" || stage === "finalizing";
   const composerDisabled =
     !editor ||
@@ -293,15 +161,6 @@ export function FabricAiPanel({
     durableSequenceRef.current = durableSequence;
     persistenceReadyRef.current = persistenceReady;
   }, [durableSequence, persistenceReady]);
-
-  useEffect(() => {
-    if (!open || !editor) return;
-    const refreshSelection = () => {
-      setSelection(currentAiSelection(editor, adapter));
-    };
-    refreshSelection();
-    return editor.store.listen(refreshSelection, { scope: "session" });
-  }, [adapter, editor, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -406,7 +265,7 @@ export function FabricAiPanel({
       return;
     }
 
-    const selectionSnapshot = currentAiSelection(editor, adapter);
+    const visibleCanvasSelection: AiProposalRequest["selection"] = [];
     const viewportSnapshot = currentViewport(editor);
     const conversation = messages
       .slice(-MAX_REQUEST_CONVERSATION)
@@ -420,13 +279,10 @@ export function FabricAiPanel({
       createMessage(
         "user",
         nextInstruction,
-        selectionSnapshot.length === 0
-          ? "Visible canvas"
-          : `${selectionSnapshot.length} selected`,
+        "Visible canvas",
       ),
     ));
     setInstruction("");
-    setSelection(selectionSnapshot);
     setStage("running");
     setProgress("Reading the board and preparing changes…");
     setProposal(null);
@@ -443,7 +299,7 @@ export function FabricAiPanel({
           documentGenerationId,
           durableSequence,
           instruction: nextInstruction,
-          selection: selectionSnapshot,
+          selection: visibleCanvasSelection,
           viewport: viewportSnapshot,
           conversation,
         },
@@ -461,16 +317,21 @@ export function FabricAiPanel({
         },
       });
       if (!("patch" in nextResult)) {
-        const choiceText = nextResult.choices.length > 0
-          ? `\n\n${nextResult.choices.map((choice, index) => `${index + 1}. ${choice}`).join("\n")}`
+        const visibleCanvasQuestion = nextResult.reason === "missing-selection"
+          ? "Tell me which part of the visible canvas to use, or describe what I should create."
+          : nextResult.question;
+        const visibleCanvasChoices = nextResult.reason === "missing-selection"
+          ? ["Use everything visible", "Create a new group"]
+          : nextResult.choices;
+        const choiceText = visibleCanvasChoices.length > 0
+          ? `\n\n${visibleCanvasChoices.map((choice, index) => `${index + 1}. ${choice}`).join("\n")}`
           : "";
         setMessages((current) => appendMessage(
           current,
-          createMessage("assistant", `${nextResult.question}${choiceText}`),
+          createMessage("assistant", `${visibleCanvasQuestion}${choiceText}`),
         ));
         setStage("idle");
         setProgress("Fabric agent needs one detail before changing the board.");
-        setSelection(selectionSnapshot);
         runIdRef.current = null;
         return;
       }
@@ -490,7 +351,6 @@ export function FabricAiPanel({
         current,
         createMessage("assistant", nextProposal.patch.summary),
       ));
-      setSelection(selectionSnapshot);
     } catch (caught) {
       if (controller.signal.aborted) {
         setStage("canceled");
@@ -604,22 +464,22 @@ export function FabricAiPanel({
         onClose();
       }}
       className={cx(
-        "absolute inset-x-2 bottom-2 z-1100 flex max-h-[calc(88dvh-1rem)] flex-col overflow-hidden rounded-radius-2xl bg-surface-white opacity-100 floating-shadow ring-1 ring-near-black-primary-text/8 transition-[transform,opacity] duration-(--motion-panel) ease-(--ease-out-quart) motion-reduce:transition-none sm:inset-x-auto sm:top-16 sm:right-auto sm:bottom-3 sm:left-3 sm:max-h-none sm:w-[25rem] sm:rounded-radius-2xl",
+        "absolute inset-x-2 bottom-2 z-1100 flex max-h-[calc(88dvh-1rem)] flex-col overflow-hidden rounded-radius-2xl bg-surface-white/98 opacity-100 floating-shadow ring-1 ring-near-black-primary-text/8 backdrop-blur-xl transition-[transform,opacity] duration-(--motion-panel) ease-(--ease-out-quart) motion-reduce:transition-none sm:inset-x-auto sm:top-16 sm:right-auto sm:bottom-auto sm:left-3 sm:max-h-[calc(100dvh-5rem)] sm:w-[23rem]",
         open
           ? "translate-y-0 sm:translate-x-0"
           : "pointer-events-none translate-y-[calc(100%+0.5rem)] opacity-0 sm:translate-y-0 sm:-translate-x-[calc(100%+0.75rem)]",
       )}
     >
-      <header className="flex shrink-0 items-start justify-between gap-3 border-b border-near-black-primary-text/8 px-4 py-3">
+      <header className="flex shrink-0 items-start justify-between gap-3 border-b border-near-black-primary-text/8 px-4 py-3.5">
         <div className="flex min-w-0 items-start gap-2.5">
           <SparklesIcon
             className="size-4 h-lh shrink-0 fill-sky-blue-accent"
             aria-hidden="true"
           />
           <div className="min-w-0">
-            <h2 className="font-medium">Fabric agent</h2>
+            <h2 id="fabric-ai-title" className="font-medium">Fabric agent</h2>
             <p className="text-pretty text-base text-muted-gray sm:text-sm">
-              Writes and organizes directly on your board.
+              Turns the visible canvas into editable work.
             </p>
           </div>
         </div>
@@ -630,19 +490,23 @@ export function FabricAiPanel({
 
       <div
         ref={conversationRef}
-        className="min-h-0 flex-1 overflow-y-auto px-4 py-5"
+        className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
+        role="log"
+        aria-label="Fabric agent conversation"
+        aria-live="polite"
+        aria-relevant="additions text"
       >
-        <ol className="flex flex-col gap-5" role="list" aria-label="AI Conversation">
+        <ol className="flex flex-col gap-4" role="list" aria-label="AI Conversation">
           {messages.length === 0 ? (
-            <li className="flex items-start gap-2.5">
+            <li className="flex items-start gap-2.5 review-panel-enter motion-reduce:animate-none">
               <SparklesIcon
                 className="size-4 h-lh shrink-0 fill-sky-blue-accent"
                 aria-hidden="true"
               />
               <div className="min-w-0">
-                <p className="font-medium">What should I add to the board?</p>
+                <p className="font-medium">What should Fabric make?</p>
                 <p className="text-pretty text-base text-muted-gray sm:text-sm">
-                  Ask me to write, organize, connect, or refine your ideas. Select objects for a focused change, or leave everything unselected to use the visible canvas.
+                  Ask for a diagram, plan, summary, explanation, or cleaner layout. Fabric reads the visible canvas and previews every board change first.
                 </p>
               </div>
             </li>
@@ -652,7 +516,7 @@ export function FabricAiPanel({
             <li
               key={message.id}
               className={cx(
-                "flex min-w-0",
+                "flex min-w-0 review-panel-enter motion-reduce:animate-none",
                 message.role === "user" ? "justify-end" : "items-start gap-2.5",
               )}
             >
@@ -683,9 +547,7 @@ export function FabricAiPanel({
 
           {stage === "running" || stage === "applying" || stage === "finalizing" ? (
             <li
-              className="flex items-start gap-2.5 text-sky-blue-accent"
-              role="status"
-              aria-live="polite"
+              className="flex items-start gap-2.5 text-sky-blue-accent review-panel-enter motion-reduce:animate-none"
             >
               <span className="grid size-4 h-lh shrink-0 place-items-center" aria-hidden="true">
                 <WaveSpinner
@@ -703,9 +565,8 @@ export function FabricAiPanel({
           {proposal && stage === "preview" ? (
             <li>
               <section
-                className="flex flex-col gap-3 rounded-radius-xl bg-light-surface-tint p-3.5 ring-1 ring-border-subtle"
+                className="flex flex-col gap-3 rounded-radius-xl bg-light-surface-tint p-3.5 ring-1 ring-border-subtle review-panel-enter motion-reduce:animate-none"
                 aria-label="AI Change Preview"
-                aria-live="polite"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -714,10 +575,15 @@ export function FabricAiPanel({
                       Review every board edit before it is applied.
                     </p>
                   </div>
-                  <p className="shrink-0 rounded-radius-pill bg-surface-white px-2 py-1 text-sm font-medium text-muted-gray ring-1 ring-near-black-primary-text/8">
-                    {proposal.riskClass === "low" ? "Low" : "Elevated"} Risk
+                  <p className="shrink-0 rounded-radius-pill bg-surface-white px-2 py-1 text-sm font-medium text-muted-gray ring-1 ring-near-black-primary-text/8 tabular-nums">
+                    {proposal.patch.operations.length} {proposal.patch.operations.length === 1 ? "change" : "changes"}
                   </p>
                 </div>
+                {proposal.riskClass !== "low" ? (
+                  <p className="text-pretty text-base text-(--warning) sm:text-sm">
+                    This proposal includes a higher-impact board edit. Review each change carefully.
+                  </p>
+                ) : null}
                 <ol className="max-h-52 list-decimal overflow-y-auto pl-5" role="list">
                   {proposal.patch.operations.map((operation, index) => (
                     <li
@@ -750,14 +616,14 @@ export function FabricAiPanel({
           ) : null}
 
           {stage === "applied" ? (
-            <li className="flex items-start gap-2.5 text-sky-blue-accent" role="status">
+            <li className="flex items-start gap-2.5 text-sky-blue-accent review-panel-enter motion-reduce:animate-none">
               <CheckIcon className="size-4 h-lh shrink-0 fill-current" aria-hidden="true" />
               <p className="text-pretty text-base sm:text-sm">{progress}</p>
             </li>
           ) : null}
 
           {stage === "canceled" ? (
-            <li className="flex items-start gap-2.5 text-muted-gray" role="status">
+            <li className="flex items-start gap-2.5 text-muted-gray review-panel-enter motion-reduce:animate-none">
               <StopIcon className="size-4 h-lh shrink-0 fill-current" aria-hidden="true" />
               <p className="text-pretty text-base sm:text-sm">{progress}</p>
             </li>
@@ -765,14 +631,22 @@ export function FabricAiPanel({
 
           {error ? (
             <li
-              className="flex items-start gap-2.5 rounded-radius-lg bg-(--danger-soft) p-3 text-(--danger)"
-              role="alert"
+              className={cx(
+                "flex items-start gap-2.5 rounded-radius-lg px-3 py-2.5 review-panel-enter motion-reduce:animate-none",
+                pendingApproval
+                  ? "bg-(--warning-soft) text-(--warning)"
+                  : "bg-(--danger-soft) text-(--danger)",
+              )}
+              data-tone={pendingApproval ? "warning" : "danger"}
             >
               <ExclamationTriangleIcon
                 className="size-4 h-lh shrink-0 fill-current"
                 aria-hidden="true"
               />
               <div className="min-w-0 flex-1">
+                <p className="font-medium">
+                  {pendingApproval ? "Save confirmation pending" : "Request needs attention"}
+                </p>
                 <p className="text-pretty text-base sm:text-sm">{error}</p>
                 {pendingApproval ? (
                   <div className="flex justify-end pt-2">
@@ -788,19 +662,6 @@ export function FabricAiPanel({
       </div>
 
       <div className="shrink-0 border-t border-near-black-primary-text/8 bg-surface-white p-3">
-        <div className="flex min-w-0 items-start gap-2 px-1 pb-2" aria-live="polite">
-          <CursorArrowRaysIcon
-            className="size-4 h-lh shrink-0 fill-sky-blue-accent"
-            aria-hidden="true"
-          />
-          <div className="min-w-0">
-            <p className="font-medium">{selectionCopy.title}</p>
-            <p className="truncate text-base text-muted-gray sm:text-sm">
-              {selectionCopy.detail}
-            </p>
-          </div>
-        </div>
-
         {!persistenceReady && !pendingApproval ? (
           <p
             className="pb-2 text-pretty text-base text-(--warning) sm:text-sm"
@@ -824,15 +685,15 @@ export function FabricAiPanel({
             value={instruction}
             onChange={(event) => setInstruction(event.target.value)}
             onKeyDown={handleComposerKeyDown}
-            rows={3}
+            rows={2}
             maxLength={2_000}
             placeholder="Ask Fabric agent to write on the board…"
             disabled={composerDisabled}
-            className="max-h-40 min-h-20 w-full resize-none bg-transparent p-2 text-base text-near-black-primary-text outline-none placeholder:text-muted-gray disabled:cursor-not-allowed disabled:opacity-55"
+            className="max-h-32 min-h-16 w-full resize-none bg-transparent p-2 text-base text-near-black-primary-text outline-none placeholder:text-muted-gray disabled:cursor-not-allowed disabled:opacity-55"
           />
           <div className="flex items-center justify-between gap-2 border-t border-near-black-primary-text/8 pt-2">
             <div className="flex min-w-0 items-center gap-1.5 px-1 text-muted-gray">
-              <PencilSquareIcon
+              <SparklesIcon
                 className="size-4 h-lh shrink-0 fill-current"
                 aria-hidden="true"
               />
@@ -877,12 +738,12 @@ export function FabricAiPanel({
 }
 
 function operationLabel(operation: ProposalReadyPayload["patch"]["operations"][number]): string {
-  if (operation.type === "createNode") return `Create ${operation.nodeType}: ${operation.content.title}`;
-  if (operation.type === "writeText") return `Write with the pen: ${operation.text}`;
+  if (operation.type === "createNode") return `Add ${operation.content.title}`;
+  if (operation.type === "writeText") return `Write ${operation.text.slice(0, 80)}`;
   if (operation.type === "createDrawing") return "Draw a pen stroke";
-  if (operation.type === "updateNode") return `Update ${operation.nodeId}`;
-  if (operation.type === "moveNode") return `Move ${operation.nodeId}`;
-  if (operation.type === "resizeNode") return `Resize ${operation.nodeId}`;
-  if (operation.type === "createConnector") return `Connect ${operation.sourceId} to ${operation.targetId}`;
-  return `Delete ${operation.nodeId}`;
+  if (operation.type === "updateNode") return "Update an existing canvas object";
+  if (operation.type === "moveNode") return "Reposition an existing canvas object";
+  if (operation.type === "resizeNode") return "Resize an existing canvas object";
+  if (operation.type === "createConnector") return "Connect two canvas objects";
+  return "Remove an existing canvas object";
 }

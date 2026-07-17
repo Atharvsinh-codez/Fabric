@@ -696,26 +696,69 @@ function nodeTypeForShape(shape: Record<string, unknown>, fabric: Record<string,
   return "summary";
 }
 
-function absoluteShapePosition(
+type ShapeHierarchyProjection = Readonly<{
+  x: number;
+  y: number;
+  effectivelyLocked: boolean;
+  writeScopeSafe: boolean;
+}>;
+
+function shapeHierarchyProjection(
   shape: Record<string, unknown>,
   shapes: ReadonlyMap<string, Record<string, unknown>>,
-): { x: number; y: number } {
+): ShapeHierarchyProjection {
   let x = isFiniteNumber(shape.x) ? shape.x : 0;
   let y = isFiniteNumber(shape.y) ? shape.y : 0;
+  let effectivelyLocked = shape.isLocked === true;
+  let writeScopeSafe = isFiniteNumber(shape.rotation) && Math.abs(shape.rotation) <= 1e-9;
   let parentId = typeof shape.parentId === "string" ? shape.parentId : "";
-  const seen = new Set<string>();
+  const seen = new Set<string>(typeof shape.id === "string" ? [shape.id] : []);
   while (parentId.startsWith("shape:") && !seen.has(parentId) && seen.size < 32) {
     seen.add(parentId);
     const parent = shapes.get(parentId);
-    if (!parent) break;
+    if (!parent) {
+      writeScopeSafe = false;
+      break;
+    }
     x += isFiniteNumber(parent.x) ? parent.x : 0;
     y += isFiniteNumber(parent.y) ? parent.y : 0;
+    effectivelyLocked ||= parent.isLocked === true;
+    writeScopeSafe &&=
+      isFiniteNumber(parent.rotation) && Math.abs(parent.rotation) <= 1e-9;
     parentId = typeof parent.parentId === "string" ? parent.parentId : "";
+  }
+
+  // A cycle, an ancestry chain beyond the audited bound, a missing shape
+  // ancestor, or any non-page root makes the additive projection uncertain.
+  // Those nodes remain useful read-only context, but must never enter the
+  // visible-canvas mutation scope.
+  if (parentId.startsWith("shape:") || !parentId.startsWith("page:")) {
+    writeScopeSafe = false;
   }
   return {
     x: Math.min(10_000_000, Math.max(-10_000_000, x)),
     y: Math.min(10_000_000, Math.max(-10_000_000, y)),
+    effectivelyLocked,
+    writeScopeSafe,
   };
+}
+
+function descendantContainerShapeIds(
+  shapes: ReadonlyMap<string, Record<string, unknown>>,
+): ReadonlySet<string> {
+  const containers = new Set<string>();
+  for (const shape of shapes.values()) {
+    let parentId = typeof shape.parentId === "string" ? shape.parentId : "";
+    const seen = new Set<string>();
+    while (parentId.startsWith("shape:") && !seen.has(parentId) && seen.size < 32) {
+      seen.add(parentId);
+      containers.add(parentId);
+      const parent = shapes.get(parentId);
+      if (!parent) break;
+      parentId = typeof parent.parentId === "string" ? parent.parentId : "";
+    }
+  }
+  return containers;
 }
 
 function splitTitleAndBody(text: string, fallbackTitle: string, fallbackBody: string): {
@@ -741,6 +784,7 @@ export function projectTldrawDocument(
   const shapeToNodeId = projectedCanvasNodeIdMapForTldrawShapeRecords(
     [...shapeRecords.values()],
   );
+  const containerShapeIds = descendantContainerShapeIds(shapeRecords);
 
   for (const shape of shapeRecords.values()) {
     const nodeId = shapeToNodeId.get(shape.id as string);
@@ -754,23 +798,28 @@ export function projectTldrawDocument(
       sanitizeText(fabric.title, 500) || String(shape.type ?? "Shape"),
       sanitizeText(fabric.body, 50_000),
     );
-    const position = absoluteShapePosition(shape, shapeRecords);
+    const hierarchy = shapeHierarchyProjection(shape, shapeRecords);
     const dimensions = shapeDimensions(shape);
     const parentShapeId = typeof shape.parentId === "string" ? shape.parentId : undefined;
     const parentId = parentShapeId ? shapeToNodeId.get(parentShapeId) : undefined;
+    const parentProjectionSafe =
+      !parentShapeId?.startsWith("shape:") || parentId !== undefined;
     const fill = tldrawColor(fabric.fill ?? props.color);
     const textColor = tldrawColor(fabric.textColor ?? props.labelColor ?? props.color, "#111827");
     nodes.push({
       id: nodeId,
       type: nodeTypeForShape(shape, fabric),
       ...content,
-      x: position.x,
-      y: position.y,
+      x: hierarchy.x,
+      y: hierarchy.y,
       width: dimensions.width,
       height: dimensions.height,
       fill,
       textColor,
-      locked: shape.isLocked === true || undefined,
+      locked: hierarchy.effectivelyLocked || undefined,
+      viewportWriteSafe:
+        hierarchy.writeScopeSafe && parentProjectionSafe ? undefined : false,
+      hasDescendants: containerShapeIds.has(String(shape.id)) || undefined,
       parentId,
       tag: sanitizeText(fabric.tag, 120) || undefined,
       meta: sanitizeText(fabric.meta, 2_000) || `tldraw:${String(shape.type)}`,

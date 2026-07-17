@@ -38,7 +38,7 @@ describe("canvas-agent skill", () => {
     expect(getBoardAssistanceSkill()).toBe(CANVAS_AGENT_SKILL);
     expect(CANVAS_AGENT_SKILL.manifest.id).toBe("canvas-agent");
     expect(CANVAS_AGENT_SKILL.manifest.version).toBe("2.0.0");
-    expect(CANVAS_AGENT_SKILL.manifest.promptVersion).toBe("canvas-agent.plan.v4");
+    expect(CANVAS_AGENT_SKILL.manifest.promptVersion).toBe("canvas-agent.plan.v5");
     expect(CANVAS_AGENT_SKILL.manifest.allowedOperations).toEqual(
       expect.arrayContaining(["createNode", "createConnector", "updateNode", "moveNode"]),
     );
@@ -104,7 +104,7 @@ describe("canvas-agent skill", () => {
     expect(arrangementAction).toMatchObject({
       arrangement: "grid",
       spacing: "compact",
-      selectionRefs: ["s1", "s2"],
+      selectionRefs: ["v1", "v2"],
     });
     expect(CANVAS_AGENT_SKILL.systemInstruction).toContain(
       'only addDiagram.layout is "mind-map". "radial" is not valid anywhere',
@@ -124,6 +124,21 @@ describe("canvas-agent skill", () => {
     expect(CANVAS_AGENT_SKILL.manifest.limits.maxOutputTokens).toBe(4_096);
     expect(CANVAS_AGENT_SKILL.manifest.limits.maxWallTimeMs).toBe(60_000);
     expect(MAX_BOARD_ASSISTANCE_WALL_TIME_MS).toBe(60_000);
+  });
+
+  it("teaches the model to mutate only writable visible-canvas handles", () => {
+    expect(CANVAS_AGENT_SKILL.systemInstruction).toContain(
+      "including v* handles",
+    );
+    expect(CANVAS_AGENT_SKILL.systemInstruction).toContain(
+      "Never ask the user to select objects",
+    );
+    expect(CANVAS_AGENT_SKILL.systemInstruction).toContain(
+      "Never target a hidden, partial, locked, omitted, or read-only node",
+    );
+    expect(CANVAS_AGENT_SKILL.systemInstruction).not.toContain(
+      "Visible v* nodes are read-only context",
+    );
   });
 
   it("forbids low-level geometry/raster output and preserves exact text", () => {

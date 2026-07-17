@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { JsonValue } from "@/db/schema/product";
 import type { CanvasEdge, CanvasNode } from "@/lib/types";
+import { buildAuthorizedBoardScene } from "@/lib/ai/engine/authorized-scene";
 
 import {
   createFabricTldrawDocument,
@@ -116,6 +117,7 @@ describe("tldraw document adapter", () => {
           title: "Evidence",
           width: 600,
           height: 400,
+          hasDescendants: true,
         }),
         expect.objectContaining({
           id: "note-1",
@@ -221,6 +223,190 @@ describe("tldraw document adapter", () => {
       height: 120,
       x: 50,
       y: 75,
+    });
+  });
+
+  it("keeps rotated, transform-uncertain, and recursively locked shapes out of AI write scope", () => {
+    const fabricMeta = (nodeId: string, title: string) => ({
+      fabric: { kind: "node", nodeId, nodeType: "rectangle", title },
+    });
+    const rotated = completeRecord({
+      id: "shape:rotated",
+      type: "geo",
+      x: 390,
+      y: 100,
+      rotation: -Math.PI / 4,
+      props: { geo: "rectangle", w: 100, h: 100 },
+      meta: fabricMeta("rotated", "Rotated"),
+    }, 0);
+    const rotatedParent = completeRecord({
+      id: "shape:rotated-parent",
+      type: "group",
+      x: 80,
+      y: 40,
+      rotation: Math.PI / 8,
+    }, 1);
+    const rotatedChild = completeRecord({
+      id: "shape:rotated-child",
+      type: "geo",
+      parentId: rotatedParent.id,
+      x: 120,
+      y: 80,
+      props: { geo: "rectangle", w: 120, h: 80 },
+      meta: fabricMeta("rotated-child", "Rotated child"),
+    }, 2);
+    const lockedParent = completeRecord({
+      id: "shape:locked-parent",
+      type: "group",
+      x: 40,
+      y: 220,
+      isLocked: true,
+    }, 3);
+    const lockedChild = completeRecord({
+      id: "shape:locked-child",
+      type: "geo",
+      parentId: lockedParent.id,
+      x: 100,
+      y: 20,
+      props: { geo: "rectangle", w: 120, h: 80 },
+      meta: fabricMeta("locked-child", "Locked child"),
+    }, 4);
+    const uncertainChild = completeRecord({
+      id: "shape:uncertain-child",
+      type: "geo",
+      parentId: "shape:missing-parent",
+      x: 100,
+      y: 340,
+      props: { geo: "rectangle", w: 120, h: 80 },
+      meta: fabricMeta("uncertain-child", "Uncertain child"),
+    }, 5);
+    const records = [
+      rotated,
+      rotatedParent,
+      rotatedChild,
+      lockedParent,
+      lockedChild,
+      uncertainChild,
+    ];
+    const document = createFabricTldrawDocument({
+      store: Object.fromEntries(records.map((record) => [record.id, record])),
+      schema: { schemaVersion: 2, sequences: {} },
+    });
+
+    const projected = projectTldrawDocument(document!);
+    expect(projected.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "rotated", viewportWriteSafe: false }),
+      expect.objectContaining({ id: "rotated-child", viewportWriteSafe: false }),
+      expect.objectContaining({ id: "locked-child", locked: true }),
+      expect.objectContaining({ id: "uncertain-child", viewportWriteSafe: false }),
+    ]));
+
+    const scene = buildAuthorizedBoardScene({
+      snapshot: projected,
+      selection: [],
+      // The legacy additive bounds appear contained here. Rotation and
+      // uncertain ancestry still keep every affected node read-only.
+      viewport: { x: 0, y: 0, width: 500, height: 500 },
+    });
+    expect(scene.writableHandles).toEqual([]);
+    expect(scene.nodes.every((item) => !item.writable)).toBe(true);
+
+    const rotatedNode = projected.nodes.find((item) => item.id === "rotated")!;
+    const explicitSelectionScene = buildAuthorizedBoardScene({
+      snapshot: projected,
+      selection: [{
+        id: rotatedNode.id,
+        type: rotatedNode.type,
+        title: rotatedNode.title,
+        x: rotatedNode.x,
+        y: rotatedNode.y,
+        width: rotatedNode.width,
+        height: rotatedNode.height,
+      }],
+      viewport: { x: 0, y: 0, width: 500, height: 500 },
+    });
+    expect(explicitSelectionScene.nodes.find((item) => item.id === "rotated")).toMatchObject({
+      role: "selected",
+      writable: true,
+    });
+
+    const lockedNode = projected.nodes.find((item) => item.id === "locked-child")!;
+    const lockedSelectionScene = buildAuthorizedBoardScene({
+      snapshot: projected,
+      selection: [{
+        id: lockedNode.id,
+        type: lockedNode.type,
+        title: lockedNode.title,
+        x: lockedNode.x,
+        y: lockedNode.y,
+        width: lockedNode.width,
+        height: lockedNode.height,
+      }],
+      viewport: { x: 0, y: 0, width: 500, height: 500 },
+    });
+    expect(lockedSelectionScene.nodes.find((item) => item.id === "locked-child")).toMatchObject({
+      role: "selected",
+      locked: true,
+      writable: false,
+    });
+  });
+
+  it("keeps grouped descendants read-only and marks their projected frame as a container", () => {
+    const frame = completeRecord({
+      id: "shape:frame",
+      type: "frame",
+      x: 20,
+      y: 20,
+      props: { w: 420, h: 360, name: "Container" },
+      meta: { fabric: { kind: "node", nodeId: "frame", nodeType: "frame" } },
+    }, 0);
+    const group = completeRecord({
+      id: "shape:group",
+      type: "group",
+      parentId: frame.id,
+      x: 40,
+      y: 40,
+    }, 1);
+    const child = completeRecord({
+      id: "shape:grouped-child",
+      type: "geo",
+      parentId: group.id,
+      x: 20,
+      y: 20,
+      props: { geo: "rectangle", w: 120, h: 80 },
+      meta: {
+        fabric: {
+          kind: "node",
+          nodeId: "grouped-child",
+          nodeType: "rectangle",
+          title: "Grouped child",
+        },
+      },
+    }, 2);
+    const document = createFabricTldrawDocument({
+      store: Object.fromEntries([frame, group, child].map((record) => [record.id, record])),
+      schema: { schemaVersion: 2, sequences: {} },
+    });
+
+    const projected = projectTldrawDocument(document!);
+    expect(projected.nodes.find((item) => item.id === "frame")).toMatchObject({
+      hasDescendants: true,
+    });
+    expect(projected.nodes.find((item) => item.id === "grouped-child")).toMatchObject({
+      viewportWriteSafe: false,
+    });
+
+    const scene = buildAuthorizedBoardScene({
+      snapshot: projected,
+      selection: [],
+      viewport: { x: 0, y: 0, width: 500, height: 450 },
+    });
+    expect(scene.nodes.find((item) => item.id === "frame")).toMatchObject({
+      allowedMutations: ["content", "style"],
+    });
+    expect(scene.nodes.find((item) => item.id === "grouped-child")).toMatchObject({
+      writable: false,
+      allowedMutations: [],
     });
   });
 });

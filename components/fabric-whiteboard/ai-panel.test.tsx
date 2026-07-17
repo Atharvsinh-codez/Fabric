@@ -5,8 +5,6 @@ import { createRoot, type Root } from "react-dom/client";
 import type { Editor } from "tldraw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { AiProposalRequest } from "@/lib/ai/proposal-request";
-
 const aiClient = vi.hoisted(() => ({
   cancelAiProposal: vi.fn(async () => undefined),
   finalizeAiProposal: vi.fn(async () => ({ status: "approved" })),
@@ -25,33 +23,10 @@ import {
   type FabricWhiteboardAiAdapter,
 } from "./ai-panel";
 
-const oneObjectSelection = [{
-  id: "shape:one",
-  type: "note" as const,
-  title: "Customer evidence",
-  x: 0,
-  y: 0,
-  width: 160,
-  height: 120,
-}];
-
-const twoObjectSelection = [
-  ...oneObjectSelection,
-  {
-    id: "shape:two",
-    type: "text" as const,
-    title: "Working hypothesis",
-    x: 220,
-    y: 0,
-    width: 180,
-    height: 100,
-  },
-];
-
 const canvasPreview = {
   patch: {
     schemaVersion: 1 as const,
-    summary: "I drafted a concise synthesis beside the selected evidence.",
+    summary: "I drafted a concise synthesis from the visible canvas.",
     base: {
       workspaceId: "workspace:test",
       boardId: "board:test",
@@ -74,23 +49,15 @@ const canvasPreview = {
 };
 
 function createEditorHarness() {
-  const listeners = new Set<() => void>();
+  const getSelectedShapes = vi.fn(() => []);
   const editor = {
-    store: {
-      listen: (listener: () => void) => {
-        listeners.add(listener);
-        return () => listeners.delete(listener);
-      },
-    },
-    getSelectedShapes: () => [],
+    getSelectedShapes,
     getViewportPageBounds: () => ({ x: 100, y: 200, w: 960, h: 640 }),
   } as unknown as Editor;
 
   return {
     editor,
-    emitSelectionChange: () => {
-      for (const listener of listeners) listener();
-    },
+    getSelectedShapes,
   };
 }
 
@@ -116,12 +83,10 @@ describe("Fabric agent canvas sidebar", () => {
 
   function renderPanel({
     editor,
-    getSelection,
     applyProposal = async () => undefined,
     onClose = vi.fn(),
   }: {
     editor: Editor;
-    getSelection: () => AiProposalRequest["selection"];
     applyProposal?: FabricWhiteboardAiAdapter["applyProposal"];
     onClose?: () => void;
   }) {
@@ -133,7 +98,7 @@ describe("Fabric agent canvas sidebar", () => {
           workspaceId="workspace:test"
           documentGenerationId="generation:test"
           durableSequence={1}
-          adapter={{ getSelection, applyProposal }}
+          adapter={{ applyProposal }}
           open
           persistenceReady
           readChangeVersion={() => 0}
@@ -178,13 +143,11 @@ describe("Fabric agent canvas sidebar", () => {
         return Promise.resolve(canvasPreview);
       },
     );
-    renderPanel({
-      editor,
-      getSelection: () => [],
-    });
+    renderPanel({ editor });
 
-    expect(container.textContent).toContain("No Selection");
-    expect(container.textContent).toContain("Fabric agent will use the visible canvas.");
+    expect(container.textContent).toContain("What should Fabric make?");
+    expect(container.textContent).toContain("Fabric reads the visible canvas");
+    expect(container.textContent).not.toMatch(/No Selection|Objects? Selected/i);
     const panel = container.querySelector<HTMLElement>(
       '[aria-label="Fabric agent"]',
     );
@@ -200,7 +163,8 @@ describe("Fabric agent canvas sidebar", () => {
     expect(panel?.className).toContain("rounded-radius-2xl");
     expect(panel?.className).toContain("sm:left-3");
     expect(panel?.className).toContain("sm:right-auto");
-    expect(panel?.className).toContain("sm:rounded-radius-2xl");
+    expect(panel?.className).toContain("sm:w-[23rem]");
+    expect(panel?.className).toContain("sm:bottom-auto");
     expect(panel?.className).not.toContain("sm:rounded-none");
     expect(container.querySelector("[data-wave-spinner]")).toBeNull();
 
@@ -218,7 +182,7 @@ describe("Fabric agent canvas sidebar", () => {
     expect(request).not.toHaveProperty("mode");
     expect(container.textContent).toContain("Write a clear three-step launch plan.");
     expect(container.textContent).toContain(
-      "I drafted a concise synthesis beside the selected evidence.",
+      "I drafted a concise synthesis from the visible canvas.",
     );
     expect(container.textContent).toContain("Change Preview");
     expect(container.textContent).toContain("Apply Changes");
@@ -229,33 +193,29 @@ describe("Fabric agent canvas sidebar", () => {
     expect(aiClient.cancelAiProposal).toHaveBeenCalledWith("run:canvas");
   });
 
-  it("tracks the editor selection and snapshots the latest objects when sending", async () => {
-    const { editor, emitSelectionChange } = createEditorHarness();
-    let selected: AiProposalRequest["selection"] = oneObjectSelection;
+  it("always uses the visible canvas and never reads the editor selection", async () => {
+    const { editor, getSelectedShapes } = createEditorHarness();
     aiClient.streamAiProposal.mockImplementation(
       ({ onRunId }: { onRunId?: (runId: string) => void }) => {
-        onRunId?.("run:selection");
+        onRunId?.("run:visible-canvas");
         return Promise.resolve(canvasPreview);
       },
     );
-    renderPanel({ editor, getSelection: () => selected });
+    renderPanel({ editor });
 
-    expect(container.textContent).toContain("1 Object Selected");
-    expect(container.textContent).toContain("1 note");
-
-    selected = twoObjectSelection;
-    act(() => emitSelectionChange());
-    expect(container.textContent).toContain("2 Objects Selected");
-    expect(container.textContent).toContain("1 note · 1 text block");
-
-    writePrompt("Connect these ideas and write the missing conclusion.");
+    writePrompt("Connect the visible ideas and write the missing conclusion.");
     await sendPrompt();
 
     expect(aiClient.streamAiProposal).toHaveBeenCalledWith(
       expect.objectContaining({
-        request: expect.objectContaining({ selection: twoObjectSelection }),
+        request: expect.objectContaining({
+          selection: [],
+          viewport: { x: 100, y: 200, width: 960, height: 640 },
+        }),
       }),
     );
+    expect(getSelectedShapes).not.toHaveBeenCalled();
+    expect(container.textContent).not.toMatch(/No Selection|Objects? Selected/i);
   });
 
   it("shows a model clarification as chat without an empty change preview", async () => {
@@ -266,16 +226,54 @@ describe("Fabric agent canvas sidebar", () => {
       question: "Which notes should I organize?",
       choices: ["Use my current selection", "Create a new group"],
     });
-    renderPanel({ editor, getSelection: () => [] });
+    renderPanel({ editor });
 
     writePrompt("Organize this.");
     await sendPrompt();
 
-    expect(container.textContent).toContain("Which notes should I organize?");
-    expect(container.textContent).toContain("1. Use my current selection");
+    expect(container.textContent).toContain(
+      "Tell me which part of the visible canvas to use",
+    );
+    expect(container.textContent).toContain("1. Use everything visible");
     expect(container.textContent).toContain("2. Create a new group");
+    expect(container.textContent).not.toMatch(/select(?:ed|ion)?/i);
     expect(container.textContent).not.toContain("Change Preview");
     expect(container.textContent).not.toContain("Apply Changes");
+  });
+
+  it("applies a reviewed patch once and finalizes its exact durable receipt", async () => {
+    const { editor } = createEditorHarness();
+    const applyProposal = vi.fn(async () => undefined);
+    aiClient.streamAiProposal.mockImplementation(
+      ({ onRunId }: { onRunId?: (runId: string) => void }) => {
+        onRunId?.("run:approval");
+        return Promise.resolve(canvasPreview);
+      },
+    );
+    renderPanel({ editor, applyProposal });
+
+    writePrompt("Create a launch plan from this canvas.");
+    await sendPrompt();
+
+    const apply = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === "Apply Changes",
+    );
+    await act(async () => {
+      apply?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+      await Promise.resolve();
+    });
+
+    expect(applyProposal).toHaveBeenCalledTimes(1);
+    expect(applyProposal).toHaveBeenCalledWith(canvasPreview, editor);
+    expect(aiClient.finalizeAiProposal).toHaveBeenCalledWith({
+      runId: "run:approval",
+      patchHash: "a".repeat(64),
+      documentGenerationId: "generation:test",
+      baseDurableSequence: 1,
+      observedDurableSequence: 1,
+    });
+    expect(container.textContent).toContain("Changes applied and durably confirmed.");
   });
 
   it("shows streamed progress, supports cancel, and keeps close available", async () => {
@@ -304,7 +302,6 @@ describe("Fabric agent canvas sidebar", () => {
     });
     renderPanel({
       editor,
-      getSelection: () => twoObjectSelection,
       onClose,
     });
 
@@ -319,6 +316,9 @@ describe("Fabric agent canvas sidebar", () => {
     const spinner = container.querySelector<HTMLElement>("[data-wave-spinner]");
     expect(spinner?.dataset.animation).toBe("ripple");
     expect(spinner?.dataset.pattern).toBe("square3x3");
+    expect(
+      container.querySelector('[aria-label="Fabric agent"]')?.getAttribute("aria-busy"),
+    ).toBeNull();
     expect(
       container.querySelector('[data-wave-spinner]:not([data-animation="ripple"])'),
     ).toBeNull();

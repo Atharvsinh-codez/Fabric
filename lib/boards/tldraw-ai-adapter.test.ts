@@ -365,6 +365,163 @@ describe("tldraw AI selection serialization", () => {
     expect(verifyApprovedPatchProjection(patch, projection)).toEqual({ ok: true });
   });
 
+  it("renders an AI heading as a strong native sans title card", async () => {
+    const created: Array<Record<string, unknown>> = [];
+    const editor = {
+      getInstanceState: () => ({ isReadonly: false }),
+      markHistoryStoppingPoint: () => "mark:heading",
+      run: (callback: () => void) => callback(),
+      createShape: (input: Record<string, unknown>) => created.push(input),
+      reparentShapes: () => undefined,
+      bailToMark: () => undefined,
+    } as unknown as Editor;
+    const proposal = BoardProposalSchema.parse({
+      schemaVersion: 1,
+      kind: "proposal",
+      summary: "Explain the system.",
+      placement: "viewport-center",
+      flow: "vertical",
+      actions: [{
+        kind: "composeText",
+        key: "heading",
+        presentation: "typed",
+        blocks: [{ role: "heading", text: "How the system works" }],
+      }],
+    });
+    const patch = compileBoardProposal({
+      proposal,
+      scene: buildAuthorizedBoardScene({
+        snapshot: { nodes: [], edges: [] },
+        selection: [],
+        viewport: { x: 0, y: 0, width: 1_200, height: 800 },
+      }),
+      base: {
+        workspaceId: "workspace-1",
+        boardId: "board-1",
+        documentGenerationId: "generation-1",
+        durableSequence: 1,
+      },
+    });
+
+    await applyTldrawProposal({
+      patch,
+      patchHash: "c".repeat(64),
+      patchBytes: JSON.stringify(patch).length,
+      affectedNodeIds: patch.operations.flatMap((operation) =>
+        operation.type === "createNode" ? [operation.tempId] : []),
+      riskClass: "low",
+    }, editor);
+
+    expect(created[0]).toMatchObject({
+      type: "geo",
+      props: {
+        color: "blue",
+        labelColor: "white",
+        fill: "solid",
+        dash: "solid",
+        font: "sans",
+        size: "l",
+        align: "start",
+      },
+    });
+  });
+
+  it("renders AI connectors with quiet native arrow styling", async () => {
+    const created: Array<Record<string, unknown>> = [];
+    const bounds = new Map<string, { midX: number; midY: number }>();
+    const bindings: unknown[] = [];
+    const editor = {
+      getInstanceState: () => ({ isReadonly: false }),
+      markHistoryStoppingPoint: () => "mark:connector",
+      run: (callback: () => void) => callback(),
+      getCurrentPageShapes: () => [],
+      createShape: (input: Record<string, unknown>) => {
+        created.push(input);
+        if (input.type !== "arrow") {
+          const props = input.props as { w: number; h: number };
+          bounds.set(String(input.id), {
+            midX: Number(input.x) + props.w / 2,
+            midY: Number(input.y) + props.h / 2,
+          });
+        }
+      },
+      getShapePageBounds: (id: string) => bounds.get(id),
+      createBindings: (input: unknown[]) => bindings.push(...input),
+      reparentShapes: () => undefined,
+      bailToMark: () => undefined,
+    } as unknown as Editor;
+    const patch = {
+      schemaVersion: 1,
+      summary: "Connect two steps.",
+      base: {
+        workspaceId: "workspace-1",
+        boardId: "board-1",
+        documentGenerationId: "generation-1",
+        durableSequence: 1,
+      },
+      operations: [
+        {
+          type: "createNode",
+          tempId: "tmp_ai_connector_a",
+          nodeType: "diamond",
+          position: { x: 0, y: 0 },
+          size: { width: 288, height: 144 },
+          content: { title: "Start", body: "Check whether the request is ready." },
+          appearance: { fill: "sky", textColor: "ink" },
+        },
+        {
+          type: "createNode",
+          tempId: "tmp_ai_connector_b",
+          nodeType: "rectangle",
+          position: { x: 420, y: 0 },
+          size: { width: 288, height: 144 },
+          content: { title: "Finish" },
+          appearance: { fill: "mint", textColor: "ink" },
+        },
+        {
+          type: "createConnector",
+          tempId: "tmp_ai_connector_edge",
+          sourceId: "tmp_ai_connector_a",
+          targetId: "tmp_ai_connector_b",
+          route: "straight",
+          label: "next",
+        },
+      ],
+    } satisfies CanvasPatch;
+
+    await applyTldrawProposal({
+      patch,
+      patchHash: "e".repeat(64),
+      patchBytes: JSON.stringify(patch).length,
+      affectedNodeIds: ["tmp_ai_connector_a", "tmp_ai_connector_b"],
+      riskClass: "low",
+    }, editor);
+
+    expect(created[2]).toMatchObject({
+      type: "arrow",
+      props: {
+        kind: "arc",
+        color: "grey",
+        labelColor: "black",
+        fill: "solid",
+        dash: "solid",
+        size: "s",
+        font: "sans",
+        arrowheadStart: "none",
+        arrowheadEnd: "arrow",
+      },
+    });
+    expect(created[0]).toMatchObject({
+      type: "geo",
+      props: {
+        geo: "diamond",
+        align: "middle",
+        verticalAlign: "middle",
+      },
+    });
+    expect(bindings).toHaveLength(2);
+  });
+
   it("round-trips an AI note through a real tldraw store with exact contract dimensions", async () => {
     const shapeUtils = [...defaultShapeUtils];
     const bindingUtils = [...defaultBindingUtils];
@@ -426,6 +583,12 @@ describe("tldraw AI selection serialization", () => {
           geo: "rectangle",
           w: 320,
           h: 180,
+          dash: "solid",
+          fill: "semi",
+          font: "sans",
+          size: "m",
+          align: "start",
+          verticalAlign: "start",
         },
         meta: {
           fabric: {

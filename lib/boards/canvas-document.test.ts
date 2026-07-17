@@ -4,6 +4,7 @@ import type { BoardDocument } from "@/db/schema/product";
 
 import {
   documentFingerprint,
+  readAuthoritativeCanvasDocument,
   readCanvasDocument,
   writeCanvasDocument,
 } from "./canvas-document";
@@ -102,5 +103,58 @@ describe("canvas document persistence", () => {
 
     expect(next.tldraw).toEqual(current.tldraw);
     expect(readCanvasDocument(next).tldraw?.version).toBe(1);
+  });
+
+  it("reprojects legacy semantic nodes from the current lossless tldraw checkpoint", () => {
+    const document: BoardDocument = {
+      version: 1,
+      nodes: [{
+        id: "rotated",
+        type: "rectangle",
+        title: "Stale projection",
+        x: 20,
+        y: 20,
+        width: 160,
+        height: 100,
+        fill: "#e0f2fe",
+      }],
+      edges: [],
+      tldraw: {
+        version: 1,
+        snapshot: {
+          store: {
+            "shape:rotated": {
+              id: "shape:rotated",
+              typeName: "shape",
+              type: "geo",
+              x: 20,
+              y: 20,
+              rotation: Math.PI / 4,
+              index: "a1",
+              parentId: "page:main",
+              isLocked: false,
+              opacity: 1,
+              props: { geo: "rectangle", w: 160, h: 100 },
+              meta: {
+                fabric: {
+                  kind: "node",
+                  nodeId: "rotated",
+                  nodeType: "rectangle",
+                  title: "Current projection",
+                },
+              },
+            },
+          },
+          schema: { schemaVersion: 2, sequences: {} },
+        },
+      },
+    };
+
+    expect(readCanvasDocument(document).nodes[0]).not.toHaveProperty("viewportWriteSafe");
+    expect(readAuthoritativeCanvasDocument(document).nodes[0]).toMatchObject({
+      id: "rotated",
+      title: "Current projection",
+      viewportWriteSafe: false,
+    });
   });
 });

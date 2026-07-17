@@ -20,7 +20,6 @@ import {
   type PenSegment,
 } from "@/lib/ai/pen-renderer";
 import type { AiProposalRequest } from "@/lib/ai/proposal-request";
-import { captureTldrawCheckpoint } from "@/lib/boards/tldraw-store-adapter";
 import {
   canvasSourceGeometryForTldrawShapeRecord,
   projectedCanvasNodeIdMapForTldrawShapeRecords,
@@ -92,6 +91,27 @@ function shapePropsForNode(operation: Extract<CanvasOperation, { type: "createNo
   const color = operation.appearance?.fill
     ? colorTokens[operation.appearance.fill]
     : "blue";
+  const labelColor = operation.appearance?.textColor === "surface"
+    ? "white"
+    : operation.appearance?.textColor === "muted"
+      ? "grey"
+      : "black";
+  const isHeading = operation.nodeType === "summary" &&
+    operation.appearance?.textColor === "surface";
+  const isLongForm = Boolean(operation.content.body) || operation.content.title.length > 72;
+  const isCenteredGeometry = operation.nodeType === "diamond" ||
+    operation.nodeType === "triangle";
+  const geoTypography = {
+    dash: "solid",
+    font: "sans",
+    size: isHeading ? "l" : "m",
+    align: isCenteredGeometry
+      ? "middle"
+      : isHeading || isLongForm
+        ? "start"
+        : "middle",
+    verticalAlign: isCenteredGeometry || !isLongForm ? "middle" : "start",
+  } as const;
   if (operation.nodeType === "frame") {
     return {
       type: "frame",
@@ -116,8 +136,9 @@ function shapePropsForNode(operation: Extract<CanvasOperation, { type: "createNo
         w: operation.size.width,
         h: operation.size.height,
         color,
-        labelColor: "black",
-        fill: "semi",
+        labelColor,
+        fill: isHeading ? "solid" : "semi",
+        ...geoTypography,
         richText: toRichText(text),
       },
     } as const;
@@ -126,9 +147,12 @@ function shapePropsForNode(operation: Extract<CanvasOperation, { type: "createNo
     return {
       type: "text",
       props: {
-        color,
+        color: labelColor,
         w: operation.size.width,
         autoSize: false,
+        font: "sans",
+        size: isHeading ? "l" : "m",
+        textAlign: "start",
         richText: toRichText(text),
       },
     } as const;
@@ -140,8 +164,9 @@ function shapePropsForNode(operation: Extract<CanvasOperation, { type: "createNo
       w: operation.size.width,
       h: operation.size.height,
       color,
-      labelColor: "black",
-      fill: "semi",
+      labelColor,
+      fill: isHeading ? "solid" : "semi",
+      ...geoTypography,
       richText: toRichText(text),
     },
   } as const;
@@ -411,7 +436,14 @@ function createConnector(
     y: start.y,
     props: {
       kind: operation.route === "elbow" ? "elbow" : "arc",
-      color: "blue",
+      color: "grey",
+      labelColor: "black",
+      fill: "solid",
+      dash: "solid",
+      size: "s",
+      font: "sans",
+      arrowheadStart: "none",
+      arrowheadEnd: "arrow",
       start: { x: 0, y: 0 },
       end: { x: end.x - start.x, y: end.y - start.y },
       ...(operation.label ? { richText: toRichText(operation.label) } : {}),
@@ -562,9 +594,5 @@ export function serializeTldrawAiSelection(
 }
 
 export const tldrawWhiteboardAiAdapter: FabricWhiteboardAiAdapter = {
-  getSelection(editor) {
-    const checkpoint = captureTldrawCheckpoint(editor.store);
-    return serializeTldrawAiSelection(editor, checkpoint.nodes);
-  },
   applyProposal: applyTldrawProposal,
 };

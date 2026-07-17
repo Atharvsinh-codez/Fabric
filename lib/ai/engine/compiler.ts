@@ -1,14 +1,33 @@
 import { CanvasPatchSchema, type CanvasOperation, type CanvasPatch } from "../canvas-patch";
 import { hashCanonicalJson } from "../hash";
-import type { BoardProposal, BoardPlanTone } from "./board-plan";
+import {
+  compiledConnectionNoteBodies,
+  inlineDiagramConnectionLabel,
+  type BoardProposal,
+  type BoardPlanTone,
+} from "./board-plan";
 import type { AuthorizedBoardScene, AuthorizedSceneNode, SceneBounds } from "./authorized-scene";
 
-export const CANVAS_COMPILER_VERSION = "fabric-canvas-compiler.v2" as const;
+export const CANVAS_COMPILER_VERSION = "fabric-canvas-compiler.v3" as const;
 
 const NODE_GAP = 48;
-const FRAME_PADDING = 48;
-const FRAME_HEADER = 56;
+const SECTION_GAP = 80;
+const TEXT_TILE_GAP = 32;
+const FLOW_COLUMN_GAP = 128;
+const FLOW_ROW_GAP = 112;
+const HIERARCHY_SIBLING_GAP = 72;
+const HIERARCHY_LEVEL_GAP = 128;
+const RADIAL_GAP = 80;
+const FRAME_PADDING = 56;
+// tldraw renders a frame's name just above its geometric bounds. Keep that
+// visual overflow inside the deterministic group bounds so adjacent content
+// can never cover the title.
+const FRAME_TITLE_CLEARANCE = 48;
+const CONNECTION_NOTES_GAP = 56;
+const CONNECTION_NOTES_TILE_GAP = 32;
+const CONNECTION_NOTES_WIDTH = 520;
 const COLLISION_GAP = 32;
+const PARENT_INTERIOR_PADDING = 24;
 const SEARCH_STEP = 96;
 const SEARCH_RINGS = 36;
 
@@ -35,6 +54,7 @@ type GeneratedConnector = Readonly<{
   tempId: string;
   sourceTempId: string;
   targetTempId: string;
+  route: "straight" | "elbow";
   label?: string;
 }>;
 
@@ -99,8 +119,15 @@ const toneFill: Record<BoardPlanTone, NonNullable<GeneratedNode["appearance"]>["
   red: "rose",
 };
 
-function appearanceForTone(tone: BoardPlanTone | undefined): GeneratedNode["appearance"] {
-  return tone ? { fill: toneFill[tone] } : undefined;
+function appearanceForTone(
+  tone: BoardPlanTone | undefined,
+  textColor?: NonNullable<GeneratedNode["appearance"]>["textColor"],
+): GeneratedNode["appearance"] {
+  if (!tone && !textColor) return undefined;
+  return {
+    ...(tone ? { fill: toneFill[tone] } : {}),
+    ...(textColor ? { textColor } : {}),
+  };
 }
 
 function textContent(text: string): GeneratedNode["content"] {
@@ -114,18 +141,34 @@ function textContent(text: string): GeneratedNode["content"] {
   };
 }
 
-function estimatedTextSize(text: string, role: string): Size {
-  const width = role === "heading" ? 560 : 520;
-  const charactersPerLine = Math.max(16, Math.floor(width / (role === "heading" ? 13 : 11)));
+type TextBlockRole = Extract<
+  BoardProposal["actions"][number],
+  { kind: "composeText" }
+>["blocks"][number]["role"];
+
+function estimatedTextSize(text: string, role: TextBlockRole, fullWidth: boolean): Size {
+  const width = fullWidth ? 712 : 336;
+  const characterWidth = role === "heading" ? 14 : 11;
+  const charactersPerLine = Math.max(16, Math.floor((width - 48) / characterWidth));
   const explicitLines = text.split(/\r?\n/);
   const lines = explicitLines.reduce(
     (total, line) => total + Math.max(1, Math.ceil(line.length / charactersPerLine)),
     0,
   );
+  const minimumHeight = role === "heading" ? 112 : fullWidth ? 128 : 136;
+  const lineHeight = role === "heading" ? 40 : 32;
   return {
     width,
-    height: Math.max(96, Math.min(720, 52 + lines * (role === "heading" ? 38 : 32))),
+    height: Math.max(minimumHeight, Math.min(720, 52 + lines * lineHeight)),
   };
+}
+
+function defaultTextTone(role: TextBlockRole, tileIndex: number): BoardPlanTone {
+  if (role === "heading") return "blue";
+  if (role === "answer") return "green";
+  if (role === "equation") return "purple";
+  if (role === "body") return "neutral";
+  return (["neutral", "blue", "purple", "green"] as const)[tileIndex % 4]!;
 }
 
 function estimatedNodeSize(input: {
@@ -227,6 +270,36 @@ function linearPositions(
   });
 }
 
+function serpentineGridPositions(
+  sizes: readonly Size[],
+  columns: number,
+  columnGap: number,
+  rowGap: number,
+): Point[] {
+  const safeColumns = Math.max(1, Math.min(columns, sizes.length));
+  const rowCount = Math.ceil(sizes.length / safeColumns);
+  const slots = sizes.map((_size, index) => {
+    const row = Math.floor(index / safeColumns);
+    const logicalColumn = index % safeColumns;
+    const column = row % 2 === 0 ? logicalColumn : safeColumns - logicalColumn - 1;
+    return { row, column };
+  });
+  const columnWidths = Array.from({ length: safeColumns }, () => 0);
+  const rowHeights = Array.from({ length: rowCount }, () => 0);
+  sizes.forEach((size, index) => {
+    const slot = slots[index]!;
+    columnWidths[slot.column] = Math.max(columnWidths[slot.column]!, size.width);
+    rowHeights[slot.row] = Math.max(rowHeights[slot.row]!, size.height);
+  });
+  const columnX = columnWidths.map((_, index) =>
+    columnWidths.slice(0, index).reduce((total, value) => total + value, 0) + columnGap * index,
+  );
+  const rowY = rowHeights.map((_, index) =>
+    rowHeights.slice(0, index).reduce((total, value) => total + value, 0) + rowGap * index,
+  );
+  return slots.map((slot) => ({ x: columnX[slot.column]!, y: rowY[slot.row]! }));
+}
+
 function circlePositions(sizes: readonly Size[], gap: number): Point[] {
   if (sizes.length === 0) return [];
   const maxWidth = Math.max(...sizes.map((size) => size.width));
@@ -265,6 +338,57 @@ function createSimpleGroup(
   return { nodes: positioned, connectors: [], size: layout.size };
 }
 
+function leadingFullWidthTextBlocks(
+  blocks: Extract<BoardProposal["actions"][number], { kind: "composeText" }>["blocks"],
+): number {
+  if (blocks[0]?.role === "heading") return blocks[1]?.role === "body" ? 2 : 1;
+  return blocks.length >= 3 && blocks[0]?.role === "body" ? 1 : 0;
+}
+
+/**
+ * Explanations read as one composition instead of a tower of identical cards:
+ * an optional title/overview spans the full width, while the remaining facts
+ * use a balanced two-column grid. Input order remains stable within both rows.
+ */
+function createTextGroup(
+  nodes: readonly Omit<GeneratedNode, "position">[],
+  fullWidthCount: number,
+): GeneratedGroup {
+  const positions: Point[] = nodes.map(() => ({ x: 0, y: 0 }));
+  let cursorY = 0;
+
+  for (let index = 0; index < fullWidthCount; index += 1) {
+    positions[index] = { x: 0, y: cursorY };
+    cursorY += nodes[index]!.size.height + TEXT_TILE_GAP;
+  }
+
+  const tiles = nodes.slice(fullWidthCount);
+  if (tiles.length > 0) {
+    const columns = tiles.length === 1 ? 1 : 2;
+    const tileLayout = normalizeLayout(
+      tiles.map((node) => node.size),
+      gridPositions(tiles.map((node) => node.size), columns, TEXT_TILE_GAP),
+    );
+    const tileTop = fullWidthCount > 0 ? cursorY + 8 : 0;
+    tileLayout.positions.forEach((position, tileIndex) => {
+      positions[fullWidthCount + tileIndex] = {
+        x: position.x,
+        y: tileTop + position.y,
+      };
+    });
+  }
+
+  const layout = normalizeLayout(nodes.map((node) => node.size), positions);
+  return {
+    nodes: repositionNodes(
+      nodes.map((node) => ({ ...node, position: { x: 0, y: 0 } })),
+      layout.positions,
+    ),
+    connectors: [],
+    size: layout.size,
+  };
+}
+
 type DiagramAction = Extract<BoardProposal["actions"][number], { kind: "addDiagram" }>;
 
 function diagramGraph(action: DiagramAction): {
@@ -286,6 +410,38 @@ function diagramGraph(action: DiagramAction): {
     if (!neighbors[to]!.includes(from)) neighbors[to]!.push(from);
   }
   return { outgoing, incoming, neighbors };
+}
+
+function defaultDiagramTone(action: DiagramAction, index: number): BoardPlanTone {
+  const graph = diagramGraph(action);
+  if (graph.incoming[index]!.length === 0) return "blue";
+  if (graph.outgoing[index]!.length === 0) return "green";
+  if (action.nodes[index]!.shape === "diamond" || graph.outgoing[index]!.length > 1) {
+    return "yellow";
+  }
+  return index % 2 === 0 ? "purple" : "neutral";
+}
+
+function connectionNoteSize(title: string, body: string): Size {
+  const charactersPerLine = Math.floor((CONNECTION_NOTES_WIDTH - 48) / 10);
+  const lines = [title, body].reduce(
+    (total, text) => total + text.split(/\r?\n/).reduce(
+      (subtotal, line) => subtotal + Math.max(1, Math.ceil(line.length / charactersPerLine)),
+      0,
+    ),
+    0,
+  );
+  return {
+    width: CONNECTION_NOTES_WIDTH,
+    height: Math.min(10_000, Math.max(160, 64 + lines * 28)),
+  };
+}
+
+function connectorRoute(action: DiagramAction): "straight" | "elbow" {
+  if (action.layout === "flow-vertical") return "straight";
+  if (action.layout === "flow-horizontal" && action.nodes.length < 5) return "straight";
+  if (action.layout === "mind-map" || action.layout === "cycle") return "straight";
+  return "elbow";
 }
 
 function hierarchyPositions(action: DiagramAction, sizes: readonly Size[]): Point[] {
@@ -334,7 +490,7 @@ function hierarchyPositions(action: DiagramAction, sizes: readonly Size[]): Poin
   const orderedLevels = [...levels.entries()].sort(([left], [right]) => left - right);
   const levelWidths = orderedLevels.map(([, indices]) =>
     indices.reduce((total, index) => total + sizes[index]!.width, 0) +
-      Math.max(0, indices.length - 1) * NODE_GAP,
+      Math.max(0, indices.length - 1) * HIERARCHY_SIBLING_GAP,
   );
   const totalWidth = Math.max(...levelWidths, 1);
   const positions = sizes.map(() => ({ x: 0, y: 0 }));
@@ -344,10 +500,10 @@ function hierarchyPositions(action: DiagramAction, sizes: readonly Size[]): Poin
     let levelHeight = 0;
     indices.forEach((index) => {
       positions[index] = { x, y };
-      x += sizes[index]!.width + NODE_GAP;
+      x += sizes[index]!.width + HIERARCHY_SIBLING_GAP;
       levelHeight = Math.max(levelHeight, sizes[index]!.height);
     });
-    y += levelHeight + NODE_GAP;
+    y += levelHeight + HIERARCHY_LEVEL_GAP;
   });
   return positions;
 }
@@ -403,10 +559,10 @@ function mindMapPositions(action: DiagramAction, sizes: readonly Size[]): Point[
   const maxWidth = Math.max(...peripheral.map((index) => sizes[index]!.width));
   const maxHeight = Math.max(...peripheral.map((index) => sizes[index]!.height));
   const centerClearance = Math.hypot(
-    (centerSize.width + maxWidth) / 2 + NODE_GAP,
-    (centerSize.height + maxHeight) / 2 + NODE_GAP,
+    (centerSize.width + maxWidth) / 2 + RADIAL_GAP,
+    (centerSize.height + maxHeight) / 2 + RADIAL_GAP,
   );
-  const ringChord = Math.hypot(maxWidth + NODE_GAP, maxHeight + NODE_GAP);
+  const ringChord = Math.hypot(maxWidth + RADIAL_GAP, maxHeight + RADIAL_GAP);
   const ringRadius = peripheral.length <= 1
     ? centerClearance
     : ringChord / (2 * Math.sin(Math.PI / peripheral.length));
@@ -427,14 +583,20 @@ function diagramPositions(
   action: DiagramAction,
   sizes: readonly Size[],
 ): Point[] {
-  if (action.layout === "flow-horizontal") return linearPositions(sizes, "horizontal");
+  if (action.layout === "flow-horizontal") {
+    if (sizes.length >= 5) {
+      const columns = Math.min(4, Math.ceil(Math.sqrt(sizes.length)));
+      return serpentineGridPositions(sizes, columns, FLOW_COLUMN_GAP, FLOW_ROW_GAP);
+    }
+    return linearPositions(sizes, "horizontal", FLOW_COLUMN_GAP);
+  }
   if (action.layout === "flow-vertical") {
-    return linearPositions(sizes, "vertical");
+    return linearPositions(sizes, "vertical", HIERARCHY_LEVEL_GAP);
   }
   if (action.layout === "hierarchy") return hierarchyPositions(action, sizes);
   if (action.layout === "mind-map") return mindMapPositions(action, sizes);
   if (action.layout === "cycle") {
-    return orderedCirclePositions(sizes, traversalOrder(action, 0, true), NODE_GAP);
+    return orderedCirclePositions(sizes, traversalOrder(action, 0, true), RADIAL_GAP);
   }
   return gridPositions(sizes, Math.ceil(Math.sqrt(sizes.length)));
 }
@@ -480,12 +642,18 @@ function freeOrigin(input: {
   desired: Point;
   size: Size;
   obstacles: readonly SceneBounds[];
+  boundary?: SceneBounds;
 }): Point {
   for (const candidate of candidateOrigins(input.desired)) {
     const candidateRect = rect(candidate, input.size);
     if (
       Math.abs(candidate.x) <= 99_000 &&
       Math.abs(candidate.y) <= 99_000 &&
+      (!input.boundary ||
+        (candidateRect.x >= input.boundary.x &&
+          candidateRect.y >= input.boundary.y &&
+          candidateRect.x + candidateRect.width <= input.boundary.x + input.boundary.width &&
+          candidateRect.y + candidateRect.height <= input.boundary.y + input.boundary.height)) &&
       input.obstacles.every((obstacle) => !overlaps(candidateRect, obstacle, COLLISION_GAP))
     ) {
       return candidate;
@@ -504,12 +672,12 @@ function offsetGroup(group: GeneratedGroup, offset: Point): GeneratedGroup {
   };
 }
 
-function selectedNode(scene: AuthorizedBoardScene, reference: string): AuthorizedSceneNode {
+function writableNode(scene: AuthorizedBoardScene, reference: string): AuthorizedSceneNode {
   const node = scene.nodes.find((candidate) => candidate.handle === reference);
-  if (!node || node.role !== "selected") {
+  if (!node || !node.writable || !scene.writableHandles.includes(reference)) {
     throw new BoardPlanCompileError(
       "unknown_selection_reference",
-      "The plan referenced an object outside the authorized selection.",
+      "The plan referenced an object outside the authorized writable canvas scope.",
     );
   }
   return node;
@@ -519,9 +687,48 @@ function requireMutation(node: AuthorizedSceneNode, mutation: "move" | "content"
   if (!node.allowedMutations.includes(mutation)) {
     throw new BoardPlanCompileError(
       "mutation_not_allowed",
-      `The selected ${node.type} object does not allow ${mutation} changes.`,
+      `The authorized ${node.type} object does not allow ${mutation} changes.`,
     );
   }
+}
+
+function enclosingBounds(nodes: readonly AuthorizedSceneNode[]): SceneBounds {
+  const minX = Math.min(...nodes.map((node) => node.bounds.x));
+  const minY = Math.min(...nodes.map((node) => node.bounds.y));
+  const maxX = Math.max(...nodes.map((node) => node.bounds.x + node.bounds.width));
+  const maxY = Math.max(...nodes.map((node) => node.bounds.y + node.bounds.height));
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+function insetBounds(bounds: SceneBounds, inset: number): SceneBounds | null {
+  const width = bounds.width - inset * 2;
+  const height = bounds.height - inset * 2;
+  return width > 0 && height > 0
+    ? { x: bounds.x + inset, y: bounds.y + inset, width, height }
+    : null;
+}
+
+function intersectBounds(left: SceneBounds, right: SceneBounds): SceneBounds | null {
+  const x = Math.max(left.x, right.x);
+  const y = Math.max(left.y, right.y);
+  const rightEdge = Math.min(left.x + left.width, right.x + right.width);
+  const bottomEdge = Math.min(left.y + left.height, right.y + right.height);
+  return rightEdge > x && bottomEdge > y
+    ? { x, y, width: rightEdge - x, height: bottomEdge - y }
+    : null;
+}
+
+function boundedOrigin(desired: Point, size: Size, boundary: SceneBounds): Point {
+  if (size.width > boundary.width || size.height > boundary.height) {
+    throw new BoardPlanCompileError(
+      "layout_failed",
+      "The requested arrangement does not fit inside its authorized container.",
+    );
+  }
+  return {
+    x: Math.max(boundary.x, Math.min(desired.x, boundary.x + boundary.width - size.width)),
+    y: Math.max(boundary.y, Math.min(desired.y, boundary.y + boundary.height - size.height)),
+  };
 }
 
 function arrangedPositions(
@@ -547,6 +754,8 @@ function assertCompiledPatchQuality(patch: CanvasPatch, scene: AuthorizedBoardSc
   const createdRects: Array<{ id: string; bounds: SceneBounds; parentId?: string }> = [];
   const existingIds = new Set(scene.nodes.map((node) => node.id));
   const finalExistingBounds = new Map(scene.nodes.map((node) => [node.id, node.bounds]));
+  const sceneNodeById = new Map(scene.nodes.map((node) => [node.id, node]));
+  const sceneNodeByHandle = new Map(scene.nodes.map((node) => [node.handle, node]));
   const movedIds = new Set<string>();
   for (const operation of patch.operations) {
     const available = (value: string): boolean => existingIds.has(value) || created.has(value);
@@ -601,8 +810,16 @@ function assertCompiledPatchQuality(patch: CanvasPatch, scene: AuthorizedBoardSc
 
   for (const movedId of movedIds) {
     const moved = finalExistingBounds.get(movedId)!;
+    const ancestorIds = new Set<string>();
+    let parentHandle = sceneNodeById.get(movedId)?.parentHandle;
+    while (parentHandle) {
+      const parent = sceneNodeByHandle.get(parentHandle);
+      if (!parent) break;
+      ancestorIds.add(parent.id);
+      parentHandle = parent.parentHandle;
+    }
     for (const [otherId, other] of finalExistingBounds) {
-      if (otherId !== movedId && overlaps(moved, other, 12)) {
+      if (otherId !== movedId && !ancestorIds.has(otherId) && overlaps(moved, other, 12)) {
         throw new BoardPlanCompileError(
           "quality_failed",
           "Arranged canvas objects overlap another board object.",
@@ -636,23 +853,29 @@ export function compileBoardProposal(input: {
 
   for (const action of input.proposal.actions) {
     if (action.kind === "composeText") {
-      const nodes = action.blocks.map((block, index) => ({
-        logicalKey: `${action.key}/block-${index + 1}`,
-        tempId: allocator.allocate(),
-        // A bounded native geo text block preserves Unicode, equations, and
-        // multilingual content exactly. The lossy bitmap pen renderer is not
-        // used for arbitrary model text.
-        nodeType: "summary" as const,
-        size: estimatedTextSize(block.text, block.role),
-        content: textContent(block.text),
-        appearance: appearanceForTone(action.tone ?? (block.role === "answer" ? "green" : "neutral")),
-      }));
-      groups.push(createSimpleGroup(nodes, "vertical"));
+      const fullWidthCount = leadingFullWidthTextBlocks(action.blocks);
+      const nodes = action.blocks.map((block, index) => {
+        const tone = action.tone ?? defaultTextTone(block.role, index - fullWidthCount);
+        const strongHeading = block.role === "heading" &&
+          tone !== "neutral" && tone !== "yellow";
+        return {
+          logicalKey: `${action.key}/block-${index + 1}`,
+          tempId: allocator.allocate(),
+          // A bounded native geo text block preserves Unicode, equations, and
+          // multilingual content exactly. The lossy bitmap pen renderer is not
+          // used for arbitrary model text.
+          nodeType: "summary" as const,
+          size: estimatedTextSize(block.text, block.role, index < fullWidthCount),
+          content: textContent(block.text),
+          appearance: appearanceForTone(tone, strongHeading ? "surface" : "ink"),
+        };
+      });
+      groups.push(createTextGroup(nodes, fullWidthCount));
       continue;
     }
 
     if (action.kind === "addCards") {
-      const nodes = action.cards.map((card) => ({
+      const nodes = action.cards.map((card, index) => ({
         logicalKey: card.key,
         tempId: allocator.allocate(),
         nodeType: card.variant,
@@ -663,14 +886,20 @@ export function compileBoardProposal(input: {
           baseHeight: card.variant === "note" ? 200 : 190,
         }),
         content: { title: card.title, ...(card.body !== undefined ? { body: card.body } : {}) },
-        appearance: appearanceForTone(card.tone ?? (card.variant === "note" ? "yellow" : "neutral")),
+        appearance: appearanceForTone(
+          card.tone ??
+            (card.variant === "note"
+              ? (["yellow", "neutral", "blue", "green"] as const)[index % 4]!
+              : (["neutral", "blue", "purple", "green"] as const)[index % 4]!),
+          "ink",
+        ),
       }));
       groups.push(createSimpleGroup(nodes, input.proposal.flow));
       continue;
     }
 
     if (action.kind === "addShapes") {
-      const nodes = action.shapes.map((shape) => ({
+      const nodes = action.shapes.map((shape, index) => ({
         logicalKey: shape.key,
         tempId: allocator.allocate(),
         nodeType: shape.shape,
@@ -681,7 +910,10 @@ export function compileBoardProposal(input: {
           baseHeight: shape.detail ? 170 : 130,
         }),
         content: { title: shape.label, ...(shape.detail !== undefined ? { body: shape.detail } : {}) },
-        appearance: appearanceForTone(shape.tone ?? "blue"),
+        appearance: appearanceForTone(
+          shape.tone ?? (["blue", "neutral", "purple", "green"] as const)[index % 4]!,
+          "ink",
+        ),
       }));
       groups.push(createSimpleGroup(nodes, input.proposal.flow));
       continue;
@@ -689,68 +921,148 @@ export function compileBoardProposal(input: {
 
     if (action.kind === "addDiagram") {
       const frameTempId = allocator.allocate();
-      const rawNodes = action.nodes.map((node) => ({
-        logicalKey: `${action.key}/${node.key}`,
-        tempId: allocator.allocate(),
-        nodeType: nativeNodeType(node.shape),
-        position: { x: 0, y: 0 },
-        size: estimatedNodeSize({
-          title: node.label,
-          ...(node.detail !== undefined ? { body: node.detail } : {}),
-          baseWidth: 260,
-          baseHeight: node.detail ? 160 : 120,
-        }),
-        content: { title: node.label, ...(node.detail !== undefined ? { body: node.detail } : {}) },
-        appearance: appearanceForTone(node.tone ?? "blue"),
-        parentTempId: frameTempId,
-      }));
+      const rawNodes = action.nodes.map((node, index) => {
+        const isNarrowInterior = node.shape === "diamond" || node.shape === "triangle";
+        return {
+          logicalKey: `${action.key}/${node.key}`,
+          tempId: allocator.allocate(),
+          nodeType: nativeNodeType(node.shape),
+          position: { x: 0, y: 0 },
+          size: estimatedNodeSize({
+            title: node.label,
+            ...(node.detail !== undefined ? { body: node.detail } : {}),
+            baseWidth: isNarrowInterior ? 320 : 288,
+            baseHeight: node.detail ? (isNarrowInterior ? 208 : 176) : (isNarrowInterior ? 176 : 144),
+          }),
+          content: {
+            title: node.label,
+            ...(node.detail !== undefined ? { body: node.detail } : {}),
+          },
+          appearance: appearanceForTone(node.tone ?? defaultDiagramTone(action, index), "ink"),
+          parentTempId: frameTempId,
+        };
+      });
       const childSizes = rawNodes.map((node) => node.size);
       const diagramLayout = normalizeLayout(childSizes, diagramPositions(action, childSizes));
+      const connectionBodies = compiledConnectionNoteBodies(action);
+      const rawConnectionNotes = connectionBodies.map((body, index) => {
+        const title = connectionBodies.length === 1
+          ? "Connection notes"
+          : `Connection notes \u00b7 ${index + 1} of ${connectionBodies.length}`;
+        return {
+          logicalKey: `${action.key}/connection-notes-${index + 1}`,
+          tempId: allocator.allocate(),
+          nodeType: "summary" as const,
+          position: { x: 0, y: 0 },
+          size: connectionNoteSize(title, body),
+          content: { title, body },
+          appearance: appearanceForTone("neutral", "ink"),
+          parentTempId: frameTempId,
+        };
+      });
+      const connectionNotesLayout = rawConnectionNotes.length > 0
+        ? normalizeLayout(
+            rawConnectionNotes.map((node) => node.size),
+            gridPositions(
+              rawConnectionNotes.map((node) => node.size),
+              Math.min(4, Math.ceil(Math.sqrt(rawConnectionNotes.length))),
+              CONNECTION_NOTES_TILE_GAP,
+            ),
+          )
+        : null;
+      const belowSize = connectionNotesLayout
+        ? {
+            width: Math.max(diagramLayout.size.width, connectionNotesLayout.size.width),
+            height: diagramLayout.size.height + CONNECTION_NOTES_GAP + connectionNotesLayout.size.height,
+          }
+        : diagramLayout.size;
+      const besideSize = connectionNotesLayout
+        ? {
+            width: diagramLayout.size.width + CONNECTION_NOTES_GAP + connectionNotesLayout.size.width,
+            height: Math.max(diagramLayout.size.height, connectionNotesLayout.size.height),
+          }
+        : diagramLayout.size;
+      const notesBesideDiagram = Boolean(
+        connectionNotesLayout &&
+        Math.max(besideSize.width, besideSize.height) < Math.max(belowSize.width, belowSize.height),
+      );
+      const contentSize = notesBesideDiagram ? besideSize : belowSize;
+      const diagramOffset = notesBesideDiagram
+        ? { x: 0, y: (contentSize.height - diagramLayout.size.height) / 2 }
+        : { x: (contentSize.width - diagramLayout.size.width) / 2, y: 0 };
       const positionedChildren = repositionNodes(rawNodes, diagramLayout.positions).map((node) => ({
         ...node,
         position: {
-          x: node.position.x + FRAME_PADDING,
-          y: node.position.y + FRAME_HEADER + FRAME_PADDING,
+          x: node.position.x + diagramOffset.x + FRAME_PADDING,
+          y: node.position.y + diagramOffset.y + FRAME_TITLE_CLEARANCE + FRAME_PADDING,
         },
       }));
+      const notesOffset = connectionNotesLayout
+        ? notesBesideDiagram
+          ? {
+              x: diagramLayout.size.width + CONNECTION_NOTES_GAP,
+              y: (contentSize.height - connectionNotesLayout.size.height) / 2,
+            }
+          : {
+              x: (contentSize.width - connectionNotesLayout.size.width) / 2,
+              y: diagramLayout.size.height + CONNECTION_NOTES_GAP,
+            }
+        : { x: 0, y: 0 };
+      const positionedConnectionNotes = connectionNotesLayout
+        ? repositionNodes(rawConnectionNotes, connectionNotesLayout.positions).map((node) => ({
+            ...node,
+            position: {
+              x: node.position.x + notesOffset.x + FRAME_PADDING,
+              y: node.position.y + notesOffset.y + FRAME_TITLE_CLEARANCE + FRAME_PADDING,
+            },
+          }))
+        : [];
       const frame: GeneratedNode = {
         logicalKey: action.key,
         tempId: frameTempId,
         nodeType: "frame",
-        position: { x: 0, y: 0 },
+        position: { x: 0, y: FRAME_TITLE_CLEARANCE },
         size: {
-          width: diagramLayout.size.width + FRAME_PADDING * 2,
-          height: diagramLayout.size.height + FRAME_HEADER + FRAME_PADDING * 2,
+          width: contentSize.width + FRAME_PADDING * 2,
+          height: contentSize.height + FRAME_PADDING * 2,
         },
-        content: { title: action.title ?? "Fabric agent diagram" },
+        content: { title: action.title ?? input.proposal.summary.slice(0, 120) },
         appearance: { fill: "fog" },
       };
       const keyToTemp = new Map(
         action.nodes.map((node, index) => [node.key, positionedChildren[index]!.tempId]),
       );
-      const connectors = action.connections.map((connection) => ({
-        tempId: allocator.allocate(),
-        sourceTempId: keyToTemp.get(connection.from)!,
-        targetTempId: keyToTemp.get(connection.to)!,
-        ...(connection.label ? { label: connection.label } : {}),
-      }));
+      const route = connectorRoute(action);
+      const connectors = action.connections.map((connection) => {
+        const label = inlineDiagramConnectionLabel(action, connection.label);
+        return {
+          tempId: allocator.allocate(),
+          sourceTempId: keyToTemp.get(connection.from)!,
+          targetTempId: keyToTemp.get(connection.to)!,
+          route,
+          ...(label ? { label } : {}),
+        };
+      });
       groups.push({
-        nodes: [frame, ...positionedChildren],
+        nodes: [frame, ...positionedChildren, ...positionedConnectionNotes],
         connectors,
-        size: frame.size,
+        size: {
+          width: frame.size.width,
+          height: frame.size.height + FRAME_TITLE_CLEARANCE,
+        },
       });
       continue;
     }
 
     if (action.kind === "arrangeSelection") {
-      const selected = action.selectionRefs.map((reference) => selectedNode(input.scene, reference));
-      selected.forEach((node) => requireMutation(node, "move"));
-      const selectedHandles = new Set(action.selectionRefs);
+      const targets = action.selectionRefs.map((reference) => writableNode(input.scene, reference));
+      targets.forEach((node) => requireMutation(node, "move"));
+      const targetHandles = new Set(action.selectionRefs);
       const nodeByHandle = new Map(input.scene.nodes.map((node) => [node.handle, node]));
-      for (const node of selected) {
+      for (const node of targets) {
         let parentHandle = node.parentHandle;
         while (parentHandle) {
-          if (selectedHandles.has(parentHandle)) {
+          if (targetHandles.has(parentHandle)) {
             throw new BoardPlanCompileError(
               "layout_failed",
               "Nested parent and child objects must be arranged in separate proposals.",
@@ -759,34 +1071,80 @@ export function compileBoardProposal(input: {
           parentHandle = nodeByHandle.get(parentHandle)?.parentHandle;
         }
       }
-      if (selected.some((node) => movementByNode.has(node.id))) {
+      const parentHandles = new Set(targets.map((node) => node.parentHandle ?? null));
+      if (parentHandles.size !== 1) {
+        throw new BoardPlanCompileError(
+          "layout_failed",
+          "Objects from different containers must be arranged in separate proposals.",
+        );
+      }
+      const commonParentHandle = targets[0]!.parentHandle;
+      const commonParent = commonParentHandle
+        ? nodeByHandle.get(commonParentHandle)
+        : undefined;
+      if (commonParentHandle && !commonParent) {
+        throw new BoardPlanCompileError(
+          "layout_failed",
+          "The authorized parent container is unavailable.",
+        );
+      }
+      if (targets.some((node) => movementByNode.has(node.id))) {
         throw new BoardPlanCompileError(
           "duplicate_mutation",
-          "A selected object cannot be arranged more than once in one proposal.",
+          "A writable object cannot be arranged more than once in one proposal.",
         );
       }
       const gap = action.spacing === "compact" ? 24 : action.spacing === "spacious" ? 80 : 48;
-      const sizes = selected.map((node) => ({
+      const sizes = targets.map((node) => ({
         width: node.bounds.width,
         height: node.bounds.height,
       }));
       const arrangement = normalizeLayout(
         sizes,
-        arrangedPositions(selected, action.arrangement, gap),
+        arrangedPositions(targets, action.arrangement, gap),
       );
-      const selectedIds = new Set(selected.map((node) => node.id));
+      const targetIds = new Set(targets.map((node) => node.id));
+      const containerIds = new Set<string>();
+      let container = commonParent;
+      while (container) {
+        containerIds.add(container.id);
+        container = container.parentHandle ? nodeByHandle.get(container.parentHandle) : undefined;
+      }
       const obstacles = input.scene.nodes
-        .filter((node) => !selectedIds.has(node.id))
+        .filter((node) => !targetIds.has(node.id) && !containerIds.has(node.id))
         .map((node) => plannedMovementBounds.get(node.id) ?? node.bounds);
-      const start = input.scene.selectionBounds
-        ? { x: input.scene.selectionBounds.x, y: input.scene.selectionBounds.y }
-        : { x: input.scene.viewport.x + 40, y: input.scene.viewport.y + 40 };
+      const targetBounds = enclosingBounds(targets);
+      const viewportScoped = targets.every((node) => node.role === "visible");
+      const parentInterior = commonParent
+        ? insetBounds(commonParent.bounds, PARENT_INTERIOR_PADDING)
+        : null;
+      const boundary = commonParent
+        ? parentInterior && intersectBounds(parentInterior, input.scene.viewport)
+        : viewportScoped
+          ? input.scene.viewport
+          : undefined;
+      if (commonParent && !boundary) {
+        throw new BoardPlanCompileError(
+          "layout_failed",
+          "The parent container has no authorized interior inside the viewport.",
+        );
+      }
+      const start = boundary
+        ? boundedOrigin(
+            { x: targetBounds.x, y: targetBounds.y },
+            arrangement.size,
+            boundary,
+          )
+        : input.scene.selectionBounds
+          ? { x: input.scene.selectionBounds.x, y: input.scene.selectionBounds.y }
+          : { x: targetBounds.x, y: targetBounds.y };
       const origin = freeOrigin({
         desired: start,
         size: arrangement.size,
         obstacles,
+        ...(boundary ? { boundary } : {}),
       });
-      selected.forEach((node, index) => {
+      targets.forEach((node, index) => {
         const position = {
           x: origin.x + arrangement.positions[index]!.x,
           y: origin.y + arrangement.positions[index]!.y,
@@ -803,7 +1161,7 @@ export function compileBoardProposal(input: {
 
     if (action.kind === "editSelection") {
       for (const edit of action.edits) {
-        const node = selectedNode(input.scene, edit.selectionRef);
+        const node = writableNode(input.scene, edit.selectionRef);
         requireMutation(node, "content");
         const current = updateByNode.get(node.id);
         updateByNode.set(node.id, {
@@ -822,7 +1180,7 @@ export function compileBoardProposal(input: {
     }
 
     for (const reference of action.selectionRefs) {
-      const node = selectedNode(input.scene, reference);
+      const node = writableNode(input.scene, reference);
       requireMutation(node, "style");
       const current = updateByNode.get(node.id);
       updateByNode.set(node.id, {
@@ -849,7 +1207,7 @@ export function compileBoardProposal(input: {
   const groupSizes = groups.map((group) => group.size);
   const rawGroupPositions = input.proposal.flow === "grid"
     ? gridPositions(groupSizes, Math.ceil(Math.sqrt(groupSizes.length || 1)), 72)
-    : linearPositions(groupSizes, input.proposal.flow);
+    : linearPositions(groupSizes, input.proposal.flow, SECTION_GAP);
   const creationLayout = groupSizes.length > 0
     ? normalizeLayout(groupSizes, rawGroupPositions)
     : null;
@@ -894,7 +1252,7 @@ export function compileBoardProposal(input: {
         tempId: connector.tempId,
         sourceId: connector.sourceTempId,
         targetId: connector.targetTempId,
-        route: "elbow",
+        route: connector.route,
         ...(connector.label ? { label: connector.label } : {}),
       });
     }

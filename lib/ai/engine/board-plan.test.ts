@@ -369,6 +369,61 @@ describe("BoardPlan v1", () => {
     expect(BoardPlanSchema.safeParse(tooMuchText).success).toBe(false);
   });
 
+  it("budgets deterministic connection-note nodes at the exact 100-operation boundary", () => {
+    const references = Array.from({ length: 40 }, (_, index) => `s${index + 1}`);
+    const diagrams = Array.from({ length: 4 }, (_, index) => ({
+      kind: "addDiagram",
+      key: `flow_${index}`,
+      layout: "hierarchy",
+      nodes: [
+        { key: "source", shape: "rectangle", label: `Source ${index}` },
+        { key: "target", shape: "rectangle", label: `Target ${index}` },
+      ],
+      connections: [{
+        from: "source",
+        to: "target",
+        label: "requires a reviewed handoff",
+      }],
+    }));
+    const exactBoundary = {
+      ...completeProposal,
+      placement: "viewport-center",
+      actions: [
+        ...diagrams,
+        {
+          kind: "arrangeSelection",
+          selectionRefs: references,
+          arrangement: "grid",
+          spacing: "compact",
+        },
+        {
+          kind: "styleSelection",
+          selectionRefs: references,
+          style: { tone: "blue" },
+        },
+      ],
+    };
+    const overBoundary = {
+      ...exactBoundary,
+      actions: [
+        ...exactBoundary.actions,
+        {
+          kind: "addCards",
+          cards: [{ key: "overflow", variant: "note", title: "One operation too many" }],
+        },
+      ],
+    };
+
+    expect(BoardPlanSchema.safeParse(exactBoundary).success).toBe(true);
+    const overResult = BoardPlanSchema.safeParse(overBoundary);
+    expect(overResult.success).toBe(false);
+    if (!overResult.success) {
+      expect(overResult.error.issues.map((issue) => issue.message)).toContain(
+        `Plan can compile to at most ${BOARD_PLAN_LIMITS.maxCompiledOperations} operations`,
+      );
+    }
+  });
+
   it("rejects blank generated bodies while preserving explicit selection-body clearing", () => {
     const blankGeneratedBody = {
       ...completeProposal,

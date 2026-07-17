@@ -308,3 +308,38 @@ Rules:
   - Authenticated visual production checking remains operationally pending because the current Codex browser kernel requires an app restart and production currently has no board image marked `r2_ready`.
 - Next Steps:
   - Commit and push prompt v4 with the npm 10 lock correction, require GitHub Actions and the Node 22 Vercel deployment to pass, then perform the signed drawing/R2 check after the browser restart and first R2-backed board upload.
+
+### [2026-07-17 16:27 IST] - Polish the canvas chrome and make visible-canvas AI output presentation-safe
+- Request: Remove the selection-count/send-selection AI experience, move the complete drawing and shape toolbar to the lower-left, keep only colors in the right style rail, add restrained smooth motion and SVG icon polish, and make Fabric agent generate clearer, more attractive editable board layouts without changing tldraw internals.
+- Plan: Replace the whiteboard chrome through public tldraw component APIs, simplify and accessibility-harden the AI panel, improve deterministic native-shape composition, then independently audit visible-canvas authorization and visual layout before running every release gate.
+- Actions:
+  - Removed selection subscriptions, selection counts, and browser-selected node payloads from the Fabric agent UI. Requests now carry an empty selection plus the bounded viewport, and the panel describes and previews visible-canvas work without exposing technical node identifiers.
+  - Added a compact responsive agent panel with one conversation live region, safe hidden/inert states, Ripple-only wave loading, polished SVG icons, human-readable change previews, reduced-motion support, and warning/error tones that match their actual severity.
+  - Replaced the stock canvas chrome through public tldraw 4.2 APIs: all 28 tools remain available from a safe-area-aware lower-left dock, while desktop and mobile style panels expose only the applicable color picker.
+  - Upgraded the deterministic canvas compiler to v3 with full-width heading/overview hierarchy, balanced fact tiles, semantic calm color roles, larger shape-aware diagram nodes, wider spacing, wrapped serpentine flows, quiet native connectors, and native editable typography.
+  - Preserved every connection label. Simple forward-adjacent paths may use inline arrow labels; branches, hierarchies, grids, radial layouts, dense flows, long labels, and multiline labels use bounded collision-safe Connection notes inside the diagram frame.
+  - Coupled compiler write authority to the exact bounded provider-visible scene. Only unlocked durable nodes fully contained in the viewport can be writable, nearest-first and capped; omitted, partial, rotated/transform-uncertain, grouped, ancestor-locked, hidden-parent, read-only, and model-context-truncated nodes fail closed.
+  - Reprojected lossless tldraw checkpoints during AI authorization so existing rows immediately receive current transform, group, descendant, and recursive-lock safety without a database backfill.
+  - Made arrangements parent-aware and viewport-bounded, denied move/resize for containers with durable descendants, preserved explicit-selection compatibility for safe legacy calls, and kept human preview, approval, projection, and durable confirmation unchanged.
+  - Counted compiler-generated connection-note nodes in the exact BoardPlan operation budget, kept every generated dimension within CanvasPatch limits, and retained deterministic retry output.
+- Files Changed:
+  - `components/fabric-whiteboard/ai-panel.tsx`, `components/fabric-whiteboard/canvas-chrome.tsx`, `components/fabric-whiteboard.tsx`, and `app/globals.css` - Responsive agent UI, color-only style rail, lower-left toolbar, motion, accessibility, and safe-area behavior.
+  - `lib/ai/engine/authorized-scene.ts`, `lib/ai/engine/board-plan.ts`, `lib/ai/engine/compiler.ts`, `lib/ai/skills/board-assistance.v1.ts`, and `worker/processor.ts` - Visible-canvas scope, prompt v5, deterministic visual compilation, label preservation, and exact provider/compiler authorization.
+  - `lib/ai/server/run-repository.ts`, `lib/boards/canvas-document.ts`, `lib/boards/tldraw-document.ts`, `lib/boards/tldraw-ai-adapter.ts`, `lib/realtime/client/canvas-mapping.ts`, and `lib/types.ts` - Current tldraw reprojection, transform/descendant provenance, recursive locks, and polished native shape application.
+  - Colocated component, engine, document, adapter, evaluation, skill, and Worker tests - Responsive chrome, no-selection UX, visual hierarchy, label collision, operation budgets, model truncation, legacy projection, rotation, grouping, locking, and parent-layout regressions.
+- Diff Summary:
+  - Selection-driven AI sidebar and crowded stock style controls -> visible-canvas agent, lower-left full tool dock, and right-side color-only rail.
+  - Uniform narrow cards and overlapping/lost connector labels -> structured native compositions with balanced hierarchy, semantic tones, safe spacing, and bounded connection notes.
+  - Browser selection as the only mutation scope -> exact durable/provider-visible viewport scope with conservative transform, parent, descendant, and lock handling.
+- Validation:
+  - Responsive in-app browser inspection confirmed a visible 409.6px mobile agent sheet, correct ellipsis, safe bottom gap, enabled composer, and no selection UI; temporary preview routes and the local preview server were removed afterward.
+  - Integrated focused verification passed: 13 files / 109 tests, followed by additional authorization/compiler/document regressions; the final full suite passed 120 files / 569 tests.
+  - Application, attached realtime, Cloudflare Worker, and AI Worker TypeScript checks passed; 15 Cloudflare runtime tests, ESLint, and the production Next.js/server build passed.
+  - Database schema checks, production dependency audit with zero vulnerabilities, generated Worker binding verification, Wrangler production/development dry-runs, `git diff --check`, and secret-safe diff inspection passed.
+  - Two independent final audits found no remaining P0/P1/P2 frontend or AI authorization/compiler issues.
+  - tldraw remains pinned at `4.2.0`; `package.json`, `package-lock.json`, and `patches/@tldraw+editor+4.2.0.patch` are unchanged and the invariant check passed.
+- Risks/Notes:
+  - No rate limit, database migration, dependency, environment variable, deployment, or Cloudflare storage mutation was introduced.
+  - Transform-uncertain or grouped visible nodes remain readable context but require a future exact page-bounds projection before Fabric agent may mutate them through visible-canvas mode.
+- Next Steps:
+  - Review the local frontend on a signed-in production-sized board, then commit/push and deploy only when requested.

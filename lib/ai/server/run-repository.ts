@@ -22,7 +22,10 @@ import { isTerminalAiRunStatus } from "@/lib/ai/run-state";
 import { getBoardAssistanceSkill } from "@/lib/ai/skills/board-assistance.v1";
 import type { FabricAiSseEventName, FabricAiSsePayloads } from "@/lib/ai/sse";
 import { requireBoardCapability } from "@/lib/boards/authorization";
-import { readCanvasDocument } from "@/lib/boards/canvas-document";
+import {
+  readAuthoritativeCanvasDocument,
+  type CanvasDocumentSnapshot,
+} from "@/lib/boards/canvas-document";
 import { BoardApiError } from "@/lib/boards/http";
 import {
   canvasSourceGeometryForTldrawShapeRecord,
@@ -47,9 +50,8 @@ function staleSnapshot(code: string, message: string): BoardApiError {
 
 function canonicalSelection(
   request: AiProposalRequest,
-  document: Parameters<typeof readCanvasDocument>[0],
+  snapshot: CanvasDocumentSnapshot,
 ): AiProposalRequest["selection"] {
-  const snapshot = readCanvasDocument(document);
   const currentNodes = new Map(snapshot.nodes.map((node) => [node.id, node]));
   const durableShapes = new Map<string, Record<string, unknown>>();
   const shapeRecords = Object.values(snapshot.tldraw?.snapshot.store ?? {})
@@ -136,8 +138,11 @@ export async function authorizeProposalSnapshot(
     throw staleSnapshot("stale_sequence", "The board changed before the AI run was created.");
   }
 
-  const selection = canonicalSelection(request, current.document);
-  const snapshot = readCanvasDocument(current.document);
+  // Reproject the lossless tldraw checkpoint on every authorization so legacy
+  // rows immediately receive current lock/transform safety. Stored semantic
+  // nodes remain the fallback only for documents without a tldraw checkpoint.
+  const snapshot = readAuthoritativeCanvasDocument(current.document);
+  const selection = canonicalSelection(request, snapshot);
   return {
     ...request,
     workspaceId: current.workspaceId,

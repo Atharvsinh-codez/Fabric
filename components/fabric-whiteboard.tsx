@@ -13,7 +13,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Tldraw,
   type Editor,
-  type TLComponents,
   type TLEditorSnapshot,
   type TLStore,
   type TLStoreSnapshot,
@@ -25,6 +24,7 @@ import {
   FabricAiPanel,
   type FabricWhiteboardAiAdapter,
 } from "@/components/fabric-whiteboard/ai-panel";
+import { fabricCanvasComponents } from "@/components/fabric-whiteboard/canvas-chrome";
 import { FabricCheckpointDialog } from "@/components/fabric-whiteboard/checkpoint-dialog";
 import { FabricCommentsPanel } from "@/components/fabric-whiteboard/comments-panel";
 import { FabricDialog } from "@/components/fabric-whiteboard/fabric-dialog";
@@ -55,12 +55,6 @@ import {
 import { acceptedBoardMediaMimeTypes } from "@/lib/boards/assets/media-rollout";
 import type { RealtimeAwarenessState } from "@/lib/realtime/client/types";
 import { resolvePresencePresentation } from "@/lib/realtime/presence-identity";
-
-const tldrawComponents: TLComponents = {
-  MenuPanel: null,
-  NavigationPanel: null,
-  HelperButtons: null,
-};
 
 const EMPTY_AWARENESS = new Map<number, RealtimeAwarenessState>();
 
@@ -484,13 +478,14 @@ export function FabricWhiteboard({
       className="fabric-tldraw editor-shell isolate fixed inset-0 bg-surface-white font-sans text-near-black-primary-text antialiased"
       data-board-role={role}
       data-board-can-edit={canEdit ? "true" : "false"}
+      data-fabric-panel={visiblePanel ?? "none"}
       onPointerMoveCapture={handlePointerMove}
       onPointerLeave={handlePointerLeave}
     >
       {documentAdapter.source.kind === "store" ? (
         <Tldraw
           store={documentAdapter.source.store}
-          components={tldrawComponents}
+          components={fabricCanvasComponents}
           maxAssetSize={BOARD_ASSET_MAX_BYTES}
           acceptedImageMimeTypes={acceptedMediaMimeTypes.images}
           acceptedVideoMimeTypes={acceptedMediaMimeTypes.videos}
@@ -503,7 +498,7 @@ export function FabricWhiteboard({
         <Tldraw
           snapshot={documentAdapter.source.snapshot}
           persistenceKey={documentAdapter.source.persistenceKey}
-          components={tldrawComponents}
+          components={fabricCanvasComponents}
           maxAssetSize={BOARD_ASSET_MAX_BYTES}
           acceptedImageMimeTypes={acceptedMediaMimeTypes.images}
           acceptedVideoMimeTypes={acceptedMediaMimeTypes.videos}

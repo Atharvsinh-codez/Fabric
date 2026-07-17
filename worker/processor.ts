@@ -6,7 +6,6 @@ import {
   type ModelUsage,
 } from "../lib/ai/contracts";
 import { BoardPlanSchema, BOARD_PLAN_JSON_SCHEMA } from "../lib/ai/engine/board-plan";
-import { buildSelectionOnlyAuthorizedScene } from "../lib/ai/engine/authorized-scene";
 import {
   BoardPlanCompileError,
   CANVAS_COMPILER_VERSION,
@@ -230,7 +229,7 @@ export async function processClaimedAiJob(input: {
         runId: job.runId,
         status: "preparing_context",
         phase: "preparing_context",
-        message: "Preparing the authorized board selection…",
+        message: "Preparing the authorized visible canvas…",
       }))
     ) {
       if (await cancelIfRequested(sql, job.runId)) return;
@@ -290,10 +289,9 @@ export async function processClaimedAiJob(input: {
 
     if (await cancelIfRequested(sql, job.runId)) return;
     const responseHash = createHash("sha256").update(output, "utf8").digest("hex");
-    const scene = request.scene ?? buildSelectionOnlyAuthorizedScene({
-      selection: request.selection,
-      viewport: request.viewport,
-    });
+    // Compile against the exact write scope exposed to this provider turn.
+    // Omitted model-context handles remain read-only collision context.
+    const scene = modelInput.scene;
     const measuredUsage = (input: {
       planActionCount: number;
       compiledOperationCount: number;
@@ -447,18 +445,26 @@ export async function processClaimedAiJob(input: {
       return;
     }
 
+    const durableIdByHandle = new Map(
+      scene.nodes.map((node) => [node.handle, node.id] as const),
+    );
     const semanticResult = validateCanvasPatchSemantics(patch, {
       base: patchBase,
-      nodes: request.selection.map((node) => ({
+      nodes: scene.nodes.map((node) => ({
         id: node.id,
         type: node.type,
-        width: node.width,
-        height: node.height,
+        width: node.bounds.width,
+        height: node.bounds.height,
         locked: node.locked,
-        parentId: node.parentId,
+        ...(node.parentHandle && durableIdByHandle.has(node.parentHandle)
+          ? { parentId: durableIdByHandle.get(node.parentHandle)! }
+          : {}),
       })),
       allowedOperations: manifest.allowedOperations,
       allowedCreatedNodeTypes: skill.allowedCreatedNodeTypes,
+      protectedNodeIds: scene.nodes
+        .filter((node) => !node.writable)
+        .map((node) => node.id),
       limits: {
         maxPatchBytes: manifest.limits.maxPatchBytes,
         maxOperations: manifest.limits.maxOperations,

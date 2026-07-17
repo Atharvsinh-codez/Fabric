@@ -254,6 +254,166 @@ describe("deterministic board-plan compiler", () => {
     ]);
   });
 
+  it("arranges authorized visible-canvas nodes without a browser selection", () => {
+    const context = scene({
+      nodes: [node("one", 80, 80), node("two", 360, 80)],
+      viewport: { x: 0, y: 0, width: 800, height: 600 },
+    });
+    const proposal = BoardProposalSchema.parse({
+      schemaVersion: 1,
+      kind: "proposal",
+      summary: "Arrange the visible cards.",
+      placement: "viewport-center",
+      flow: "vertical",
+      actions: [{
+        kind: "arrangeSelection",
+        selectionRefs: ["v1", "v2"],
+        arrangement: "column",
+        spacing: "comfortable",
+      }],
+    });
+
+    const patch = compileBoardProposal({ proposal, scene: context, base });
+    const moves = patch.operations.filter(isMoveNode);
+    expect(moves.map((operation) => operation.nodeId).sort()).toEqual(["one", "two"]);
+    for (const operation of moves) {
+      const original = context.nodes.find((item) => item.id === operation.nodeId)!;
+      expect(operation.position.x).toBeGreaterThanOrEqual(context.viewport.x);
+      expect(operation.position.y).toBeGreaterThanOrEqual(context.viewport.y);
+      expect(operation.position.x + original.bounds.width).toBeLessThanOrEqual(
+        context.viewport.x + context.viewport.width,
+      );
+      expect(operation.position.y + original.bounds.height).toBeLessThanOrEqual(
+        context.viewport.y + context.viewport.height,
+      );
+    }
+  });
+
+  it("arranges siblings inside their common parent and authorized viewport", () => {
+    const frame = node("frame", 0, 0, { type: "frame", width: 800, height: 600 });
+    const first = node("first", 80, 100, { parentId: frame.id });
+    const second = node("second", 360, 100, { parentId: frame.id });
+    const context = scene({
+      nodes: [frame, first, second],
+      selectedIds: [first.id, second.id],
+      viewport: { x: 0, y: 0, width: 700, height: 520 },
+    });
+    const proposal = BoardProposalSchema.parse({
+      schemaVersion: 1,
+      kind: "proposal",
+      summary: "Arrange the cards inside their frame.",
+      placement: "viewport-center",
+      flow: "vertical",
+      actions: [{
+        kind: "arrangeSelection",
+        selectionRefs: ["s1", "s2"],
+        arrangement: "column",
+        spacing: "comfortable",
+      }],
+    });
+
+    const patch = compileBoardProposal({ proposal, scene: context, base });
+    const moves = patch.operations.filter(isMoveNode);
+    expect(moves).toHaveLength(2);
+    for (const move of moves) {
+      const original = context.nodes.find((item) => item.id === move.nodeId)!;
+      expect(move.position.x).toBeGreaterThanOrEqual(24);
+      expect(move.position.y).toBeGreaterThanOrEqual(24);
+      expect(move.position.x + original.bounds.width).toBeLessThanOrEqual(700);
+      expect(move.position.y + original.bounds.height).toBeLessThanOrEqual(520);
+    }
+  });
+
+  it("rejects mixed-parent arrangements and parent interiors too small for the layout", () => {
+    const leftFrame = node("left-frame", 0, 0, { type: "frame", width: 420, height: 500 });
+    const rightFrame = node("right-frame", 500, 0, { type: "frame", width: 420, height: 500 });
+    const left = node("left", 40, 80, { parentId: leftFrame.id });
+    const right = node("right", 540, 80, { parentId: rightFrame.id });
+    const mixedContext = scene({
+      nodes: [leftFrame, rightFrame, left, right],
+      selectedIds: [left.id, right.id],
+      viewport: { x: 0, y: 0, width: 1_000, height: 600 },
+    });
+    const mixedProposal = BoardProposalSchema.parse({
+      schemaVersion: 1,
+      kind: "proposal",
+      summary: "Arrange cards from separate frames.",
+      placement: "viewport-center",
+      flow: "vertical",
+      actions: [{
+        kind: "arrangeSelection",
+        selectionRefs: ["s1", "s2"],
+        arrangement: "row",
+        spacing: "compact",
+      }],
+    });
+    expect(() => compileBoardProposal({ proposal: mixedProposal, scene: mixedContext, base }))
+      .toThrow(/different containers/);
+
+    const narrowFrame = node("narrow-frame", 0, 0, {
+      type: "frame",
+      width: 420,
+      height: 500,
+    });
+    const first = node("first", 20, 80, { parentId: narrowFrame.id });
+    const second = node("second", 220, 80, { parentId: narrowFrame.id });
+    const narrowContext = scene({
+      nodes: [narrowFrame, first, second],
+      selectedIds: [first.id, second.id],
+      viewport: { x: 0, y: 0, width: 300, height: 500 },
+    });
+    expect(() => compileBoardProposal({ proposal: mixedProposal, scene: narrowContext, base }))
+      .toThrow(/does not fit inside its authorized container/);
+  });
+
+  it("edits and styles only server-authorized visible-canvas handles", () => {
+    const context = scene({
+      nodes: [node("inside", 100), node("partial", -100), node("locked", 400, 0, { locked: true })],
+      viewport: { x: 0, y: 0, width: 700, height: 500 },
+    });
+    const inside = context.nodes.find((item) => item.id === "inside")!;
+    const partial = context.nodes.find((item) => item.id === "partial")!;
+    const locked = context.nodes.find((item) => item.id === "locked")!;
+    const proposal = BoardProposalSchema.parse({
+      schemaVersion: 1,
+      kind: "proposal",
+      summary: "Polish the visible card.",
+      placement: "viewport-center",
+      flow: "vertical",
+      actions: [
+        {
+          kind: "editSelection",
+          edits: [{ selectionRef: inside.handle, title: "Updated" }],
+        },
+        {
+          kind: "styleSelection",
+          selectionRefs: [inside.handle],
+          style: { tone: "blue" },
+        },
+      ],
+    });
+
+    const patch = compileBoardProposal({ proposal, scene: context, base });
+    expect(patch.operations).toEqual([
+      expect.objectContaining({
+        type: "updateNode",
+        nodeId: "inside",
+        content: { title: "Updated" },
+        appearance: { fill: "sky" },
+      }),
+    ]);
+
+    for (const handle of [partial.handle, locked.handle]) {
+      const unsafe = BoardProposalSchema.parse({
+        ...proposal,
+        actions: [{ kind: "styleSelection", selectionRefs: [handle], style: { tone: "blue" } }],
+      });
+      expect(() => compileBoardProposal({ proposal: unsafe, scene: context, base })).toThrow(
+        BoardPlanCompileError,
+      );
+    }
+  });
+
   it.each([
     ["cycle", 3],
     ["cycle", 5],
@@ -557,7 +717,7 @@ describe("deterministic board-plan compiler", () => {
     );
   });
 
-  it("rejects arranging a selected ancestor and descendant in one operation", () => {
+  it("rejects moving a selected container with its descendant", () => {
     const context = scene({
       nodes: [
         node("frame", 0, 0, { type: "frame", width: 600, height: 420 }),
@@ -580,7 +740,328 @@ describe("deterministic board-plan compiler", () => {
     });
 
     expect(() => compileBoardProposal({ proposal, scene: context, base })).toThrow(
-      /Nested parent and child objects/,
+      /does not allow move changes/,
     );
+  });
+
+  it("turns a heading, overview, and facts into a compact deterministic hierarchy", () => {
+    const proposal = BoardProposalSchema.parse({
+      schemaVersion: 1,
+      kind: "proposal",
+      summary: "Explain the system clearly.",
+      placement: "viewport-center",
+      flow: "vertical",
+      actions: [{
+        kind: "composeText",
+        key: "explanation",
+        presentation: "typed",
+        blocks: [
+          { role: "heading", text: "How the system works" },
+          { role: "body", text: "A short overview that establishes the main idea." },
+          { role: "label", text: "1. Receive the request" },
+          { role: "label", text: "2. Validate the input" },
+          { role: "label", text: "3. Process the result" },
+          { role: "label", text: "4. Return the response" },
+        ],
+      }],
+    });
+
+    const patch = compileBoardProposal({ proposal, scene: scene(), base });
+    const created = patch.operations.filter(isCreateNode);
+    expect(created).toHaveLength(6);
+    expect(created[0]).toMatchObject({
+      size: { width: 712 },
+      appearance: { fill: "sky", textColor: "surface" },
+    });
+    expect(created[1]).toMatchObject({
+      size: { width: 712 },
+      appearance: { fill: "fog", textColor: "ink" },
+    });
+    expect(created[2]!.position.y).toBe(created[3]!.position.y);
+    expect(created[2]!.position.x).toBeLessThan(created[3]!.position.x);
+    expect(created[4]!.position.y).toBe(created[5]!.position.y);
+    expect(created[4]!.position.y).toBeGreaterThan(created[2]!.position.y);
+    expect(new Set(created.slice(2).map((operation) => operation.appearance?.fill)).size)
+      .toBeGreaterThan(1);
+  });
+
+  it("wraps dense horizontal flows and preserves unsafe labels in collision-free notes", () => {
+    const proposal = BoardProposalSchema.parse({
+      schemaVersion: 1,
+      kind: "proposal",
+      summary: "Create a bounded five-step flow.",
+      placement: "viewport-center",
+      flow: "vertical",
+      actions: [{
+        kind: "addDiagram",
+        key: "flow",
+        title: "Request lifecycle",
+        layout: "flow-horizontal",
+        nodes: [
+          { key: "one", shape: "rectangle", label: "Receive" },
+          { key: "two", shape: "rectangle", label: "Parse" },
+          { key: "three", shape: "diamond", label: "Validate" },
+          { key: "four", shape: "hexagon", label: "Store" },
+          { key: "five", shape: "rectangle", label: "Return" },
+        ],
+        connections: [
+          { from: "one", to: "two", label: "request" },
+          { from: "two", to: "three", label: "parsed" },
+          { from: "three", to: "four", label: "approved" },
+          { from: "four", to: "five", label: "result" },
+        ],
+      }],
+    });
+
+    const patch = compileBoardProposal({ proposal, scene: scene(), base });
+    const created = patch.operations.filter(isCreateNode);
+    const frame = created.find((operation) => operation.nodeType === "frame")!;
+    const graphNodes = created.slice(1, 6);
+    const connectionNotes = created.slice(6);
+    const connectors = patch.operations.filter(
+      (operation) => operation.type === "createConnector",
+    );
+    expect(new Set(graphNodes.map((operation) => operation.position.y)).size).toBe(2);
+    expect(frame.size.width).toBeLessThan(1_600);
+    expect(connectors).toHaveLength(4);
+    expect(connectors.every((operation) => operation.route === "elbow")).toBe(true);
+    expect(connectors.every((operation) => operation.label === undefined)).toBe(true);
+    expect(graphNodes[0]!.appearance?.fill).toBe("sky");
+    expect(graphNodes.at(-1)!.appearance?.fill).toBe("mint");
+    expect(graphNodes[2]!.appearance?.fill).toBe("butter");
+    expect(connectionNotes).toHaveLength(1);
+    expect(connectionNotes[0]).toMatchObject({
+      nodeType: "summary",
+      content: {
+        title: "Connection notes",
+        body: expect.stringContaining("1. Receive \u2192 Parse\nrequest"),
+      },
+      parentId: frame.tempId,
+    });
+    for (const label of ["request", "parsed", "approved", "result"]) {
+      expect(connectionNotes[0]!.content.body).toContain(label);
+    }
+    const graphBottom = Math.max(
+      ...graphNodes.map((operation) => operation.position.y + operation.size.height),
+    );
+    expect(connectionNotes[0]!.position.y).toBeGreaterThan(graphBottom);
+    expect(connectionNotes[0]!.position.x).toBeGreaterThanOrEqual(frame.position.x);
+    expect(connectionNotes[0]!.position.x + connectionNotes[0]!.size.width)
+      .toBeLessThanOrEqual(frame.position.x + frame.size.width);
+    expect(connectionNotes[0]!.position.y + connectionNotes[0]!.size.height)
+      .toBeLessThanOrEqual(frame.position.y + frame.size.height);
+  });
+
+  it("retains short labels only when a flow has a clear connector corridor", () => {
+    const proposal = BoardProposalSchema.parse({
+      schemaVersion: 1,
+      kind: "proposal",
+      summary: "Create a concise flow.",
+      placement: "viewport-center",
+      flow: "vertical",
+      actions: [{
+        kind: "addDiagram",
+        key: "flow",
+        title: "Concise flow",
+        layout: "flow-horizontal",
+        nodes: [
+          { key: "one", shape: "rectangle", label: "One" },
+          { key: "two", shape: "rectangle", label: "Two" },
+          { key: "three", shape: "rectangle", label: "Three" },
+        ],
+        connections: [
+          { from: "one", to: "two", label: "next" },
+          { from: "two", to: "three", label: "this label is deliberately much too long" },
+        ],
+      }],
+    });
+
+    const patch = compileBoardProposal({ proposal, scene: scene(), base });
+    const children = patch.operations.filter(
+      (operation): operation is CreateNodeOperation =>
+        operation.type === "createNode" && operation.nodeType !== "frame",
+    );
+    const connectors = patch.operations.filter(
+      (operation) => operation.type === "createConnector",
+    );
+    expect(children[1]!.position.x - (children[0]!.position.x + children[0]!.size.width))
+      .toBeGreaterThanOrEqual(128);
+    expect(connectors.map((operation) => operation.label)).toEqual(["next", undefined]);
+    expect(connectors.every((operation) => operation.route === "straight")).toBe(true);
+    const connectionNotes = children.filter(
+      (operation) => operation.content.title === "Connection notes",
+    );
+    expect(connectionNotes).toHaveLength(1);
+    expect(connectionNotes[0]!.content.body).toBe(
+      "2. Two \u2192 Three\nthis label is deliberately much too long",
+    );
+    expect(connectionNotes[0]!.content.body).not.toContain("next");
+  });
+
+  it("moves short hierarchy labels into connection notes instead of unsafe corridors", () => {
+    const proposal = BoardProposalSchema.parse({
+      schemaVersion: 1,
+      kind: "proposal",
+      summary: "Create a labeled hierarchy.",
+      placement: "viewport-center",
+      flow: "vertical",
+      actions: [{
+        kind: "addDiagram",
+        key: "hierarchy",
+        layout: "hierarchy",
+        nodes: [
+          { key: "root", shape: "rectangle", label: "Root" },
+          { key: "leaf", shape: "rectangle", label: "Leaf" },
+        ],
+        connections: [{ from: "root", to: "leaf", label: "yes" }],
+      }],
+    });
+
+    const patch = compileBoardProposal({ proposal, scene: scene(), base });
+    const connector = patch.operations.find((operation) => operation.type === "createConnector");
+    const note = patch.operations.find(
+      (operation): operation is CreateNodeOperation =>
+        operation.type === "createNode" && operation.content.title === "Connection notes",
+    );
+    expect(connector).toBeDefined();
+    expect(connector && "label" in connector).toBe(false);
+    expect(note?.content.body).toBe("1. Root \u2192 Leaf\nyes");
+  });
+
+  it.each(["flow-vertical", "flow-horizontal"] as const)(
+    "moves branched %s labels into connection notes",
+    (layout) => {
+      const proposal = BoardProposalSchema.parse({
+        schemaVersion: 1,
+        kind: "proposal",
+        summary: "Create a labeled branch.",
+        placement: "viewport-center",
+        flow: "vertical",
+        actions: [{
+          kind: "addDiagram",
+          key: `branch-${layout}`,
+          layout,
+          nodes: [
+            { key: "start", shape: "rectangle", label: "Start" },
+            { key: "left", shape: "rectangle", label: "Left" },
+            { key: "right", shape: "rectangle", label: "Right" },
+            { key: "finish", shape: "rectangle", label: "Finish" },
+          ],
+          connections: [
+            { from: "start", to: "left", label: "one" },
+            { from: "start", to: "right", label: "two" },
+            { from: "right", to: "finish", label: "three" },
+          ],
+        }],
+      });
+
+      const patch = compileBoardProposal({ proposal, scene: scene(), base });
+      const connectors = patch.operations.filter(
+        (operation) => operation.type === "createConnector",
+      );
+      const note = patch.operations.find(
+        (operation): operation is CreateNodeOperation =>
+          operation.type === "createNode" &&
+          operation.content.title === "Connection notes",
+      );
+      expect(connectors.every((connector) => !("label" in connector))).toBe(true);
+      expect(note?.content.body).toContain("Start \u2192 Left\none");
+      expect(note?.content.body).toContain("Start \u2192 Right\ntwo");
+      expect(note?.content.body).toContain("Right \u2192 Finish\nthree");
+    },
+  );
+
+  it("losslessly escapes newline-heavy labels into notes below the canvas dimension limit", () => {
+    const source = `${"S\n".repeat(79)}S`;
+    const target = `${"T\n".repeat(79)}T`;
+    const label = `${"L\n".repeat(59)}L`;
+    const proposal = BoardProposalSchema.parse({
+      schemaVersion: 1,
+      kind: "proposal",
+      summary: "Preserve a multiline connection.",
+      placement: "viewport-center",
+      flow: "vertical",
+      actions: [{
+        kind: "addDiagram",
+        key: "multiline",
+        layout: "hierarchy",
+        nodes: [
+          { key: "source", shape: "rectangle", label: source },
+          { key: "target", shape: "rectangle", label: target },
+        ],
+        connections: [{ from: "source", to: "target", label }],
+      }],
+    });
+
+    const patch = compileBoardProposal({ proposal, scene: scene(), base });
+    const note = patch.operations.find(
+      (operation): operation is CreateNodeOperation =>
+        operation.type === "createNode" && operation.content.title === "Connection notes",
+    )!;
+    const escape = (value: string) => value
+      .replaceAll("\\", "\\\\")
+      .replaceAll("\r", "\\r")
+      .replaceAll("\n", "\\n")
+      .replaceAll("\t", "\\t");
+    expect(note.content.body).toBe(`1. ${escape(source)} \u2192 ${escape(target)}\n${escape(label)}`);
+    expect(note.content.body!.split("\n")).toHaveLength(2);
+    expect(note.size.width).toBeLessThanOrEqual(10_000);
+    expect(note.size.height).toBeLessThanOrEqual(10_000);
+    expect(patch.operations.every((operation) =>
+      operation.type !== "createNode" ||
+      (operation.size.width <= 10_000 && operation.size.height <= 10_000)
+    )).toBe(true);
+  });
+
+  it("compiles an estimator-approved plan to exactly 100 operations including notes", () => {
+    const selected = Array.from({ length: 40 }, (_, index) =>
+      node(`selected-${index + 1}`, (index % 8) * 240, Math.floor(index / 8) * 160));
+    const context = scene({
+      nodes: selected,
+      selectedIds: selected.map((item) => item.id),
+      viewport: { x: 0, y: 0, width: 10_000, height: 10_000 },
+    });
+    const references = Array.from({ length: 40 }, (_, index) => `s${index + 1}`);
+    const proposal = BoardProposalSchema.parse({
+      schemaVersion: 1,
+      kind: "proposal",
+      summary: "Use the complete safe operation budget.",
+      placement: "viewport-center",
+      flow: "vertical",
+      actions: [
+        ...Array.from({ length: 4 }, (_, index) => ({
+          kind: "addDiagram" as const,
+          key: `flow_${index}`,
+          layout: "hierarchy" as const,
+          nodes: [
+            { key: "source", shape: "rectangle" as const, label: `Source ${index}` },
+            { key: "target", shape: "rectangle" as const, label: `Target ${index}` },
+          ],
+          connections: [{
+            from: "source",
+            to: "target",
+            label: "requires a reviewed handoff",
+          }],
+        })),
+        {
+          kind: "arrangeSelection",
+          selectionRefs: references,
+          arrangement: "grid",
+          spacing: "compact",
+        },
+        {
+          kind: "styleSelection",
+          selectionRefs: references,
+          style: { tone: "blue" },
+        },
+      ],
+    });
+
+    const patch = compileBoardProposal({ proposal, scene: context, base });
+    expect(patch.operations).toHaveLength(100);
+    expect(patch.operations.filter(
+      (operation) => operation.type === "createNode" &&
+        operation.content.title === "Connection notes",
+    )).toHaveLength(4);
   });
 });

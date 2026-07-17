@@ -28,6 +28,8 @@ export const canvasNodeSchema = z
     fill: safeColour,
     textColor: safeColour.optional(),
     locked: z.boolean().optional(),
+    viewportWriteSafe: z.boolean().optional(),
+    hasDescendants: z.boolean().optional(),
     parentId: stableId.optional(),
     tag: safeText(120).optional(),
     meta: safeText(2_000).optional(),

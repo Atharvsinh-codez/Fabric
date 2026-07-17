@@ -521,6 +521,89 @@ button:disabled {
   background-color: #ffffff;
 }
 
+.fabric-canvas-tool-dock {
+  position: absolute;
+  bottom: 0;
+  left: max(0.75rem, env(safe-area-inset-left));
+  right: max(0.75rem, env(safe-area-inset-right));
+  width: auto;
+  max-width: 32.5rem;
+  pointer-events: auto;
+  opacity: 1;
+  visibility: visible;
+  transform: translate3d(0, 0, 0);
+  transition:
+    left var(--motion-panel) var(--ease-out-quart),
+    right var(--motion-panel) var(--ease-out-quart),
+    transform var(--motion-panel) var(--ease-out-quart),
+    opacity 160ms ease-out;
+  will-change: left, right, transform, opacity;
+}
+
+.fabric-canvas-tool-dock > .tlui-main-toolbar {
+  justify-content: flex-start;
+}
+
+.fabric-canvas-tool-dock .tlui-main-toolbar__tools {
+  border-radius: 0.875rem;
+  box-shadow:
+    0 0.875rem 2.25rem rgb(15 23 42 / 12%),
+    0 0.125rem 0.5rem rgb(15 23 42 / 6%),
+    inset 0 0 0 1px rgb(15 23 42 / 6%);
+}
+
+.fabric-canvas-color-panel[data-mobile="false"] {
+  margin-top: 4rem;
+  margin-right: 0.25rem;
+  pointer-events: auto;
+  opacity: 1;
+  visibility: visible;
+  transform: translate3d(0, 0, 0);
+  transition:
+    transform var(--motion-panel) var(--ease-out-quart),
+    opacity 160ms ease-out;
+  will-change: transform, opacity;
+}
+
+@media (max-width: 640px) {
+  .fabric-tldraw[data-fabric-panel="ai"] .fabric-canvas-tool-dock,
+  .fabric-tldraw[data-fabric-panel="comments"] .fabric-canvas-tool-dock {
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    transform: translate3d(0, 0.75rem, 0);
+  }
+}
+
+@media (min-width: 641px) and (max-width: 840px) {
+  .fabric-tldraw[data-fabric-panel="ai"] .fabric-canvas-tool-dock {
+    left: calc(max(0.75rem, env(safe-area-inset-left)) + 23.75rem);
+  }
+
+  .fabric-tldraw[data-fabric-panel="comments"] .fabric-canvas-tool-dock {
+    right: calc(max(0.75rem, env(safe-area-inset-right)) + 23rem);
+  }
+
+  .fabric-tldraw[data-fabric-panel="comments"]
+    .fabric-canvas-color-panel[data-mobile="false"] {
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    transform: translate3d(0.75rem, 0, 0);
+  }
+}
+
+@media (min-width: 841px) {
+  .fabric-tldraw[data-fabric-panel="ai"] .fabric-canvas-tool-dock {
+    left: calc(max(0.75rem, env(safe-area-inset-left)) + 23.75rem);
+  }
+
+  .fabric-tldraw[data-fabric-panel="comments"]
+    .fabric-canvas-color-panel[data-mobile="false"] {
+    transform: translate3d(-23.75rem, 0, 0);
+  }
+}
+
 /* Hide every tldraw SDK watermark surface (canvas, exports, screen recordings). */
 .fabric-tldraw .tl-watermark_SEE-LICENSE,
 .fabric-tldraw [data-testid="tl-watermark-licensed"],

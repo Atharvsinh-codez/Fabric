@@ -1,6 +1,7 @@
 import type { BoardDocument, JsonValue } from "@/db/schema/product";
 import {
   asStoredTldrawDocument,
+  projectTldrawDocument,
   readTldrawDocument,
   type FabricTldrawDocument,
 } from "./tldraw-document";
@@ -62,6 +63,8 @@ function isCanvasNode(value: unknown): value is CanvasNode {
     optionalString(value.body) &&
     optionalString(value.textColor) &&
     (value.locked === undefined || typeof value.locked === "boolean") &&
+    (value.viewportWriteSafe === undefined || typeof value.viewportWriteSafe === "boolean") &&
+    (value.hasDescendants === undefined || typeof value.hasDescendants === "boolean") &&
     optionalString(value.parentId) &&
     optionalString(value.tag) &&
     optionalString(value.meta)
@@ -102,6 +105,22 @@ export function readCanvasDocument(document: BoardDocument): CanvasDocumentSnaps
     : [];
 
   return { nodes, edges, tldraw: readTldrawDocument(document) };
+}
+
+/**
+ * Rebuild security-sensitive semantic geometry from the lossless tldraw
+ * checkpoint. This applies current projection rules to legacy rows without a
+ * database backfill; semantic-only documents retain their validated fallback.
+ */
+export function readAuthoritativeCanvasDocument(
+  document: BoardDocument,
+): CanvasDocumentSnapshot {
+  const stored = readCanvasDocument(document);
+  if (!stored.tldraw) return stored;
+  return {
+    ...projectTldrawDocument(stored.tldraw),
+    tldraw: stored.tldraw,
+  };
 }
 
 function asJsonValue(value: unknown): JsonValue {

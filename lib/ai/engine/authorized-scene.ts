@@ -12,6 +12,7 @@ import type { CanvasEdge, CanvasNode } from "../../types";
 export const AUTHORIZED_SCENE_VERSION = 1 as const;
 export const MAX_AUTHORIZED_SCENE_NODES = 80;
 export const MAX_AUTHORIZED_SCENE_EDGES = 160;
+export const MAX_AUTHORIZED_WRITABLE_NODES = 40;
 export const MAX_MODEL_SCENE_BYTES = 24_000;
 const MAX_MODEL_VISIBLE_NODES = 20;
 const MAX_MODEL_TITLE_CHARACTERS = 120;
@@ -54,17 +55,34 @@ export const AuthorizedSceneNodeSchema = z
   })
   .strict()
   .superRefine((node, context) => {
-    if (node.role === "visible" && node.writable) {
+    if (new Set(node.allowedMutations).size !== node.allowedMutations.length) {
       context.addIssue({
         code: "custom",
-        message: "Visible context cannot grant write authority",
-        path: ["writable"],
+        message: "Allowed mutations must be unique",
+        path: ["allowedMutations"],
       });
     }
     if (node.writable !== (node.allowedMutations.length > 0)) {
       context.addIssue({
         code: "custom",
         message: "Write authority must match the allowed mutation set",
+        path: ["allowedMutations"],
+      });
+    }
+    if (node.locked && node.writable) {
+      context.addIssue({
+        code: "custom",
+        message: "Locked nodes cannot receive write authority",
+        path: ["writable"],
+      });
+    }
+    if (
+      (node.type === "image" || node.type === "drawing") &&
+      node.allowedMutations.some((mutation) => mutation === "content" || mutation === "style")
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Image and drawing content cannot be replaced through scene mutations",
         path: ["allowedMutations"],
       });
     }
@@ -93,7 +111,7 @@ export const AuthorizedBoardSceneSchema = z
     selectionBounds: SceneBoundsSchema.optional(),
     nodes: z.array(AuthorizedSceneNodeSchema).max(MAX_AUTHORIZED_SCENE_NODES),
     edges: z.array(AuthorizedSceneEdgeSchema).max(MAX_AUTHORIZED_SCENE_EDGES),
-    writableHandles: z.array(SceneHandleSchema).max(40),
+    writableHandles: z.array(SceneHandleSchema).max(MAX_AUTHORIZED_WRITABLE_NODES),
     truncated: z
       .object({
         nodes: z.number().int().nonnegative(),
@@ -104,18 +122,49 @@ export const AuthorizedBoardSceneSchema = z
   .strict()
   .superRefine((scene, context) => {
     const handles = new Set(scene.nodes.map((node) => node.handle));
-    const writable = new Set(
-      scene.nodes.filter((node) => node.writable).map((node) => node.handle),
-    );
+    if (handles.size !== scene.nodes.length) {
+      context.addIssue({
+        code: "custom",
+        message: "Authorized scene handles must be unique",
+        path: ["nodes"],
+      });
+    }
+    const writableHandles = scene.nodes
+      .filter((node) => node.writable)
+      .map((node) => node.handle);
+    const writable = new Set(writableHandles);
     for (const [index, handle] of scene.writableHandles.entries()) {
       if (!writable.has(handle)) {
         context.addIssue({
           code: "custom",
-          message: "Writable handles must reference writable selected nodes",
+          message: "Writable handles must reference authorized writable nodes",
           path: ["writableHandles", index],
         });
       }
     }
+    if (
+      writableHandles.length !== scene.writableHandles.length ||
+      writableHandles.some((handle, index) => scene.writableHandles[index] !== handle)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Writable handles must exactly match writable scene nodes",
+        path: ["writableHandles"],
+      });
+    }
+    scene.nodes.forEach((node, index) => {
+      if (
+        node.role === "visible" &&
+        node.writable &&
+        !contains(scene.viewport, node.bounds)
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Writable visible nodes must be fully contained in the authorized viewport",
+          path: ["nodes", index, "bounds"],
+        });
+      }
+    });
     for (const [index, edge] of scene.edges.entries()) {
       if (!handles.has(edge.sourceHandle) || !handles.has(edge.targetHandle)) {
         context.addIssue({
@@ -145,6 +194,15 @@ function intersects(left: SceneBounds, right: SceneBounds): boolean {
   );
 }
 
+function contains(container: SceneBounds, item: SceneBounds): boolean {
+  return (
+    item.x >= container.x &&
+    item.y >= container.y &&
+    item.x + item.width <= container.x + container.width &&
+    item.y + item.height <= container.y + container.height
+  );
+}
+
 function nodeBounds(node: Pick<CanvasNode, "x" | "y" | "width" | "height">): SceneBounds {
   return { x: node.x, y: node.y, width: node.width, height: node.height };
 }
@@ -162,6 +220,23 @@ function combinedBounds(nodes: readonly CanvasNode[]): SceneBounds | undefined {
   const maxX = Math.max(...nodes.map((node) => node.x + node.width));
   const maxY = Math.max(...nodes.map((node) => node.y + node.height));
   return { x: minX, y: minY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY) };
+}
+
+function nodeOrAncestorLocked(
+  node: CanvasNode,
+  nodeById: ReadonlyMap<string, CanvasNode>,
+): boolean {
+  let current: CanvasNode | undefined = node;
+  const visited = new Set<string>();
+  while (current) {
+    if (current.locked === true) return true;
+    if (!current.parentId) return false;
+    if (visited.has(current.id) || visited.size >= 32) return true;
+    visited.add(current.id);
+    current = nodeById.get(current.parentId);
+    if (!current) return true;
+  }
+  return true;
 }
 
 function contentForNode(
@@ -195,16 +270,45 @@ export function buildAuthorizedBoardScene(input: {
     });
   const visibleLimit = Math.max(0, MAX_AUTHORIZED_SCENE_NODES - selectedNodes.length);
   const visibleNodes = visibleCandidates.slice(0, visibleLimit);
+  const snapshotNodeById = new Map(input.snapshot.nodes.map((node) => [node.id, node]));
+  const includedNodeIds = new Set([...selectedNodes, ...visibleNodes].map((node) => node.id));
+  // With the selection UX removed, the requested viewport becomes the only
+  // browser-provided mutation scope. The browser still supplies no node data:
+  // candidates are rebuilt from the current durable snapshot, must be fully
+  // visible, unlocked, and are capped nearest-first. Partially visible nodes
+  // remain useful read-only context and collision obstacles.
+  const viewportWritableIds = new Set(
+    input.selection.length === 0
+      ? visibleNodes
+          .filter((node) =>
+            !nodeOrAncestorLocked(node, snapshotNodeById) &&
+            node.viewportWriteSafe !== false &&
+            (!node.parentId || includedNodeIds.has(node.parentId)) &&
+            contains(input.viewport, nodeBounds(node)),
+          )
+          .slice(0, MAX_AUTHORIZED_WRITABLE_NODES)
+          .map((node) => node.id)
+      : [],
+  );
   const includedNodes = [...selectedNodes, ...visibleNodes];
+  const containerIds = new Set(
+    input.snapshot.nodes.flatMap((node) => [
+      ...(node.parentId ? [node.parentId] : []),
+      ...(node.hasDescendants ? [node.id] : []),
+    ]),
+  );
   const handleById = new Map<string, string>();
   selectedNodes.forEach((node, index) => handleById.set(node.id, `s${index + 1}`));
   visibleNodes.forEach((node, index) => handleById.set(node.id, `v${index + 1}`));
 
   const nodes: AuthorizedSceneNode[] = includedNodes.map((node) => {
     const selected = selectedIds.has(node.id);
-    const unlockedSelection = selected && node.locked !== true;
-    const allowedMutations = !unlockedSelection
+    const locked = nodeOrAncestorLocked(node, snapshotNodeById);
+    const writable = !locked && (selected || viewportWritableIds.has(node.id));
+    const allowedMutations = !writable
       ? []
+      : containerIds.has(node.id)
+        ? ["content", "style"] as const
       : node.type === "image" || node.type === "drawing"
         ? ["move", "resize"] as const
         : ["move", "resize", "content", "style"] as const;
@@ -219,7 +323,7 @@ export function buildAuthorizedBoardScene(input: {
       type: node.type,
       ...contentForNode(node, selected ? 1_600 : 600),
       bounds: nodeBounds(node),
-      locked: node.locked === true,
+      locked,
       fill: node.fill,
       ...(node.textColor !== undefined ? { textColor: node.textColor } : {}),
       ...(parentHandle ? { parentHandle } : {}),
@@ -390,11 +494,15 @@ function addBodiesWithinBudget(input: {
 /**
  * The provider receives opaque handles and semantic context, never durable
  * Fabric node identifiers or write authority inferred from visibility. The
- * model view has a deterministic global byte budget: selected objects and
- * their text are retained first, followed by nearest visible objects, edges,
- * and finally bounded visible body text.
+ * model view has a deterministic global byte budget: legacy selected objects
+ * and their text are retained first, followed by nearest visible objects,
+ * edges, and finally bounded visible body text. Write authority always comes
+ * from writableHandles, never from a role or from visibility alone.
  */
-export function modelSceneContext(scene: AuthorizedBoardScene): object {
+function buildModelSceneProjection(scene: AuthorizedBoardScene): {
+  context: Record<string, unknown>;
+  includedHandles: ReadonlySet<string>;
+} {
   const selected = scene.nodes.filter((node) => node.role === "selected");
   const visible = scene.nodes
     .filter((node) => node.role === "visible")
@@ -443,5 +551,55 @@ export function modelSceneContext(scene: AuthorizedBoardScene): object {
   if (jsonBytes(payload) > MAX_MODEL_SCENE_BYTES) {
     throw new Error("Authorized model scene exceeded its deterministic byte budget");
   }
-  return payload;
+  return { context: payload, includedHandles: handles };
+}
+
+function restrictWriteScopeToModelContext(
+  scene: AuthorizedBoardScene,
+  includedHandles: ReadonlySet<string>,
+): AuthorizedBoardScene {
+  const exposedWritableHandles = scene.writableHandles.filter((handle) =>
+    includedHandles.has(handle),
+  );
+  const exposedWritable = new Set(exposedWritableHandles);
+  const nodes = scene.nodes.map((node) =>
+    node.writable && !exposedWritable.has(node.handle)
+      ? { ...node, writable: false, allowedMutations: [] }
+      : node,
+  );
+  const payload = {
+    version: scene.version,
+    viewport: scene.viewport,
+    ...(scene.selectionBounds ? { selectionBounds: scene.selectionBounds } : {}),
+    nodes,
+    edges: scene.edges,
+    writableHandles: exposedWritableHandles,
+    truncated: scene.truncated,
+  } as const;
+  return AuthorizedBoardSceneSchema.parse({
+    ...payload,
+    hash: hashCanonicalJson(payload),
+  });
+}
+
+/**
+ * Couples the exact provider-visible scene with the authority used by the
+ * deterministic compiler. Handles omitted by the model node/count/byte
+ * budgets remain collision context, but are downgraded to read-only before a
+ * provider response is compiled. This makes a hallucinated omitted handle
+ * fail closed instead of inheriting broader durable-scene authority.
+ */
+export function buildAuthorizedModelScene(scene: AuthorizedBoardScene): {
+  context: object;
+  scene: AuthorizedBoardScene;
+} {
+  const projection = buildModelSceneProjection(scene);
+  return {
+    context: projection.context,
+    scene: restrictWriteScopeToModelContext(scene, projection.includedHandles),
+  };
+}
+
+export function modelSceneContext(scene: AuthorizedBoardScene): object {
+  return buildAuthorizedModelScene(scene).context;
 }

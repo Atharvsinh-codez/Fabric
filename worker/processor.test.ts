@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { FabricModelProvider } from "../lib/ai/contracts";
+import { buildAuthorizedBoardScene } from "../lib/ai/engine/authorized-scene";
 
 const repository = vi.hoisted(() => ({
   baseSnapshotIsCurrent: vi.fn(),
@@ -29,7 +30,7 @@ const job = {
   maxAttempts: 1,
   runStatus: "queued" as const,
   skillVersion: "2.0.0",
-  promptVersion: "canvas-agent.plan.v4",
+  promptVersion: "canvas-agent.plan.v5",
   provider: "openai-compatible",
   model: "gcli/grok-4.5-medium",
   principalId: "33333333-3333-4333-8333-333333333333",
@@ -181,6 +182,147 @@ describe("durable AI processor v2", () => {
       }),
     ]);
     expect(repository.recordRunFailure).not.toHaveBeenCalled();
+  });
+
+  it("validates empty-selection mutations against the authorized durable viewport scene", async () => {
+    const scene = buildAuthorizedBoardScene({
+      snapshot: {
+        nodes: [{
+          id: "visible_note",
+          type: "note",
+          title: "Rough title",
+          x: 120,
+          y: 100,
+          width: 220,
+          height: 140,
+          fill: "yellow",
+        }],
+        edges: [],
+      },
+      selection: [],
+      viewport: { x: 0, y: 0, width: 900, height: 600 },
+    });
+    const visibleJob = {
+      ...job,
+      executionInput: {
+        ...job.executionInput,
+        instruction: "Rename the visible note clearly.",
+        selection: [],
+        viewport: scene.viewport,
+        scene,
+      },
+    };
+    const plan = {
+      schemaVersion: 1,
+      kind: "proposal",
+      summary: "Renamed the visible note.",
+      placement: "viewport-center",
+      flow: "vertical",
+      actions: [{
+        kind: "editSelection",
+        edits: [{ selectionRef: "v1", title: "Clear title" }],
+      }],
+    };
+
+    await processClaimedAiJob({
+      sql: {} as never,
+      job: visibleJob,
+      provider: providerOutput(plan),
+      leaseMs: 60_000,
+    });
+
+    expect(repository.recordProposalReady).toHaveBeenCalledOnce();
+    expect(repository.recordProposalReady.mock.calls[0]?.[1]).toMatchObject({
+      proposal: {
+        patch: {
+          operations: [{
+            type: "updateNode",
+            nodeId: "visible_note",
+            content: { title: "Clear title" },
+          }],
+        },
+        affectedNodeIds: ["visible_note"],
+      },
+    });
+    expect(repository.recordRunFailure).not.toHaveBeenCalled();
+  });
+
+  it("rejects a hallucinated writable handle omitted from the bounded model context", async () => {
+    const nodes = Array.from({ length: 25 }, (_, index) => ({
+      id: `visible_${String(index).padStart(2, "0")}`,
+      type: "note" as const,
+      title: `Visible ${index}`,
+      body: `${index}: ${"large durable context ".repeat(80)}`,
+      x: 40 + index * 120,
+      y: 100,
+      width: 100,
+      height: 100,
+      fill: "yellow",
+    }));
+    const scene = buildAuthorizedBoardScene({
+      snapshot: { nodes, edges: [] },
+      selection: [],
+      viewport: { x: 0, y: 0, width: 4_000, height: 600 },
+    });
+    const visibleJob = {
+      ...job,
+      executionInput: {
+        ...job.executionInput,
+        instruction: "Rename the visible notes.",
+        selection: [],
+        viewport: scene.viewport,
+        scene,
+      },
+    };
+    const plan = {
+      schemaVersion: 1,
+      kind: "proposal",
+      summary: "Renamed an omitted note.",
+      placement: "viewport-center",
+      flow: "vertical",
+      actions: [{
+        kind: "editSelection",
+        edits: [{ selectionRef: "v21", title: "Hallucinated target" }],
+      }],
+    };
+    let observedInput = "";
+    const baseProvider = providerOutput(plan);
+    const provider: FabricModelProvider = {
+      ...baseProvider,
+      async createTurn(turn) {
+        observedInput = turn.input;
+        return baseProvider.createTurn(turn);
+      },
+    };
+
+    await processClaimedAiJob({
+      sql: {} as never,
+      job: visibleJob,
+      provider,
+      leaseMs: 60_000,
+    });
+
+    expect(observedInput).not.toContain('"handle":"v21"');
+    expect(observedInput).not.toContain('"v21"');
+    expect(repository.recordProposalReady).not.toHaveBeenCalled();
+    expect(repository.recordRunFailure).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        status: "validation_failed",
+        usage: expect.objectContaining({
+          fabric: expect.objectContaining({
+            sceneNodesOmitted: 5,
+            sceneTextCharactersOmitted: expect.any(Number),
+          }),
+        }),
+        error: expect.objectContaining({
+          code: "semantic_validation_failed",
+          issueCodes: ["unknown_selection_reference"],
+        }),
+      }),
+    );
+    const failureUsage = repository.recordRunFailure.mock.calls[0]?.[1]?.usage;
+    expect(failureUsage?.fabric?.sceneTextCharactersOmitted).toBeGreaterThan(0);
   });
 
   it("completes a clarification without creating or applying a canvas patch", async () => {
