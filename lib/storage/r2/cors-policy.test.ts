@@ -28,7 +28,7 @@ describe("production R2 CORS policy", () => {
     expect(policy.rules).toHaveLength(1);
     expect(policy.rules[0]).toEqual({
       allowed: {
-        origins: ["https://fabric-athrix.vercel.app"],
+        origins: ["https://fabric.athrix.me"],
         methods: ["PUT"],
         headers: [
           "Content-Type",

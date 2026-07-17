@@ -231,12 +231,7 @@ button:disabled {
 }
 
 .app-page-enter {
-  animation: app-page-enter 420ms var(--ease-out-quart) both;
-}
-
-.board-card-enter {
-  animation: board-card-enter 520ms var(--ease-out-quart) both;
-  animation-delay: var(--board-card-delay, 0ms);
+  animation: app-page-enter 180ms ease-out both;
 }
 
 .ambient-float {
@@ -435,14 +430,6 @@ button:disabled {
 @keyframes app-page-enter {
   from {
     opacity: 0;
-    transform: translateY(8px);
-  }
-}
-
-@keyframes board-card-enter {
-  from {
-    opacity: 0;
-    transform: translateY(12px) scale(0.985);
   }
 }
 

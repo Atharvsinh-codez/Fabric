@@ -28,7 +28,9 @@ import { CheckIcon, MinusIcon } from "@heroicons/react/16/solid";
 import Image from "next/image";
 import Link from "next/link";
 import type { ComponentType, SVGProps } from "react";
+import { SiGithub } from "react-icons/si";
 import { MarketingShell } from "@/components/marketing-shell";
+import { GITHUB_REPOSITORY_URL } from "@/lib/site";
 
 type Icon = ComponentType<SVGProps<SVGSVGElement>>;
 
@@ -79,6 +81,8 @@ function MarketingCta({
   href?: string;
   label?: string;
 }) {
+  const external = href.startsWith("https://");
+
   return (
     <section className="bg-light-surface-tint py-12 sm:py-16">
       <div className={pageContainer}>
@@ -90,6 +94,8 @@ function MarketingCta({
           <div className="flex md:justify-end">
             <Link
               href={href}
+              target={external ? "_blank" : undefined}
+              rel={external ? "noreferrer" : undefined}
               className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-radius-pill border border-white/25 px-4 py-3 font-medium text-white outline-none hover:-translate-y-px hover:bg-white/10 active:translate-y-0 active:bg-white/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white transition-transform"
             >
               {label}
@@ -266,11 +272,12 @@ export function FeaturesPage() {
 }
 
 const currentAccessFeatures = [
+  "Public source code and development on GitHub",
   "Persistent workspaces and role-aware boards",
   "Interactive canvas with local draft recovery",
   "Streamed AI proposals with explicit approval",
   "Responsive desktop and tablet layouts",
-  "No payment method or billing flow",
+  "No subscription, payment method, or billing flow",
 ];
 
 export function PricingPage() {
@@ -279,13 +286,28 @@ export function PricingPage() {
       <main>
         <section className="bg-surface-white py-16 sm:py-20 lg:py-24">
           <div className={`${pageContainer} flex flex-col items-center gap-6 text-center`}>
-            <Eyebrow>Current access</Eyebrow>
+            <Eyebrow>Open source · No billing</Eyebrow>
             <h1 className="max-w-[16ch] text-balance font-display text-5xl font-normal tracking-[-0.03em] sm:text-[4.375rem] lg:text-[5rem]">
-              Use Fabric without a billing account.
+              Open source, with room to make it yours.
             </h1>
             <p className="max-w-[48ch] text-pretty text-lg text-muted-gray sm:text-base">
-              Fabric does not currently offer paid plans or collect payment details. Sign in with Google or GitHub to create a persistent workspace.
+              Fabric is an open-source project with its code available on GitHub. Use this deployment without a subscription, or inspect how the product is built.
             </p>
+            <div className="flex flex-wrap justify-center gap-2">
+              <Link href="/app" className={primaryLink}>
+                Get started
+                <ArrowRightIcon className="size-6 shrink-0 stroke-current" aria-hidden="true" />
+              </Link>
+              <a
+                href={GITHUB_REPOSITORY_URL}
+                target="_blank"
+                rel="noreferrer"
+                className={secondaryLink}
+              >
+                <SiGithub className="size-4 shrink-0" aria-hidden="true" />
+                View source on GitHub
+              </a>
+            </div>
           </div>
         </section>
 
@@ -296,10 +318,10 @@ export function PricingPage() {
                 <div className="flex flex-col gap-6">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <h2 className="text-2xl font-medium tracking-tight">Fabric Workspace</h2>
-                    <p className="rounded-radius-pill bg-sky-blue-accent/8 px-3 py-1 font-mono text-sm text-sky-blue-accent">Billing unavailable</p>
+                    <p className="rounded-radius-pill bg-sky-blue-accent/8 px-3 py-1 font-mono text-sm text-sky-blue-accent">Open-source project</p>
                   </div>
                   <div className="flex items-end gap-3">
-                    <p className="text-5xl font-medium tracking-tight">No charge</p>
+                    <p className="text-5xl font-medium tracking-tight">Free</p>
                     <p className="pb-1 text-base text-muted-gray">no payment details</p>
                   </div>
                   <p className="max-w-[48ch] text-pretty text-lg text-muted-gray sm:text-base">
@@ -314,17 +336,14 @@ export function PricingPage() {
                     ))}
                   </ul>
                 </div>
-                <div>
-                  <Link href="/app" className={primaryLink}>
-                    Get started
-                    <ArrowRightIcon className="size-6 shrink-0 stroke-current" aria-hidden="true" />
-                  </Link>
-                </div>
+                <p className="max-w-[54ch] text-pretty text-base text-muted-gray">
+                  Follow development, review the architecture, and contribute through the public Fabric repository.
+                </p>
               </div>
 
               <div className="flex flex-col gap-6 border-t border-border-subtle bg-light-surface-tint p-6 sm:p-8 lg:border-t-0 lg:border-l lg:p-10">
-                <p className="font-mono text-sm uppercase tracking-wide text-muted-gray">Included today</p>
-                <h3 className="max-w-[30ch] text-balance text-2xl font-medium tracking-tight">One access path, with visible service boundaries.</h3>
+                <p className="font-mono text-sm uppercase tracking-wide text-muted-gray">Transparent by default</p>
+                <h3 className="max-w-[30ch] text-balance text-2xl font-medium tracking-tight">The product and its boundaries are visible.</h3>
                 <dl className="flex flex-col gap-5">
                   {[
                     ["Identity", "Google and GitHub provide identity; Fabric stores database sessions without provider bearer tokens."],
@@ -414,8 +433,10 @@ export function PricingPage() {
         </section>
 
         <MarketingCta
-          title="Open a workspace without a subscription."
-          description="Fabric does not request billing details. Sign in to create a persistent workspace and use the capabilities available in this deployment."
+          title="Build with Fabric in the open."
+          description="Start a workspace without billing details, then visit GitHub to inspect the source and follow the project."
+          href={GITHUB_REPOSITORY_URL}
+          label="View source on GitHub"
         />
       </main>
     </MarketingShell>

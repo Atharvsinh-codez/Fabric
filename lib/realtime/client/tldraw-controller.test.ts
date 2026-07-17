@@ -2,6 +2,8 @@ import { createTLStore } from "tldraw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { TldrawCheckpoint } from "../../boards/tldraw-store-adapter";
+import type { RealtimeCapability } from "../constants";
+import type { RealtimeConnectionState } from "./types";
 import { TldrawCollaborationController } from "./tldraw-controller";
 
 const PRINCIPAL_ID = "00000000-0000-4000-8000-000000000001";
@@ -50,6 +52,38 @@ afterEach(async () => {
 });
 
 describe("TldrawCollaborationController checkpoint scheduling", () => {
+  it("keeps local-first writes enabled through an unresolved realtime failure", () => {
+    const controller = createController(vi.fn());
+    vi.spyOn(
+      controller.realtime,
+      "isLocalDurabilityAvailable",
+      "get",
+    ).mockReturnValue(true);
+    const realtime = controller.realtime as unknown as {
+      capabilities: RealtimeCapability[];
+      state: RealtimeConnectionState;
+    };
+
+    realtime.state = "permission-denied";
+    realtime.capabilities = [];
+    expect(controller.isWriteEnabled()).toBe(true);
+
+    realtime.capabilities = ["read", "awareness"];
+    expect(controller.isWriteEnabled()).toBe(false);
+
+    realtime.capabilities = ["read", "write", "awareness"];
+    expect(controller.isWriteEnabled()).toBe(true);
+  });
+
+  it("retries realtime without rebuilding the editor controller", () => {
+    const controller = createController(vi.fn());
+    const connect = vi.spyOn(controller.realtime, "connect").mockImplementation(() => undefined);
+
+    controller.retryConnection();
+
+    expect(connect).toHaveBeenCalledOnce();
+  });
+
   it("debounces changes before requesting a bounded idle checkpoint", async () => {
     vi.useFakeTimers();
     let idleCallback: IdleRequestCallback | undefined;

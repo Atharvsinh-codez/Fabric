@@ -6,6 +6,7 @@ import { getSafeReturnPath } from "@/lib/auth/safe-return";
 export const metadata: Metadata = {
   title: "Sign-In Interrupted",
   description: "Return to Fabric sign-in safely.",
+  robots: { index: false, follow: false },
 };
 
 function getErrorKind(error: string | string[] | undefined): AuthErrorKind {

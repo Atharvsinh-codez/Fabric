@@ -240,6 +240,11 @@ export function useFabricWhiteboardAdapter(
     controllerRef.current?.setAwarenessState(state);
   }, []);
 
+  const retryConnection = useCallback(() => {
+    setError(null);
+    controllerRef.current?.retryConnection();
+  }, []);
+
   return {
     documentAdapter,
     realtime: {
@@ -252,6 +257,7 @@ export function useFabricWhiteboardAdapter(
       writeEnabled,
       localAwarenessClientId,
       setAwarenessState,
+      retryConnection,
     },
     hydrationWarning,
   } as const;

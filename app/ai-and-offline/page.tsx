@@ -1,10 +1,11 @@
-import type { Metadata } from "next";
 import { AiOfflinePage } from "@/components/marketing-pages";
+import { createPublicPageMetadata } from "@/lib/site-metadata";
 
-export const metadata: Metadata = {
+export const metadata = createPublicPageMetadata({
   title: "AI & Offline",
   description: "Learn how Fabric handles offline recovery and streamed AI proposals with explicit human approval.",
-};
+  path: "/ai-and-offline",
+});
 
 export default function Page() {
   return <AiOfflinePage />;

@@ -8,7 +8,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type FormEvent,
 } from "react";
 import AddIcon from "reicon-react/icons/Add2";
@@ -23,7 +22,6 @@ import {
   APP_ROUTES,
   boardPath,
   dashboardPath,
-  workspaceRoutePath,
 } from "@/lib/app-routes";
 import {
   archiveBoard,
@@ -40,26 +38,17 @@ import {
   type ProjectSummary,
   type WorkspaceSummary,
 } from "@/lib/boards/client";
+import {
+  DASHBOARD_BOARD_PAGE_SIZE,
+  DASHBOARD_BOARD_STATUSES,
+  DASHBOARD_BOARD_VIEWS,
+  dashboardBoardQueryKey,
+  type DashboardBoardView,
+} from "@/lib/boards/dashboard-query";
 
-const BOARD_VIEWS = [
-  "recent",
-  "favorite",
-  "pinned",
-  "shared",
-  "archived",
-  "all",
-] as const;
-type BoardView = (typeof BOARD_VIEWS)[number];
-const BOARD_STATUSES = ["draft", "active", "review", "approved"] as const;
-const BOARD_VIEW_LABELS: Record<BoardView, string> = {
-  recent: "Recent",
-  favorite: "Favorites",
-  pinned: "Pinned",
-  shared: "Shared With Me",
-  archived: "Archived",
-  all: "All Boards",
-};
-
+const BOARD_VIEWS = DASHBOARD_BOARD_VIEWS;
+type BoardView = DashboardBoardView;
+const BOARD_STATUSES = DASHBOARD_BOARD_STATUSES;
 const dashboardDateFormatter = new Intl.DateTimeFormat("en", {
   month: "short",
   day: "numeric",
@@ -76,6 +65,10 @@ function formatDashboardDate(value: string) {
 
 function canEditBoard(role: BoardSummary["role"]): boolean {
   return role === "owner" || role === "editor";
+}
+
+function preserveEqualList<T>(current: T[], next: T[]): T[] {
+  return JSON.stringify(current) === JSON.stringify(next) ? current : next;
 }
 
 function DashboardToast({ message }: { message: string | null }) {
@@ -117,6 +110,8 @@ export function WorkspaceDashboardPage({
   projectId,
   status,
   initialBoards,
+  initialBoardQueryKey,
+  initialNextBoardCursor,
   organizationEnabled,
   initialProjects,
   initialWorkspaces,
@@ -128,6 +123,8 @@ export function WorkspaceDashboardPage({
   projectId?: string;
   status?: string;
   initialBoards: BoardSummary[];
+  initialBoardQueryKey: string;
+  initialNextBoardCursor: string | null;
   organizationEnabled: boolean;
   initialProjects: ProjectSummary[];
   initialWorkspaces: WorkspaceSummary[];
@@ -146,7 +143,10 @@ export function WorkspaceDashboardPage({
   const [boardPagination, setBoardPagination] = useState<{
     queryKey: string;
     nextCursor: string | null;
-  }>({ queryKey: "", nextCursor: null });
+  }>({
+    queryKey: initialBoardQueryKey,
+    nextCursor: initialNextBoardCursor,
+  });
   const [loadingMoreQueryKey, setLoadingMoreQueryKey] = useState<string | null>(
     null,
   );
@@ -156,8 +156,12 @@ export function WorkspaceDashboardPage({
   const foregroundRefreshAt = useRef(0);
 
   useEffect(
-    () => () => {
-      if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+    () => {
+      foregroundRefreshAt.current = Date.now();
+      return () => {
+        boardRequestVersion.current += 1;
+        if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+      };
     },
     [],
   );
@@ -185,13 +189,12 @@ export function WorkspaceDashboardPage({
     ? projectId
     : undefined;
   const normalizedQuery = organizationEnabled ? query.trim() : "";
-  const boardQueryKey = JSON.stringify([
-    activeWorkspaceId ?? null,
-    activeView,
-    normalizedQuery,
-    activeProjectId ?? null,
-    activeStatus ?? null,
-  ]);
+  const boardQueryKey = dashboardBoardQueryKey(activeWorkspaceId, {
+    q: normalizedQuery,
+    view: activeView,
+    projectId: activeProjectId,
+    status: activeStatus,
+  });
   const nextBoardCursor =
     boardPagination.queryKey === boardQueryKey
       ? boardPagination.nextCursor
@@ -213,13 +216,19 @@ export function WorkspaceDashboardPage({
         q: organizationEnabled ? normalizedQuery || undefined : undefined,
         projectId: activeProjectId,
         status: activeStatus,
+        limit: DASHBOARD_BOARD_PAGE_SIZE,
       });
       if (boardRequestVersion.current !== requestVersion) return;
-      setBoards(boardPage.boards);
-      setBoardPagination({
-        queryKey: boardQueryKey,
-        nextCursor: boardPage.nextCursor,
-      });
+      setBoards((current) => preserveEqualList(current, boardPage.boards));
+      setBoardPagination((current) =>
+        current.queryKey === boardQueryKey &&
+        current.nextCursor === boardPage.nextCursor
+          ? current
+          : {
+              queryKey: boardQueryKey,
+              nextCursor: boardPage.nextCursor,
+            },
+      );
     } catch {
       // Foreground refresh is opportunistic. Keep the already rendered board
       // list if the network is temporarily unavailable.
@@ -236,57 +245,11 @@ export function WorkspaceDashboardPage({
 
   useEffect(() => {
     if (!activeWorkspaceId) return;
-    foregroundRefreshAt.current = Date.now();
-    const requestVersion = ++boardRequestVersion.current;
-    let active = true;
-    void Promise.all([
-      listBoardsPage({
-        workspaceId: activeWorkspaceId,
-        view: activeView,
-        q: organizationEnabled ? query || undefined : undefined,
-        projectId: activeProjectId,
-        status: activeStatus,
-      }),
-      organizationEnabled
-        ? listProjects(activeWorkspaceId)
-        : Promise.resolve([]),
-    ])
-      .then(([boardPage, nextProjects]) => {
-        if (!active || boardRequestVersion.current !== requestVersion) return;
-        setBoards(boardPage.boards);
-        setBoardPagination({
-          queryKey: boardQueryKey,
-          nextCursor: boardPage.nextCursor,
-        });
-        setProjects(nextProjects);
-        setLoadState("ready");
-      })
-      .catch(() => {
-        if (active && boardRequestVersion.current === requestVersion) {
-          setBoardPagination({ queryKey: boardQueryKey, nextCursor: null });
-          setLoadState("error");
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [
-    activeProjectId,
-    activeStatus,
-    activeView,
-    activeWorkspaceId,
-    boardQueryKey,
-    organizationEnabled,
-    query,
-  ]);
-
-  useEffect(() => {
-    if (!activeWorkspaceId) return;
 
     const refreshAfterReturn = () => {
       if (loadState !== "ready" || document.visibilityState === "hidden") return;
       const now = Date.now();
-      if (now - foregroundRefreshAt.current < 3_000) return;
+      if (now - foregroundRefreshAt.current < 45_000) return;
       foregroundRefreshAt.current = now;
       void refreshCurrentBoardPage();
     };
@@ -325,9 +288,10 @@ export function WorkspaceDashboardPage({
             listBoardsPage({
               workspaceId: nextWorkspace.id,
               view: activeView,
-              q: organizationEnabled ? query || undefined : undefined,
+              q: organizationEnabled ? normalizedQuery || undefined : undefined,
               projectId: activeProjectId,
               status: activeStatus,
+              limit: DASHBOARD_BOARD_PAGE_SIZE,
             }),
             organizationEnabled
               ? listProjects(nextWorkspace.id)
@@ -335,7 +299,7 @@ export function WorkspaceDashboardPage({
           ])
         : [{ boards: [], nextCursor: null }, []];
       if (boardRequestVersion.current !== requestVersion) return;
-      setBoards(boardPage.boards);
+      setBoards((current) => preserveEqualList(current, boardPage.boards));
       setBoardPagination({
         queryKey: boardQueryKey,
         nextCursor: boardPage.nextCursor,
@@ -367,10 +331,11 @@ export function WorkspaceDashboardPage({
       const boardPage = await listBoardsPage({
         workspaceId: activeWorkspaceId,
         view: activeView,
-        q: organizationEnabled ? query || undefined : undefined,
+        q: organizationEnabled ? normalizedQuery || undefined : undefined,
         projectId: activeProjectId,
         status: activeStatus,
         cursor,
+        limit: DASHBOARD_BOARD_PAGE_SIZE,
       });
       if (boardRequestVersion.current !== requestVersion) return;
       setBoards((current) => {
@@ -598,34 +563,6 @@ export function WorkspaceDashboardPage({
         ) : null
       }
     >
-      <section
-        aria-labelledby="workspace-overview-heading"
-        className="@container"
-      >
-        <h2 id="workspace-overview-heading" className="sr-only">
-          Workspace overview
-        </h2>
-        <dl className="grid divide-y divide-near-black-primary-text/8 border-y border-near-black-primary-text/8 @[34rem]:grid-cols-3 @[34rem]:divide-x @[34rem]:divide-y-0">
-          {[
-            [
-              "Visible boards",
-              loadState === "ready" ? String(activeBoards.length) : "—",
-            ],
-            ["Your role", activeWorkspace?.role ?? "—"],
-            ["Current view", BOARD_VIEW_LABELS[activeView]],
-          ].map(([label, value]) => (
-            <div key={label} className="min-w-0 px-4 py-3.5 sm:px-5 sm:py-4">
-              <dt className="truncate text-sm font-medium text-muted-gray">
-                {label}
-              </dt>
-              <dd className="mt-1 truncate text-xl font-medium capitalize text-near-black-primary-text tabular-nums">
-                {value}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </section>
-
       {organizationEnabled ? (
         <section
           aria-labelledby="board-view-heading"
@@ -827,7 +764,7 @@ export function WorkspaceDashboardPage({
       ) : null}
 
       <div className="@container">
-        <div className="grid items-start gap-8 @[70rem]:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="min-w-0">
           <section
             aria-labelledby="recent-boards-heading"
             aria-busy={loadState === "loading"}
@@ -937,17 +874,12 @@ export function WorkspaceDashboardPage({
             )}
 
             {loadState === "ready" && visibleBoards.length > 0 && (
-              <ul role="list" className="grid gap-4 @[42rem]:grid-cols-2">
-                {visibleBoards.map((board, index) => (
-                  <li
-                    key={board.id}
-                    className="board-card-enter min-w-0"
-                    style={
-                      {
-                        "--board-card-delay": `${Math.min(index, 5) * 55}ms`,
-                      } as CSSProperties
-                    }
-                  >
+              <ul
+                role="list"
+                className="grid gap-4 @[42rem]:grid-cols-2 @[70rem]:grid-cols-3"
+              >
+                {visibleBoards.map((board) => (
+                  <li key={board.id} className="min-w-0">
                     <article className="soft-shadow overflow-hidden rounded-radius-xl bg-surface-white ring-1 ring-near-black-primary-text/7">
                       <Link
                         href={boardPath(board.id)}
@@ -1115,79 +1047,6 @@ export function WorkspaceDashboardPage({
             )}
           </section>
 
-          <section
-            aria-labelledby="board-updates-heading"
-            className="soft-shadow overflow-hidden rounded-radius-2xl bg-surface-white ring-1 ring-near-black-primary-text/7"
-          >
-            <div className="flex items-start justify-between gap-4 border-b border-border-subtle px-4 py-3.5">
-              <div>
-                <h2
-                  id="board-updates-heading"
-                  className="text-sm font-semibold"
-                >
-                  Board updates
-                </h2>
-                <p className="mt-0.5 text-[0.75rem] text-muted-gray">
-                  Latest workspace changes
-                </p>
-              </div>
-              <Link
-                href={workspaceRoutePath(APP_ROUTES.activity, activeWorkspace?.id)}
-                className="shrink-0 rounded-radius-sm text-sm font-medium text-dark-text-alt outline-none hover:text-near-black-primary-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent"
-              >
-                View all
-              </Link>
-            </div>
-
-            {loadState === "loading" ? (
-              <p role="status" className="px-4 py-8 text-sm text-muted-gray">
-                Loading board updates…
-              </p>
-            ) : loadState === "error" ? (
-              <p
-                role="alert"
-                className="px-4 py-8 text-sm text-[var(--danger)]"
-              >
-                Board updates are unavailable until workspace data reconnects.
-              </p>
-            ) : activeBoards.length > 0 ? (
-              <ul role="list" className="divide-y divide-border-subtle px-4">
-                {activeBoards.slice(0, 4).map((board) => (
-                  <li key={board.id}>
-                    <Link
-                      href={boardPath(board.id)}
-                      className="flex items-start gap-3 rounded-radius-sm py-3.5 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent"
-                    >
-                      <div
-                        aria-hidden="true"
-                        className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-radius-md bg-light-surface-tint text-[0.6875rem] font-semibold text-sky-blue-accent ring-1 ring-border-subtle"
-                      >
-                        {board.title.slice(0, 2).toUpperCase()}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm text-near-black-primary-text">
-                          {board.title}
-                        </p>
-                        <p className="mt-0.5 text-[0.75rem] capitalize text-muted-gray">
-                          {board.projectName ?? "Unfiled"} · {board.status}
-                        </p>
-                        <time
-                          dateTime={board.updatedAt}
-                          className="mt-1 block text-[0.75rem] text-muted-gray"
-                        >
-                          {formatDashboardDate(board.updatedAt)}
-                        </time>
-                      </div>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="px-4 py-8 text-sm text-muted-gray">
-                Board updates will appear here after your team starts working.
-              </p>
-            )}
-          </section>
         </div>
       </div>
 

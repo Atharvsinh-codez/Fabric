@@ -2,7 +2,7 @@
   "rules": [
     {
       "allowed": {
-        "origins": ["https://fabric-athrix.vercel.app"],
+        "origins": ["https://fabric.athrix.me"],
         "methods": ["PUT"],
         "headers": [
           "Content-Type",

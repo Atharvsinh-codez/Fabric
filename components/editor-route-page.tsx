@@ -6,7 +6,7 @@ import {
   ExclamationTriangleIcon,
 } from "@heroicons/react/16/solid";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FabricWhiteboard } from "@/components/fabric-whiteboard";
 import { useCurrentUser } from "@/components/current-user-provider";
 import { Button, FabricLogo } from "@/components/ui";
@@ -161,7 +161,9 @@ function LoadedFabricWhiteboard({
     : null;
   const [verifiedRealtimeLossEvidence, setVerifiedRealtimeLossEvidence] =
     useState<unknown>(null);
+  const automaticRealtimeRetryUsedRef = useRef(false);
   const refreshBoardAccess = persistence.refreshBoardAccess;
+  const retryRealtimeConnection = adapter.realtime.retryConnection;
   const readOnlyCapabilityContradiction =
     metadataCanEdit &&
     adapter.realtime.capabilities.length > 0 &&
@@ -172,36 +174,47 @@ function LoadedFabricWhiteboard({
 
     let current = true;
     void refreshBoardAccess().then((result) => {
-      if (current && result === "refreshed") {
-        setVerifiedRealtimeLossEvidence(realtimeLossEvidence);
+      if (!current) return;
+      // A failed metadata refresh is not an authorization decision, but it
+      // should not leave the canvas in a permanent "rechecking" state either.
+      setVerifiedRealtimeLossEvidence(realtimeLossEvidence);
+      if (result === "refreshed" && !automaticRealtimeRetryUsedRef.current) {
+        automaticRealtimeRetryUsedRef.current = true;
+        retryRealtimeConnection();
       }
     });
     return () => {
       current = false;
     };
-  }, [realtimeLossEvidence, refreshBoardAccess]);
+  }, [realtimeLossEvidence, refreshBoardAccess, retryRealtimeConnection]);
+
+  useEffect(() => {
+    if (adapter.realtime.connectionState !== "connected") return;
+    automaticRealtimeRetryUsedRef.current = false;
+  }, [adapter.realtime.connectionState]);
 
   useEffect(() => {
     if (!readOnlyCapabilityContradiction) return;
     void refreshBoardAccess();
   }, [readOnlyCapabilityContradiction, refreshBoardAccess]);
 
-  const accessLost =
-    persistence.accessRefreshState === "lost" ||
-    (realtimeLossEvidence !== null &&
-      verifiedRealtimeLossEvidence !== realtimeLossEvidence);
+  const accessLost = persistence.accessRefreshState === "lost";
+  const verifyingRealtimeAccess =
+    realtimeLossEvidence !== null &&
+    verifiedRealtimeLossEvidence !== realtimeLossEvidence &&
+    !accessLost;
   const sessionAccess = resolveBoardSessionAccess({
     role: persistence.board.role,
     archivedAt: persistence.board.archivedAt,
     realtimeCapabilities: adapter.realtime.capabilities,
     realtimeWriteEnabled: adapter.realtime.writeEnabled,
-    realtimeAccessLost:
-      realtimeLossEvidence !== null &&
-      verifiedRealtimeLossEvidence !== realtimeLossEvidence,
-    accessLost: persistence.accessRefreshState === "lost",
+    realtimeAccessLost: false,
+    accessLost,
   });
   const syncState = archived
     ? "synced"
+    : verifyingRealtimeAccess
+      ? "saving"
     : collaborativeSyncState(
         persistence.syncState,
         adapter.realtime.connectionState,
@@ -209,6 +222,8 @@ function LoadedFabricWhiteboard({
       );
   const syncMessage = archived
     ? "This board is archived and read-only. Restore it from Archived boards to edit again."
+    : verifyingRealtimeAccess
+      ? "Rechecking live collaboration. Your local changes remain safe on this device."
     : collaborativeSyncMessage({
         baseMessage: persistence.syncMessage,
         hydrationWarning: adapter.hydrationWarning,
@@ -227,9 +242,7 @@ function LoadedFabricWhiteboard({
       archivedAt={persistence.board.archivedAt}
       role={persistence.board.role}
       editingAuthorized={sessionAccess.canEdit}
-      sharingAdministrationAuthorized={
-        sessionAccess.canManageSharing && !realtimeAccessLost
-      }
+      sharingAdministrationAuthorized={sessionAccess.canManageSharing}
       organizationEnabled={organizationEnabled}
       privateMediaEnabled={privateMediaEnabled}
       accessLost={accessLost}
@@ -239,7 +252,10 @@ function LoadedFabricWhiteboard({
       syncState={syncState}
       persistenceReady={persistence.syncState === "synced"}
       syncMessage={syncMessage}
-      onRetrySave={() => void persistence.retrySave()}
+      onRetrySave={() => {
+        retryRealtimeConnection();
+        void persistence.retrySave();
+      }}
       onReloadRemote={() => void persistence.reloadRemote()}
       onDownloadLocalCopy={persistence.downloadLocalCopy}
       onOpenWorkspace={onOpenWorkspace}

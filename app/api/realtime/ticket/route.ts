@@ -16,7 +16,6 @@ import {
 import { roleCan } from "@/lib/boards/permissions";
 import { getRealtimeIssuerEnvironment } from "@/lib/realtime/env";
 import { isAllowedOrigin } from "@/lib/realtime/origin";
-import { consumeRealtimeTicketMint } from "@/lib/realtime/rate-limit";
 import { mintRealtimeTicket } from "@/lib/realtime/tickets";
 
 export const runtime = "nodejs";
@@ -57,25 +56,6 @@ export async function POST(request: Request): Promise<Response> {
       .limit(1);
     if (!board) {
       throw new BoardApiError(404, "not_found", "The requested resource was not found.");
-    }
-
-    const rateLimit = await consumeRealtimeTicketMint({
-      principalId: principal.id,
-      boardId: board.id,
-    });
-    if (!rateLimit.allowed) {
-      return apiJson(
-        {
-          error: {
-            code: "rate_limited",
-            message: "Wait briefly before requesting another realtime ticket.",
-          },
-        },
-        {
-          status: 429,
-          headers: { "Retry-After": String(rateLimit.retryAfterSeconds) },
-        },
-      );
     }
 
     const capabilities = roleCan(access.role, "edit_board")

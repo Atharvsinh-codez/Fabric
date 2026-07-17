@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "tsx --env-file=.env --env-file=.env.local --env-file=.env.worker.local server.ts",
     "build": "next build && esbuild server.ts --bundle --platform=node --format=esm --target=node22 --packages=external --sourcemap --outfile=dist/server.mjs",
+    "brand:icons": "node scripts/generate-brand-icons.mjs",
     "start": "node dist/server.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",

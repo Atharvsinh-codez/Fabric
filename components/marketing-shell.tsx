@@ -2,6 +2,9 @@ import { Bars3Icon, XMarkIcon } from "@heroicons/react/24/outline";
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { SiGithub } from "react-icons/si";
+
+import { GITHUB_REPOSITORY_URL } from "@/lib/site";
 
 const editorHref = "/app";
 
@@ -69,6 +72,16 @@ export function MarketingHeader() {
         </nav>
 
         <div className="flex flex-1 items-center justify-end gap-2">
+          <a
+            href={GITHUB_REPOSITORY_URL}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="View Fabric on GitHub"
+            className="relative inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-radius-pill bg-surface-white py-2 pr-3 pl-2 font-medium text-slate-button-dark outline-none ring-1 ring-near-black-primary-text/12 hover:-translate-y-px hover:bg-light-surface-tint active:translate-y-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent transition-transform max-sm:hidden"
+          >
+            <SiGithub className="size-4 shrink-0" aria-hidden="true" />
+            <span className="max-xl:sr-only">GitHub</span>
+          </a>
           <Link
             href={editorHref}
             className="relative inline-flex h-9 shrink-0 items-center justify-center rounded-radius-pill bg-surface-white px-3 font-medium text-slate-button-dark outline-none ring-1 ring-near-black-primary-text/12 hover:-translate-y-px hover:bg-light-surface-tint active:translate-y-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent transition-transform max-sm:hidden"
@@ -93,6 +106,15 @@ export function MarketingHeader() {
                     {item.label}
                   </Link>
                 ))}
+                <a
+                  href={GITHUB_REPOSITORY_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-3 rounded-radius-xl px-4 py-3 font-medium text-muted-gray outline-none hover:bg-light-surface-tint hover:text-near-black-primary-text active:bg-border-subtle focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-sky-blue-accent"
+                >
+                  <SiGithub className="size-4 shrink-0" aria-hidden="true" />
+                  View on GitHub
+                </a>
                 <Link
                   href={editorHref}
                   className="rounded-radius-xl bg-sky-blue-accent px-4 py-3 font-medium text-white outline-none hover:-translate-y-px hover:bg-sky-blue-accent/90 active:translate-y-0 active:bg-sky-blue-accent/80 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-near-black-primary-text transition-transform"

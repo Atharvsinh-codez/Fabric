@@ -7,24 +7,57 @@ import { boards, type BoardDocument } from "@/db/schema/product";
 import { requireBoardCapability } from "@/lib/boards/authorization";
 import { BoardApiError } from "@/lib/boards/http";
 
-export type BoardPreviewSource = Readonly<{
+export type BoardPreviewMetadata = Readonly<{
   boardId: string;
   workspaceId: string;
-  document: BoardDocument;
   documentGenerationId: string;
   revision: number;
 }>;
 
+export type BoardPreviewSource = BoardPreviewMetadata &
+  Readonly<{
+    document: BoardDocument;
+  }>;
+
 /**
- * Loads only the durable state needed to render a board thumbnail. Access is
- * resolved before the document is selected, and the second query is pinned to
- * the resolver's workspace so a caller can never choose tenant scope.
+ * Resolves access before reading the lightweight version metadata used for
+ * conditional thumbnail requests. The board document is deliberately omitted
+ * so a matching ETag never loads the large JSON value.
  */
-export async function getBoardPreviewSource(
+export async function getBoardPreviewMetadata(
   userId: string,
   boardId: string,
-): Promise<BoardPreviewSource> {
+): Promise<BoardPreviewMetadata> {
   const { workspaceId } = await requireBoardCapability(userId, boardId, "view");
+  const [metadata] = await db
+    .select({
+      boardId: boards.id,
+      workspaceId: boards.workspaceId,
+      documentGenerationId: boards.documentGenerationId,
+      revision: boards.revision,
+    })
+    .from(boards)
+    .where(and(eq(boards.id, boardId), eq(boards.workspaceId, workspaceId)))
+    .limit(1);
+
+  if (!metadata) {
+    throw new BoardApiError(
+      404,
+      "not_found",
+      "The requested resource was not found.",
+    );
+  }
+
+  return metadata;
+}
+
+/**
+ * Loads the full document only after the caller has completed the authorized
+ * metadata/ETag check. Tenant scope comes exclusively from that result.
+ */
+export async function getBoardPreviewSource(
+  metadata: BoardPreviewMetadata,
+): Promise<BoardPreviewSource> {
   const [source] = await db
     .select({
       boardId: boards.id,
@@ -34,7 +67,12 @@ export async function getBoardPreviewSource(
       revision: boards.revision,
     })
     .from(boards)
-    .where(and(eq(boards.id, boardId), eq(boards.workspaceId, workspaceId)))
+    .where(
+      and(
+        eq(boards.id, metadata.boardId),
+        eq(boards.workspaceId, metadata.workspaceId),
+      ),
+    )
     .limit(1);
 
   if (!source) {

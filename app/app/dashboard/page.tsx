@@ -28,26 +28,38 @@ export default async function DashboardPage({
   const principal = await requireProtectedPagePrincipal();
   let initialLoadError = false;
   let bootstrap: DashboardBootstrap = {
+    boardQuery: { q: "", view: "recent" },
+    boardQueryKey: JSON.stringify([null, "recent", "", null, null]),
     boards: [],
+    nextBoardCursor: null,
     organizationEnabled: false,
     projects: [],
     workspaces: [],
   };
 
   try {
-    bootstrap = await loadDashboardBootstrap(principal.id, selectedWorkspaceId);
+    bootstrap = await loadDashboardBootstrap(principal.id, {
+      workspaceId: selectedWorkspaceId,
+      q: typeof q === "string" ? q : undefined,
+      view: typeof view === "string" ? view : undefined,
+      projectId: typeof projectId === "string" ? projectId : undefined,
+      status: typeof status === "string" ? status : undefined,
+    });
   } catch {
     initialLoadError = true;
   }
 
   return (
     <WorkspaceDashboardPage
+      key={`${bootstrap.boardQueryKey}:${initialLoadError ? "error" : "ready"}`}
       workspaceId={selectedWorkspaceId}
-      query={typeof q === "string" ? q : undefined}
-      view={typeof view === "string" ? view : undefined}
-      projectId={typeof projectId === "string" ? projectId : undefined}
-      status={typeof status === "string" ? status : undefined}
+      query={bootstrap.boardQuery.q}
+      view={bootstrap.boardQuery.view}
+      projectId={bootstrap.boardQuery.projectId}
+      status={bootstrap.boardQuery.status}
       initialBoards={bootstrap.boards}
+      initialBoardQueryKey={bootstrap.boardQueryKey}
+      initialNextBoardCursor={bootstrap.nextBoardCursor}
       organizationEnabled={bootstrap.organizationEnabled}
       initialProjects={bootstrap.projects}
       initialWorkspaces={bootstrap.workspaces}

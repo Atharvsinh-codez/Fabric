@@ -54,6 +54,7 @@ type RealtimeClientInternals = {
   capabilities: string[];
   committedDocument?: Y.Doc;
   committedSequence: number;
+  connectionOwner: boolean;
   handleAuthenticated: (envelope: unknown, ticket: unknown) => Promise<void>;
   handleAuthenticationRefreshed: (envelope: unknown) => void;
   handleAcknowledgement: (envelope: unknown) => Promise<void>;
@@ -65,6 +66,10 @@ type RealtimeClientInternals = {
   scheduleTicketRefresh: (ticket: RealtimeTicket) => void;
   socket?: WebSocket;
   state: string;
+  tabCoordinator?: {
+    destroy: () => Promise<void>;
+    post: (message: unknown) => void;
+  } | null;
   ticket?: RealtimeTicket;
 };
 
@@ -150,6 +155,75 @@ describe("FabricRealtimeClient durable outbox pump", () => {
       expect.objectContaining({ code: "permission_denied", permanent: true }),
     );
     expect(await outbox.list(scope)).toEqual([pending]);
+    await client.destroy();
+  });
+
+  it("retries ticketing when this tab still owns an existing coordinator", async () => {
+    vi.stubGlobal("location", new URL("https://fabric.test/boards/example"));
+    const fetchImplementation = vi.fn<typeof fetch>(async () =>
+      Response.json({
+        protocolVersion: REALTIME_PROTOCOL_VERSION,
+        ticket: "t".repeat(64),
+        expiresAt: new Date(Date.now() + 45_000).toISOString(),
+        boardId: BOARD_ID,
+        documentGenerationId: DOCUMENT_GENERATION_ID,
+        capabilities: ["read", "write", "awareness"],
+      }),
+    );
+    const client = new FabricRealtimeClient({
+      principalId: PRINCIPAL_ID,
+      boardId: BOARD_ID,
+      documentGenerationId: DOCUMENT_GENERATION_ID,
+      realtimeUrl: "wss://realtime.fabric.test/realtime",
+      outbox: new MemoryPendingUpdateOutbox(),
+      persistenceFactory,
+      fetchImplementation,
+      webSocketFactory: () => new FakeSocket() as unknown as WebSocket,
+    });
+    await client.prepareLocalDocument(DOCUMENT_GENERATION_ID);
+    const state = internals(client);
+    state.state = "permission-denied";
+    state.connectionOwner = true;
+    state.tabCoordinator = {
+      destroy: async () => undefined,
+      post: vi.fn(),
+    };
+
+    client.connect();
+
+    await vi.waitFor(() => expect(fetchImplementation).toHaveBeenCalledOnce());
+    state.tabCoordinator = null;
+    await client.destroy();
+  });
+
+  it("keeps unresolved local updates durable but blocks a resolved read-only ticket", async () => {
+    const outbox = new MemoryPendingUpdateOutbox();
+    const errors = vi.fn();
+    const client = new FabricRealtimeClient({
+      principalId: PRINCIPAL_ID,
+      boardId: BOARD_ID,
+      documentGenerationId: DOCUMENT_GENERATION_ID,
+      outbox,
+      persistenceFactory,
+      onError: errors,
+    });
+    await client.prepareLocalDocument(DOCUMENT_GENERATION_ID);
+    const state = internals(client);
+    const [unresolvedUpdate, readOnlyUpdate] = createYjsUpdates(2);
+
+    state.capabilities = [];
+    state.queueLocalUpdate(unresolvedUpdate!);
+    await state.localUpdateQueue;
+    expect(await outbox.list(scope)).toHaveLength(1);
+
+    state.capabilities = ["read", "awareness"];
+    state.queueLocalUpdate(readOnlyUpdate!);
+    await state.localUpdateQueue;
+
+    expect(await outbox.list(scope)).toHaveLength(1);
+    expect(errors).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "permission_denied", permanent: true }),
+    );
     await client.destroy();
   });
 

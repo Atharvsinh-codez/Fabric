@@ -4,6 +4,9 @@ import { Bars3Icon, XMarkIcon } from "@heroicons/react/24/outline";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { SiGithub } from "react-icons/si";
+
+import { GITHUB_REPOSITORY_URL } from "@/lib/site";
 
 const navigation = [
   { href: "#why-fabric", label: "Why Fabric" },
@@ -65,7 +68,7 @@ export function LandingHeader() {
       <div className="mx-auto flex h-12 w-full max-w-[90rem] items-center justify-between sm:h-14">
         <Link
           href="/"
-          aria-label="Fabric home"
+          aria-label="Homepage"
           className="rounded-lg outline-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-sky-blue-accent"
         >
           <Image
@@ -94,6 +97,16 @@ export function LandingHeader() {
         </nav>
 
         <div className="flex items-center gap-2">
+          <a
+            href={GITHUB_REPOSITORY_URL}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="View Fabric on GitHub"
+            className="relative hidden h-10 items-center justify-center gap-2 rounded-full bg-white/68 py-2 pr-3 pl-2 text-sm font-medium text-[#35414b] ring-1 ring-white/75 backdrop-blur-md outline-none hover:-translate-y-0.5 hover:bg-white active:translate-y-0 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-sky-blue-accent sm:inline-flex"
+          >
+            <SiGithub className="size-4 shrink-0" aria-hidden="true" />
+            GitHub
+          </a>
           <Link
             href="/app"
             className="inline-flex h-10 items-center justify-center rounded-full bg-[#252b31] px-5 text-sm font-semibold text-white outline-none transition-transform hover:-translate-y-0.5 active:translate-y-0 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-sky-blue-accent"
@@ -121,6 +134,16 @@ export function LandingHeader() {
                   {item.label}
                 </Link>
               ))}
+              <a
+                href={GITHUB_REPOSITORY_URL}
+                target="_blank"
+                rel="noreferrer"
+                onClick={closeMobileMenu}
+                className="flex items-center gap-3 rounded-xl px-4 py-3 text-base font-medium text-[#59636d] outline-none hover:bg-[#f5f7f8] hover:text-[#252b31] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-sky-blue-accent"
+              >
+                <SiGithub className="size-4 shrink-0" aria-hidden="true" />
+                View on GitHub
+              </a>
             </nav>
           </details>
         </div>

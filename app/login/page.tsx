@@ -6,6 +6,7 @@ import { getSafeReturnPath } from "@/lib/auth/safe-return";
 export const metadata: Metadata = {
   title: "Sign In",
   description: "Sign in to your Fabric workspace.",
+  robots: { index: false, follow: false },
 };
 
 export default async function LoginPage({

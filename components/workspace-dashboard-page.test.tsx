@@ -36,6 +36,7 @@ vi.mock("@/lib/boards/client", () => ({
 }));
 
 import type { BoardSummary, WorkspaceSummary } from "@/lib/boards/client";
+import { dashboardBoardQueryKey } from "@/lib/boards/dashboard-query";
 import { WorkspaceDashboardPage } from "./workspace-dashboard-page";
 
 const WORKSPACE_ID = "ef5a8b0c-72f1-42b2-b82c-65784d1a2f7f";
@@ -78,6 +79,7 @@ describe("WorkspaceDashboardPage board preview refresh", () => {
   let now: number;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
       configurable: true,
       value: true,
@@ -103,12 +105,19 @@ describe("WorkspaceDashboardPage board preview refresh", () => {
     vi.restoreAllMocks();
   });
 
-  it("refreshes once after returning to the tab without polling or showing revisions", async () => {
+  it("uses the server bootstrap without a duplicate mount request and refreshes when stale", async () => {
+    const initialBoardQueryKey = dashboardBoardQueryKey(WORKSPACE_ID, {
+      q: "",
+      view: "recent",
+    });
     await act(async () => {
       root.render(
         <WorkspaceDashboardPage
+          key={initialBoardQueryKey}
           workspaceId={WORKSPACE_ID}
           initialBoards={[board(1)]}
+          initialBoardQueryKey={initialBoardQueryKey}
+          initialNextBoardCursor={null}
           organizationEnabled={false}
           initialProjects={[]}
           initialWorkspaces={[workspace]}
@@ -118,23 +127,33 @@ describe("WorkspaceDashboardPage board preview refresh", () => {
       await Promise.resolve();
     });
 
-    expect(mocks.listBoardsPage).toHaveBeenCalledTimes(1);
+    expect(mocks.listBoardsPage).not.toHaveBeenCalled();
     expect(container.querySelector("img")?.getAttribute("src")).toContain(
       `${GENERATION_ID}.1`,
     );
+
+    now += 44_000;
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+      await Promise.resolve();
+    });
+    expect(mocks.listBoardsPage).not.toHaveBeenCalled();
 
     mocks.listBoardsPage.mockResolvedValueOnce({
       boards: [board(2)],
       nextCursor: null,
     });
-    now += 4_000;
+    now += 2_000;
     await act(async () => {
       window.dispatchEvent(new Event("focus"));
       await Promise.resolve();
       await Promise.resolve();
     });
 
-    expect(mocks.listBoardsPage).toHaveBeenCalledTimes(2);
+    expect(mocks.listBoardsPage).toHaveBeenCalledTimes(1);
+    expect(mocks.listBoardsPage).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 16, workspaceId: WORKSPACE_ID }),
+    );
     expect(container.querySelector("img")?.getAttribute("src")).toContain(
       `${GENERATION_ID}.2`,
     );
@@ -145,6 +164,57 @@ describe("WorkspaceDashboardPage board preview refresh", () => {
       document.dispatchEvent(new Event("visibilitychange"));
       await Promise.resolve();
     });
-    expect(mocks.listBoardsPage).toHaveBeenCalledTimes(2);
+    expect(mocks.listBoardsPage).toHaveBeenCalledTimes(1);
+  });
+
+  it("adopts a new server-filtered bootstrap without fetching it again", async () => {
+    const recentQueryKey = dashboardBoardQueryKey(WORKSPACE_ID, {
+      q: "",
+      view: "recent",
+    });
+    const favoriteQueryKey = dashboardBoardQueryKey(WORKSPACE_ID, {
+      q: "",
+      view: "favorite",
+    });
+
+    await act(async () => {
+      root.render(
+        <WorkspaceDashboardPage
+          key={recentQueryKey}
+          workspaceId={WORKSPACE_ID}
+          view="recent"
+          initialBoards={[board(1)]}
+          initialBoardQueryKey={recentQueryKey}
+          initialNextBoardCursor={null}
+          organizationEnabled
+          initialProjects={[]}
+          initialWorkspaces={[workspace]}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      root.render(
+        <WorkspaceDashboardPage
+          key={favoriteQueryKey}
+          workspaceId={WORKSPACE_ID}
+          view="favorite"
+          initialBoards={[{ ...board(2), favorite: true }]}
+          initialBoardQueryKey={favoriteQueryKey}
+          initialNextBoardCursor="next-favorites-page"
+          organizationEnabled
+          initialProjects={[]}
+          initialWorkspaces={[workspace]}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    expect(mocks.listBoardsPage).not.toHaveBeenCalled();
+    expect(container.querySelector("img")?.getAttribute("src")).toContain(
+      `${GENERATION_ID}.2`,
+    );
+    expect(container.textContent).toContain("Load more boards");
   });
 });

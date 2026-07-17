@@ -486,3 +486,83 @@ Rules:
   - No database migration, API, realtime protocol, authenticated rate limit, dependency, environment variable, Worker, Cloudflare storage, deployment, commit, or push change was introduced by this milestone.
 - Next Steps:
   - Exercise search/bookmarks and several inserted learning layouts with two signed-in collaborators, then commit/push and deploy only when requested.
+
+### [2026-07-17 20:47 IST] - Make fabric.athrix.me the final Cloudflare origin
+- Request: Replace the previous Vercel origin everywhere in the active Cloudflare configuration with the final custom domain `https://fabric.athrix.me/`.
+- Actions:
+  - Normalized the configured browser origin to `https://fabric.athrix.me` because HTTP `Origin` headers never include a trailing slash.
+  - Updated the production realtime Worker allowlist, regenerated its binding types, and updated the production R2 signed-upload CORS source plus regression expectation.
+  - Applied the exact-origin policy to the existing `fabric` R2 bucket without changing stored objects, lifecycle rules, or credentials.
+  - Deployed the existing `fabric-realtime` Worker in place as version `41e4cce4-735d-42f2-9ee0-6d12d3141671`; Durable Object names, bindings, migrations, and stored room data were preserved.
+- Files Changed:
+  - `wrangler.toml` and `cloudflare/realtime/worker-configuration.d.ts` - Final production realtime origin and regenerated types.
+  - `cloudflare/r2-cors.production.json` and `lib/storage/r2/cors-policy.test.ts` - Final production R2 upload origin and exact-policy test.
+- Validation:
+  - The R2 policy test, generated binding check, strict Worker TypeScript check, all 15 Cloudflare runtime tests, production/development Wrangler dry-runs, and `git diff --check` passed.
+  - Live Worker `/health` returned `200` with Durable Objects transport; the custom domain reached the expected WebSocket-upgrade response (`426` without an upgrade), while `https://fabric-athrix.vercel.app` was rejected with `403`.
+  - Live R2 configuration lists only `https://fabric.athrix.me`; its preflight returned `204` with the exact allow-origin header, while the previous Vercel origin returned `403`.
+- Risks/Notes:
+  - No tldraw, application feature, database, secret, authenticated rate limit, R2 object, or Durable Object storage change was introduced.
+  - The source-of-truth origin changes and this context entry are local and have not been committed or pushed in this step.
+
+### [2026-07-17 21:38 IST] - Revalidate private board thumbnails without rerendering
+- Request: Remove the repeated full-document and Sharp work from unchanged dashboard thumbnail requests while preserving tenant authorization and private caching.
+- Plan: Keep every request same-origin and authenticated, authorize before evaluating the validator, read only board version metadata for conditional requests, and load the full document only for a stale thumbnail.
+- Actions:
+  - Split the preview repository into an authorized metadata lookup and a separately scoped document lookup.
+  - Replaced byte-after-render ETags with a renderer-contract, board, workspace, generation, and revision validator that is available before document loading.
+  - Changed browser policy from private `no-store` to private mandatory revalidation while retaining `Surrogate-Control: no-store` and `Vary: Cookie` so shared caches never store previews.
+  - Added conditional weak/strong ETag handling, auth-first `304` responses, revocation protection, and race-safe validator recomputation before Sharp.
+- Files Changed:
+  - `app/api/boards/[boardId]/thumbnail/route.ts` and focused route test - Private conditional responses, auth-first validator checks, and regression coverage.
+  - `lib/boards/preview-repository.ts` and focused repository test - Lightweight authorized metadata reads separated from full document reads.
+- Diff Summary:
+  - Every unchanged thumbnail reloaded the board document and recompressed a PNG -> unchanged private thumbnails reauthorize and return `304` before either expensive operation.
+  - Browser storage disabled -> browser-private storage with mandatory online authorization/revalidation; shared caching remains disabled.
+- Validation:
+  - Focused thumbnail, repository, renderer, and preview tests passed: 4 files / 14 tests.
+  - Application TypeScript and scoped ESLint passed; focused `git diff --check` passed.
+- Risks/Notes:
+  - Initial or genuinely changed thumbnails still require the bounded full-document read and Sharp render.
+  - No dashboard component, realtime path, database migration, dependency, environment variable, tldraw code/patch, deployment, commit, or push was changed.
+- Next Steps:
+  - Measure production thumbnail `200` versus `304` rates after deployment; persistent revision-keyed R2 thumbnails can be considered later only if first-render CPU remains material.
+
+### [2026-07-17 21:39 IST] - Remove duplicate dashboard loading
+- Request: Make the workspace dashboard feel faster without changing board, project, workspace, or permission behavior.
+- Actions:
+  - Made the server bootstrap honor the active search, view, project, and workflow-status filters instead of always loading Recent first.
+  - Added a 16-board first page with its scoped cursor and stable query key to the server-to-client handoff.
+  - Removed the duplicate client request on mount; URL filter changes now remount from the exact server bootstrap.
+  - Extended opportunistic foreground freshness from three seconds to 45 seconds and preserved the existing board array when a refresh returns identical data.
+- Files Changed:
+  - `app/app/dashboard/page.tsx`, `lib/boards/dashboard-loader.ts`, and `lib/boards/dashboard-query.ts` - Exact filtered bootstrap, bounded first page, cursor, and query identity.
+  - `components/workspace-dashboard-page.tsx` and focused tests - No mount refetch, cursor initialization, quieter foreground refresh, and unchanged-state preservation.
+  - `lib/boards/dashboard-loader.test.ts` - Rollout-aware server filtering and pagination regression coverage.
+- Validation:
+  - Focused dashboard tests passed: 2 files / 4 tests.
+  - Application TypeScript, scoped ESLint, and focused `git diff --check` passed.
+- Risks/Notes:
+  - Project-filtered bootstrap validates the requested project against the active workspace before querying boards; unscoped or invalid project identifiers are ignored.
+  - No thumbnail, realtime, database, dependency, environment variable, tldraw, deployment, commit, or push change was introduced.
+
+### [2026-07-17 21:50 IST] - Restore production realtime and streamline the dashboard
+- Request: Remove the false board-access/save-attention failure, keep legitimate local editing smooth through transient realtime problems, remove the user-facing authenticated ticket throttle, and fix the laggy dashboard without weakening tenant isolation.
+- Actions:
+  - Fixed multi-tab owner retries that previously became no-ops after a socket failure, so Retry Save and automatic recovery can actually reopen ticketing.
+  - Kept owner/editor updates in the durable local journal while realtime capability is unresolved; explicit non-write tickets, confirmed metadata 404s, archive state, unavailable local durability, and server-side authorization still block writes as intended.
+  - Stopped treating an unverified socket/ticket error as board revocation. The destructive access-loss UI now appears only after the tenant-scoped board metadata endpoint confirms loss.
+  - Removed the low authenticated ticket-mint throttle from the ticket route. Origin, session, board access, room scope, ticket expiry, pending-socket quota, payload bounds, corruption checks, and slow-consumer safety remain.
+  - Rotated the deployed Worker verifier to the existing Fabric signing key without printing it. An expired production-issued ticket matched that key cryptographically, and a fresh exact-scope live handshake returned `auth.ok` with sequence 790 and read/write/awareness capabilities.
+  - Removed the dashboard's redundant overview and duplicate activity panel, eliminated per-card scale/entrance transforms, expanded the board grid to three columns on wide screens, and shortened the global app-page fade to 180ms without a layout transform.
+- Files Changed:
+  - `components/editor-route-page.tsx`, `lib/boards/use-fabric-whiteboard-adapter.ts`, `lib/boards/board-state.test.ts`, and realtime client/controller code plus tests - Verified access-loss handling, working retries, and local-first unresolved authorization.
+  - `app/api/realtime/ticket/route.ts` - Removed the authenticated ticket-mint throttle while retaining authorization and origin validation.
+  - `components/workspace-dashboard-page.tsx`, `components/board-preview.tsx`, and `app/globals.css` - Lighter dashboard hierarchy, three-column board layout, and non-transform motion.
+- Validation:
+  - Focused application coverage passed 9 files / 50 tests; Cloudflare runtime coverage passed all 15 tests.
+  - Application TypeScript, scoped ESLint, `git diff --check`, and the complete production build passed.
+  - The live deployed Durable Object accepted the authoritative Neon board/workspace/generation scope with an `auth.ok` response after the secret repair.
+- Risks/Notes:
+  - Real tenant, ownership, archival, read-only capability, malformed-protocol, corrupt-document, payload-bound, and slow-consumer protections remain in force; only the false-positive UI path and low authenticated ticket throttle were removed.
+  - The Worker secret repair is live as version `ab99af28-141d-45b2-9925-693d0e3050b0`. Application source changes are local and have not been committed, pushed, or deployed in this step.

@@ -705,7 +705,9 @@ export class FabricRealtimeClient {
       return;
     }
     if (this.tabCoordinator !== undefined) {
-      if (this.tabCoordinator === null) await this.openConnection();
+      if (this.tabCoordinator === null || this.connectionOwner) {
+        await this.openConnection();
+      }
       return;
     }
     const coordinator = RealtimeTabCoordinator.create({
@@ -1426,7 +1428,10 @@ export class FabricRealtimeClient {
   }
 
   private queueLocalUpdate(immutableUpdate: Uint8Array): void {
-    if (!this.capabilities.includes("write")) {
+    if (
+      this.capabilities.length > 0 &&
+      !this.capabilities.includes("write")
+    ) {
       if (!this.reportedWriteBlocked) {
         this.reportedWriteBlocked = true;
         this.emitError({

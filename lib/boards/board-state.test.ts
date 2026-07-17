@@ -47,6 +47,23 @@ describe("derived board lifecycle state", () => {
     });
   });
 
+  it("keeps an authorized local-first editor writable while realtime authorization is unresolved", () => {
+    expect(
+      resolveBoardSessionAccess({
+        role: "editor",
+        archivedAt: null,
+        realtimeCapabilities: [],
+        realtimeWriteEnabled: true,
+        realtimeAccessLost: false,
+        accessLost: false,
+      }),
+    ).toMatchObject({
+      canEdit: true,
+      canComment: true,
+      shouldRefreshAccess: false,
+    });
+  });
+
   it("stops stale writable/admin UI for a resolved read-only capability set", () => {
     expect(
       resolveBoardSessionAccess({

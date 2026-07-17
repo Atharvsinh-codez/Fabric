@@ -100,17 +100,12 @@ export class TldrawCollaborationController {
 
   isWriteEnabled(): boolean {
     if (!this.options.canEdit || !this.realtime.isLocalDurabilityAvailable) return false;
-    if (
-      this.realtime.connectionState === "permission-denied" ||
-      this.realtime.connectionState === "error" ||
-      this.realtime.connectionState === "stopped"
-    ) {
-      return false;
-    }
     const capabilities = this.realtime.grantedCapabilities;
-    // Before a ticket arrives, the Yjs update is still protected by the
-    // principal/board/generation IndexedDB journal and pre-ticket buffer.
-    // Once a ticket declares capabilities, server authorization wins.
+    // An empty capability set means authorization is unresolved (initial
+    // ticketing, reconnect, or a ticket endpoint/transport failure). Keep
+    // owner/editor work local-first in the durable journal during that window.
+    // A non-empty capability set is authoritative, so a resolved read-only
+    // ticket still closes the write path immediately.
     return capabilities.length === 0 || capabilities.includes("write");
   }
 
@@ -138,6 +133,11 @@ export class TldrawCollaborationController {
 
   setAwarenessState(state: RealtimeAwarenessState | null): void {
     this.realtime.setAwarenessState(state);
+  }
+
+  retryConnection(): void {
+    if (this.destroyed) return;
+    this.realtime.connect();
   }
 
   captureCheckpoint(): TldrawCheckpoint {

@@ -28,7 +28,7 @@ export function BoardPreview({ board }: { board: BoardSummary }) {
           alt=""
           loading="lazy"
           decoding="async"
-          className="absolute inset-0 size-full object-cover motion-safe:transition-transform motion-safe:duration-300 group-hover:scale-[1.012]"
+          className="absolute inset-0 size-full object-cover"
           onError={() => setFailedSource(source)}
         />
       ) : null}

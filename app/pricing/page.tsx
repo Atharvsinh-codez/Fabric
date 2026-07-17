@@ -1,10 +1,11 @@
-import type { Metadata } from "next";
 import { PricingPage } from "@/components/marketing-pages";
+import { createPublicPageMetadata } from "@/lib/site-metadata";
 
-export const metadata: Metadata = {
+export const metadata = createPublicPageMetadata({
   title: "Pricing",
-  description: "Fabric currently requires no subscription or payment details. Review the included capabilities and deployment boundaries.",
-};
+  description: "Fabric is an open-source multiplayer canvas with no subscription or payment details required. Explore the product and its public source code.",
+  path: "/pricing",
+});
 
 export default function Page() {
   return <PricingPage />;
