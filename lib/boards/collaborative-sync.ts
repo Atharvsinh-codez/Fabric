@@ -1,6 +1,44 @@
 import type { BoardSyncState } from "./use-board-document";
 import type { RealtimeConnectionState } from "../realtime/client/types";
 
+export type AgentBoardReadinessState = "ready" | "syncing" | "needs-retry";
+
+export type AgentBoardReadiness = Readonly<{
+  state: AgentBoardReadinessState;
+  shouldRetryPersistence: boolean;
+}>;
+
+export function resolveAgentBoardReadiness(
+  persistenceState: BoardSyncState,
+  connectionState: RealtimeConnectionState,
+  pendingAcknowledgements: number,
+): AgentBoardReadiness {
+  const realtimeReady =
+    connectionState === "connected" && pendingAcknowledgements === 0;
+  if (persistenceState === "synced" && realtimeReady) {
+    return { state: "ready", shouldRetryPersistence: false };
+  }
+
+  const persistenceNeedsRetry =
+    persistenceState === "offline" ||
+    persistenceState === "conflict" ||
+    persistenceState === "error";
+  const realtimeNeedsRetry =
+    connectionState === "offline" ||
+    connectionState === "permission-denied" ||
+    connectionState === "error" ||
+    connectionState === "stopped";
+
+  return {
+    state:
+      persistenceNeedsRetry || realtimeNeedsRetry ? "needs-retry" : "syncing",
+    // A healthy realtime session is evidence that a previously failed HTTP
+    // checkpoint is worth one immediate retry. It is not a substitute for the
+    // authoritative checkpoint that the AI route validates.
+    shouldRetryPersistence: realtimeReady && persistenceNeedsRetry,
+  };
+}
+
 export function collaborativeSyncState(
   baseState: BoardSyncState,
   connectionState: RealtimeConnectionState,

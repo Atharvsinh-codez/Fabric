@@ -27,6 +27,7 @@ import {
 } from "@/lib/ai/client";
 import type { ProposalReadyPayload } from "@/lib/ai/contracts";
 import type { AiProposalRequest } from "@/lib/ai/proposal-request";
+import type { AgentBoardReadinessState } from "@/lib/boards/collaborative-sync";
 
 export type FabricWhiteboardAiAdapter = Readonly<{
   applyProposal: (
@@ -106,9 +107,10 @@ export function FabricAiPanel({
   durableSequence,
   adapter,
   open,
-  persistenceReady,
+  boardReadiness,
   readChangeVersion,
   onFinalizingChange,
+  onRetrySync,
   onClose,
 }: {
   editor: Editor | null;
@@ -118,9 +120,10 @@ export function FabricAiPanel({
   durableSequence: number;
   adapter: FabricWhiteboardAiAdapter;
   open: boolean;
-  persistenceReady: boolean;
+  boardReadiness: AgentBoardReadinessState;
   readChangeVersion: () => number;
   onFinalizingChange: (finalizing: boolean) => void;
+  onRetrySync: () => void;
   onClose: () => void;
 }) {
   const [instruction, setInstruction] = useState("");
@@ -135,14 +138,14 @@ export function FabricAiPanel({
   const runIdRef = useRef<string | null>(null);
   const previewChangeVersionRef = useRef<number | null>(null);
   const durableSequenceRef = useRef(durableSequence);
-  const persistenceReadyRef = useRef(persistenceReady);
+  const boardReady = boardReadiness === "ready";
+  const persistenceReadyRef = useRef(boardReady);
   const messageIdRef = useRef(0);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const conversationRef = useRef<HTMLDivElement | null>(null);
   const busy = stage === "running" || stage === "applying" || stage === "finalizing";
   const composerDisabled =
     !editor ||
-    !persistenceReady ||
     busy ||
     stage === "preview" ||
     pendingApproval !== null;
@@ -168,8 +171,8 @@ export function FabricAiPanel({
 
   useEffect(() => {
     durableSequenceRef.current = durableSequence;
-    persistenceReadyRef.current = persistenceReady;
-  }, [durableSequence, persistenceReady]);
+    persistenceReadyRef.current = boardReady;
+  }, [boardReady, durableSequence]);
 
   useEffect(() => {
     if (!open) return;
@@ -268,7 +271,7 @@ export function FabricAiPanel({
     event.preventDefault();
     const nextInstruction = instruction.trim();
     if (!editor || composerDisabled || nextInstruction.length === 0) return;
-    if (!persistenceReady) {
+    if (!boardReady) {
       setStage("error");
       setError("The board is still syncing. Wait for sync to finish, then send your request again.");
       return;
@@ -720,12 +723,32 @@ export function FabricAiPanel({
       </div>
 
       <div className="shrink-0 border-t border-near-black-primary-text/8 bg-surface-white/96 p-3">
-        {!persistenceReady && !pendingApproval ? (
+        {!boardReady && !pendingApproval ? boardReadiness === "needs-retry" ? (
+          <div
+            className="flex items-start justify-between gap-3 px-2 pb-2 text-muted-gray"
+            role="status"
+            aria-label="Fabric agent sync needs retry"
+            data-ai-sync-status
+            data-sync-readiness="needs-retry"
+            data-tone="neutral"
+          >
+            <div className="min-w-0">
+              <p className="font-medium text-near-black-primary-text">Board Save Paused</p>
+              <p className="text-pretty text-base sm:text-sm">
+                Retry once to prepare the latest board for Fabric agent.
+              </p>
+            </div>
+            <Button className="shrink-0" onClick={onRetrySync}>
+              Retry
+            </Button>
+          </div>
+        ) : (
           <div
             className="flex items-start gap-2 px-2 pb-2 text-muted-gray"
             role="status"
             aria-label="Fabric agent syncing"
             data-ai-sync-status
+            data-sync-readiness="syncing"
             data-tone="neutral"
           >
             <span className="grid size-4 h-lh shrink-0 place-items-center" aria-hidden="true">
@@ -797,7 +820,11 @@ export function FabricAiPanel({
               <button
                 type="submit"
                 aria-label="Send Message"
-                disabled={composerDisabled || instruction.trim().length === 0}
+                disabled={
+                  composerDisabled ||
+                  !boardReady ||
+                  instruction.trim().length === 0
+                }
                 className="relative grid size-8 shrink-0 place-items-center rounded-radius-md bg-sky-blue-accent text-white outline-none ring-1 ring-sky-blue-accent active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <ArrowUpIcon

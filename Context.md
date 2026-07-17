@@ -622,3 +622,70 @@ Rules:
   - No Cloudflare Worker source, Durable Object storage, tldraw dependency/patch, secret, environment setting, or direct deployment was changed.
 - Next Steps:
   - Publish the source fix through GitHub main and verify the custom-domain ticket endpoint returns authentication/access results instead of `forbidden_origin` after deployment.
+
+### [2026-07-17 22:44 IST] - Recover Fabric agent board readiness
+- Request: Stop Fabric agent from remaining on `Syncing Board…` when realtime ticketing and collaboration are healthy.
+- Plan: Keep the server-authoritative HTTP checkpoint requirement for AI, combine it with actual realtime connection/ACK state, and recover a stale checkpoint without weakening proposal authorization.
+- Actions:
+  - Added one explicit agent readiness resolver for the recovery checkpoint, realtime connection, and pending acknowledgements.
+  - Triggered one bounded safe checkpoint retry when realtime is healthy but a previous HTTP save is offline, conflicted, or failed.
+  - Replaced an endless sync animation with a compact retry state if automatic recovery cannot complete.
+- Files Changed:
+  - `lib/boards/collaborative-sync.ts` and test - Agent readiness classification and recovery trigger coverage.
+  - `components/editor-route-page.tsx` - Realtime-informed one-shot checkpoint recovery and readiness wiring.
+  - `components/fabric-whiteboard.tsx`, `components/fabric-whiteboard/ai-panel.tsx`, and focused tests - Accurate agent readiness plus an actionable non-spinning fallback.
+- Diff Summary:
+  - HTTP checkpoint state presented as realtime sync with no recovery path -> exact checkpoint + connection + ACK readiness, one safe automatic retry, then a manual retry fallback.
+  - Realtime health treated as unrelated to a stale checkpoint -> realtime health triggers recovery but never substitutes for the authoritative AI snapshot.
+- Validation:
+  - Focused readiness and whiteboard UI tests passed: 3 files / 16 tests.
+  - Application TypeScript and scoped ESLint passed; `git diff --check` passed before the context append.
+- Risks/Notes:
+  - AI remains disabled until the Neon checkpoint and realtime acknowledgements both settle; no stale browser snapshot is trusted.
+  - No API, Worker, Durable Object, database, dependency, environment, deployment, git, tldraw, patch, shape, or watermark change was introduced.
+- Next Steps:
+  - Publish with the surrounding approved collaboration changes, then verify a previously failed board checkpoint recovers once and unlocks Fabric agent.
+
+### [2026-07-17 22:45 IST] - Add a privacy-aware online people panel
+- Request: Make the top-right online presence control dependable and clickable, with a compact responsive list of the current and remote people plus authorized identity details.
+- Plan: Reuse server-bound awareness identity and the existing tenant-scoped member directory, preserve its email-visibility policy, and avoid changing the realtime protocol.
+- Actions:
+  - Kept the control visible for one or more people and added an accessible, outside-click/Escape-closeable people panel with restrained motion.
+  - Counted unique server-authoritative principals rather than tabs or devices, excluded other sessions belonging to the current principal, and retained generic handling for unverified awareness entries.
+  - Marked the current user as `You` with their own account email, then lazily matched remote signed principal IDs to the existing workspace directory when the panel opens.
+  - Displayed remote emails only when the server-authorized directory response includes them; redacted and failed lookups remain explicitly hidden or unavailable.
+- Files Changed:
+  - `components/fabric-whiteboard/presence-summary.tsx` and test - Responsive disclosure, unique-person counting, local/remote identity rows, privacy gating, motion, and forged-identity coverage.
+  - `components/fabric-whiteboard.tsx` - Passed the active workspace scope into the presence control.
+  - `Context.md` - Recorded this focused collaboration UI change.
+- Diff Summary:
+  - Passive remote-tab count -> always-available people control with a unique-person panel and explicit current-user identity.
+  - No email detail -> current account email plus remote email only when the existing owner-gated workspace API authorizes it.
+- Validation:
+  - Focused presence tests passed: 1 file / 4 tests.
+  - Application TypeScript and scoped ESLint passed.
+- Risks/Notes:
+  - Browser awareness still cannot assert names, colors, or email. No email was added to tickets, awareness payloads, or Worker attachments.
+  - No API, realtime protocol, Worker, Durable Object, database, dependency, deployment, git, tldraw, patch, shape, or watermark change was introduced.
+- Next Steps:
+  - Exercise the panel with an owner and non-owner in two signed-in browsers after publication.
+
+### [2026-07-17 22:48 IST] - Smooth realtime cursors without extra traffic
+- Request: Make simultaneous collaborator cursors feel fast and stable like a polished multiplayer editor, without adding disruptive limits or touching tldraw internals.
+- Plan: Keep the existing server-authoritative awareness protocol and 100 ms network cadence, then interpolate only the received screen positions through one shared browser animation loop.
+- Actions:
+  - Replaced per-cursor 75 ms CSS easing with a shared animation-frame controller that coalesces targets and updates only cursors still moving.
+  - Snapped local camera projection changes, large jumps, and reduced-motion sessions so cursors never detach from their authoritative board coordinates.
+  - Kept the Fabric agent prompt editable during short sync windows while retaining the send gate until its checkpoint, socket, and acknowledgements are ready.
+- Files Changed:
+  - `lib/realtime/client/cursor-motion.ts` and test - Bounded interpolation, coalescing, cleanup, teleport, camera, and reduced-motion behavior.
+  - `components/fabric-whiteboard.tsx` - Smooth remote cursor components and camera-correct presence projection.
+  - `components/fabric-whiteboard/ai-panel.tsx` and test - Immediate prompt drafting with safe send readiness unchanged.
+- Validation:
+  - Combined focused collaboration verification passed: 6 files / 27 tests.
+  - Application TypeScript, scoped ESLint, and `git diff --check` passed.
+- Risks/Notes:
+  - Network awareness remains at the existing cadence; no extra socket messages, authenticated rate limit, Worker change, or persistent cursor data was introduced.
+  - tldraw remains pinned at `4.2.0`; its package, patch, internals, shape behavior, and watermark handling are unchanged.
+- Next Steps:
+  - Verify two signed-in browsers on the published build, including simultaneous drawing, panning, and the online-people panel.

@@ -87,13 +87,15 @@ describe("Fabric agent canvas sidebar", () => {
     applyProposal = async () => undefined,
     onClose = vi.fn(),
     onFinalizingChange = vi.fn(),
-    persistenceReady = true,
+    boardReadiness = "ready",
+    onRetrySync = vi.fn(),
   }: {
     editor: Editor;
     applyProposal?: FabricWhiteboardAiAdapter["applyProposal"];
     onClose?: () => void;
     onFinalizingChange?: (finalizing: boolean) => void;
-    persistenceReady?: boolean;
+    boardReadiness?: "ready" | "syncing" | "needs-retry";
+    onRetrySync?: () => void;
   }) {
     act(() => {
       root.render(
@@ -105,9 +107,10 @@ describe("Fabric agent canvas sidebar", () => {
           durableSequence={1}
           adapter={{ applyProposal }}
           open
-          persistenceReady={persistenceReady}
+          boardReadiness={boardReadiness}
           readChangeVersion={() => 0}
           onFinalizingChange={onFinalizingChange}
+          onRetrySync={onRetrySync}
           onClose={onClose}
         />,
       );
@@ -216,7 +219,7 @@ describe("Fabric agent canvas sidebar", () => {
 
   it("shows ordinary board sync as a calm, compact status", () => {
     const { editor } = createEditorHarness();
-    renderPanel({ editor, persistenceReady: false });
+    renderPanel({ editor, boardReadiness: "syncing" });
 
     const syncStatus = container.querySelector<HTMLElement>(
       "[data-ai-sync-status]",
@@ -233,8 +236,37 @@ describe("Fabric agent canvas sidebar", () => {
     ).toBe("ripple");
     expect(
       container.querySelector<HTMLTextAreaElement>("#fabric-ai-instruction")?.disabled,
+    ).toBe(false);
+    expect(
+      container.querySelector<HTMLButtonElement>('[aria-label="Send Message"]')?.disabled,
     ).toBe(true);
     expect(container.textContent).not.toContain("finish syncing");
+  });
+
+  it("offers a retry instead of spinning forever when board persistence is blocked", () => {
+    const { editor } = createEditorHarness();
+    const onRetrySync = vi.fn();
+    renderPanel({ editor, boardReadiness: "needs-retry", onRetrySync });
+
+    const syncStatus = container.querySelector<HTMLElement>(
+      "[data-ai-sync-status]",
+    );
+    expect(syncStatus?.dataset.syncReadiness).toBe("needs-retry");
+    expect(syncStatus?.textContent).toContain("Board Save Paused");
+    expect(syncStatus?.textContent).not.toContain("Syncing Board…");
+    expect(syncStatus?.querySelector("[data-wave-spinner]")).toBeNull();
+
+    const retry = [...container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.trim() === "Retry");
+    act(() => retry?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+
+    expect(onRetrySync).toHaveBeenCalledOnce();
+    expect(
+      container.querySelector<HTMLTextAreaElement>("#fabric-ai-instruction")?.disabled,
+    ).toBe(false);
+    expect(
+      container.querySelector<HTMLButtonElement>('[aria-label="Send Message"]')?.disabled,
+    ).toBe(true);
   });
 
   it("always uses the visible canvas and never reads the editor selection", async () => {

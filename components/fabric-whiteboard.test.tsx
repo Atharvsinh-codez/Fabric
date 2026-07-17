@@ -92,7 +92,7 @@ function whiteboardProps(
     durableSequence: 1,
     documentAdapter,
     syncState: "synced",
-    persistenceReady: true,
+    agentBoardReadiness: "ready",
     syncMessage: null,
     onRetrySave: vi.fn(),
     onReloadRemote: vi.fn(),

@@ -14,6 +14,7 @@ import { APP_ROUTES } from "@/lib/app-routes";
 import {
   collaborativeSyncMessage,
   collaborativeSyncState,
+  resolveAgentBoardReadiness,
 } from "@/lib/boards/collaborative-sync";
 import {
   canEditBoardState,
@@ -162,12 +163,19 @@ function LoadedFabricWhiteboard({
   const [verifiedRealtimeLossEvidence, setVerifiedRealtimeLossEvidence] =
     useState<unknown>(null);
   const automaticRealtimeRetryUsedRef = useRef(false);
+  const automaticAgentSyncRetryUsedRef = useRef(false);
   const refreshBoardAccess = persistence.refreshBoardAccess;
+  const retryPersistenceSave = persistence.retrySave;
   const retryRealtimeConnection = adapter.realtime.retryConnection;
   const readOnlyCapabilityContradiction =
     metadataCanEdit &&
     adapter.realtime.capabilities.length > 0 &&
     !adapter.realtime.capabilities.includes("write");
+  const agentBoardReadiness = resolveAgentBoardReadiness(
+    persistence.syncState,
+    adapter.realtime.connectionState,
+    adapter.realtime.pendingAcknowledgements,
+  );
 
   useEffect(() => {
     if (!realtimeLossEvidence) return;
@@ -197,6 +205,34 @@ function LoadedFabricWhiteboard({
     if (!readOnlyCapabilityContradiction) return;
     void refreshBoardAccess();
   }, [readOnlyCapabilityContradiction, refreshBoardAccess]);
+
+  useEffect(() => {
+    if (
+      agentBoardReadiness.state === "ready" ||
+      adapter.realtime.connectionState !== "connected"
+    ) {
+      automaticAgentSyncRetryUsedRef.current = false;
+      return;
+    }
+    if (
+      archived ||
+      !metadataCanEdit ||
+      !agentBoardReadiness.shouldRetryPersistence ||
+      automaticAgentSyncRetryUsedRef.current
+    ) {
+      return;
+    }
+
+    automaticAgentSyncRetryUsedRef.current = true;
+    void retryPersistenceSave();
+  }, [
+    adapter.realtime.connectionState,
+    agentBoardReadiness.shouldRetryPersistence,
+    agentBoardReadiness.state,
+    archived,
+    metadataCanEdit,
+    retryPersistenceSave,
+  ]);
 
   const accessLost = persistence.accessRefreshState === "lost";
   const verifyingRealtimeAccess =
@@ -250,7 +286,7 @@ function LoadedFabricWhiteboard({
       durableSequence={persistence.board.revision}
       documentAdapter={adapter.documentAdapter}
       syncState={syncState}
-      persistenceReady={persistence.syncState === "synced"}
+      agentBoardReadiness={agentBoardReadiness.state}
       syncMessage={syncMessage}
       onRetrySave={() => {
         retryRealtimeConnection();

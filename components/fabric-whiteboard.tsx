@@ -9,7 +9,13 @@ import {
   RectangleStackIcon,
   ShareIcon,
 } from "@heroicons/react/16/solid";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   Tldraw,
   type Editor,
@@ -52,11 +58,17 @@ import {
   canEditBoardState,
 } from "@/lib/boards/board-state";
 import type { BoardSyncState } from "@/lib/boards/use-board-document";
+import type { AgentBoardReadinessState } from "@/lib/boards/collaborative-sync";
 import {
   BOARD_ASSET_MAX_BYTES,
 } from "@/lib/boards/assets/contracts";
 import { acceptedBoardMediaMimeTypes } from "@/lib/boards/assets/media-rollout";
 import type { RealtimeAwarenessState } from "@/lib/realtime/client/types";
+import {
+  CursorMotionController,
+  cursorTransform,
+  type CursorScreenPoint,
+} from "@/lib/realtime/client/cursor-motion";
 import { resolvePresencePresentation } from "@/lib/realtime/presence-identity";
 
 const EMPTY_AWARENESS = new Map<number, RealtimeAwarenessState>();
@@ -101,7 +113,7 @@ export type FabricWhiteboardProps = Readonly<{
   durableSequence: number;
   documentAdapter: FabricWhiteboardDocumentAdapter;
   syncState: BoardSyncState;
-  persistenceReady: boolean;
+  agentBoardReadiness: AgentBoardReadinessState;
   syncMessage?: string | null;
   onDocumentChange?: (snapshot: CanvasDocumentSnapshot) => void;
   onRetrySave: () => void;
@@ -133,7 +145,7 @@ export function FabricWhiteboard({
   durableSequence,
   documentAdapter,
   syncState,
-  persistenceReady,
+  agentBoardReadiness,
   syncMessage = null,
   onDocumentChange,
   onRetrySave,
@@ -233,7 +245,7 @@ export function FabricWhiteboard({
   }, []);
 
   useEffect(() => {
-    if (!editor || !onAwarenessChange) return;
+    if (!editor) return;
     scheduleAwareness();
     const dispose = editor.store.listen(
       () => {
@@ -252,7 +264,7 @@ export function FabricWhiteboard({
         window.cancelAnimationFrame(cameraFrameRef.current);
         cameraFrameRef.current = null;
       }
-      onAwarenessChange(null);
+      onAwarenessChange?.(null);
     };
   }, [editor, onAwarenessChange, scheduleAwareness, scheduleCameraRefresh]);
 
@@ -337,6 +349,7 @@ export function FabricWhiteboard({
 
         <div className="pointer-events-auto flex shrink-0 items-center gap-1 rounded-radius-lg bg-surface-white p-1 floating-shadow">
           <PresenceSummary
+            workspaceId={workspaceId}
             awarenessStates={awarenessStates}
             localAwarenessClientId={localAwarenessClientId}
           />
@@ -419,9 +432,10 @@ export function FabricWhiteboard({
           durableSequence={durableSequence}
           adapter={documentAdapter.ai}
           open={visiblePanel === "ai"}
-          persistenceReady={persistenceReady}
+          boardReadiness={agentBoardReadiness}
           readChangeVersion={() => changeVersionRef.current}
           onFinalizingChange={setAiFinalizing}
+          onRetrySync={onRetrySave}
           onClose={() => setPanel(null)}
         />
       ) : null}
@@ -539,7 +553,19 @@ function RemotePresenceCursors({
   localAwarenessClientId: number | null;
   cameraVersion: number;
 }) {
-  void cameraVersion;
+  const [cursorMotion] = useState(
+    () =>
+      new CursorMotionController({
+        requestFrame: (callback) => window.requestAnimationFrame(callback),
+        cancelFrame: (handle) => window.cancelAnimationFrame(handle),
+        now: () => performance.now(),
+        prefersReducedMotion: () =>
+          window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
+      }),
+  );
+
+  useEffect(() => () => cursorMotion.destroy(), [cursorMotion]);
+
   if (!editor) return null;
   return (
     <div className="pointer-events-none absolute inset-0 z-800 overflow-hidden" aria-hidden="true">
@@ -549,30 +575,86 @@ function RemotePresenceCursors({
           const screen = editor.pageToScreen(state.cursor);
           const presence = resolvePresencePresentation(state);
           return (
-            <div
+            <RemotePresenceCursor
               key={clientId}
-              className="absolute left-0 top-0 transition-transform duration-75 motion-reduce:transition-none"
-              style={{ transform: `translate3d(${screen.x}px, ${screen.y}px, 0)` }}
-            >
-              <svg width="18" height="22" viewBox="0 0 18 22" fill="none">
-                <path
-                  d="M2 1.5 16 11l-6.1 1.45L6.6 20 2 1.5Z"
-                  fill={presence.color}
-                  stroke="white"
-                  strokeWidth="1.5"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              <span
-                className="absolute left-3 top-4 whitespace-nowrap rounded-radius-sm px-1.5 py-0.5 text-[0.6875rem] font-medium text-white shadow-sm"
-                style={{ backgroundColor: presence.color }}
-              >
-                {presence.label}
-              </span>
-            </div>
+              clientId={clientId}
+              target={screen}
+              cameraVersion={cameraVersion}
+              editorIdentity={editor}
+              color={presence.color}
+              label={presence.label}
+              cursorMotion={cursorMotion}
+            />
           );
         },
       )}
+    </div>
+  );
+}
+
+function RemotePresenceCursor({
+  clientId,
+  target,
+  cameraVersion,
+  editorIdentity,
+  color,
+  label,
+  cursorMotion,
+}: {
+  clientId: number;
+  target: CursorScreenPoint;
+  cameraVersion: number;
+  editorIdentity: Editor;
+  color: string;
+  label: string;
+  cursorMotion: CursorMotionController;
+}) {
+  const elementRef = useRef<HTMLDivElement | null>(null);
+  const initialTargetRef = useRef(target);
+  const projectionRef = useRef({ cameraVersion, editorIdentity });
+
+  useLayoutEffect(() => {
+    const element = elementRef.current;
+    if (!element) return;
+    cursorMotion.attach(clientId, initialTargetRef.current, (position) => {
+      element.style.transform = cursorTransform(position);
+    });
+    return () => cursorMotion.detach(clientId);
+  }, [clientId, cursorMotion]);
+
+  useLayoutEffect(() => {
+    const projectionChanged =
+      projectionRef.current.cameraVersion !== cameraVersion ||
+      projectionRef.current.editorIdentity !== editorIdentity;
+    projectionRef.current = { cameraVersion, editorIdentity };
+    cursorMotion.setTarget(
+      clientId,
+      { x: target.x, y: target.y },
+      { snap: projectionChanged },
+    );
+  }, [cameraVersion, clientId, cursorMotion, editorIdentity, target.x, target.y]);
+
+  return (
+    <div
+      ref={elementRef}
+      className="absolute left-0 top-0 will-change-transform"
+      data-presence-client-id={clientId}
+    >
+      <svg width="18" height="22" viewBox="0 0 18 22" fill="none">
+        <path
+          d="M2 1.5 16 11l-6.1 1.45L6.6 20 2 1.5Z"
+          fill={color}
+          stroke="white"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <span
+        className="absolute left-3 top-4 whitespace-nowrap rounded-radius-sm px-1.5 py-0.5 text-[0.6875rem] font-medium text-white shadow-sm"
+        style={{ backgroundColor: color }}
+      >
+        {label}
+      </span>
     </div>
   );
 }
