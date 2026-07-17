@@ -51,6 +51,7 @@ export function FabricCanvasToolbar() {
   return (
     <div
       className="fabric-canvas-tool-dock"
+      data-placement="center"
       data-testid="fabric-canvas-tool-dock"
     >
       <DefaultToolbar

@@ -1,17 +1,15 @@
-import type { Metadata } from "next";
+import { permanentRedirect } from "next/navigation";
 
-import { ActivityPage } from "@/components/workspace-pages";
+import {
+  APP_ROUTES,
+  withSearchParams,
+  type RouteSearchParams,
+} from "@/lib/app-routes";
 
-export const metadata: Metadata = {
-  title: "Activity",
-  description: "Review workspace changes, comments, and accepted proposals.",
-};
-
-export default async function ProductStudioActivityPage({
+export default async function LegacyProductStudioActivityPage({
   searchParams,
 }: {
-  searchParams: Promise<{ workspaceId?: string | string[] }>;
+  searchParams: Promise<RouteSearchParams>;
 }) {
-  const { workspaceId } = await searchParams;
-  return <ActivityPage workspaceId={typeof workspaceId === "string" ? workspaceId : undefined} />;
+  permanentRedirect(withSearchParams(APP_ROUTES.activity, await searchParams));
 }

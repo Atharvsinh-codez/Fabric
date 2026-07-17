@@ -33,9 +33,30 @@ vi.mock("tldraw", async () => {
       },
       children,
     ),
-    DefaultToolbar: ({ children }: { children?: ReactNode }) => React.createElement(
+    DefaultToolbar: ({
+      children,
+      orientation,
+      minItems,
+      minSizePx,
+      maxItems,
+      maxSizePx,
+    }: {
+      children?: ReactNode;
+      orientation?: string;
+      minItems?: number;
+      minSizePx?: number;
+      maxItems?: number;
+      maxSizePx?: number;
+    }) => React.createElement(
       "div",
-      { "data-testid": "default-toolbar" },
+      {
+        "data-testid": "default-toolbar",
+        "data-orientation": orientation,
+        "data-min-items": minItems,
+        "data-min-size-px": minSizePx,
+        "data-max-items": maxItems,
+        "data-max-size-px": maxSizePx,
+      },
       children,
     ),
     StylePanelColorPicker: () => React.createElement(
@@ -117,9 +138,23 @@ describe("Fabric canvas chrome", () => {
   it("promotes core geometry while preserving every stock toolbar tool exactly once", () => {
     act(() => root.render(<FabricCanvasToolbar />));
 
+    const dock = container.querySelector<HTMLElement>(
+      '[data-testid="fabric-canvas-tool-dock"]',
+    );
+    const toolbar = container.querySelector<HTMLElement>(
+      '[data-testid="default-toolbar"]',
+    );
     const renderedTools = [...container.querySelectorAll<HTMLElement>("[data-tool]")]
       .map((item) => item.dataset.tool);
 
+    expect(dock?.dataset.placement).toBe("center");
+    expect(toolbar?.dataset).toMatchObject({
+      orientation: "horizontal",
+      minItems: "4",
+      minSizePx: "300",
+      maxItems: "10",
+      maxSizePx: "520",
+    });
     expect(renderedTools).toEqual(FABRIC_CANVAS_TOOL_ORDER);
     expect(new Set(renderedTools).size).toBe(FABRIC_CANVAS_TOOL_ORDER.length);
     expect([...renderedTools].sort()).toEqual([...STOCK_TLDRAW_4_2_TOOL_IDS].sort());

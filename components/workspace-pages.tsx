@@ -41,6 +41,13 @@ import {
   revokeAccountSession as revokeAccountSessionRequest,
   type AccountSession,
 } from "@/lib/account/client";
+import {
+  APP_ROUTES,
+  boardPath,
+  dashboardPath,
+  workspaceRoutePath,
+  type WorkspaceAppRoute,
+} from "@/lib/app-routes";
 import type { WorkspaceActivityItem } from "@/lib/boards/activity-contracts";
 import {
   addWorkspaceMember as addWorkspaceMemberRequest,
@@ -66,11 +73,15 @@ const initialProfileActionState = {
   message: "",
 } as const;
 
-const workspaceNavigation: Array<{ label: string; href: string; icon: HeroIcon }> = [
-  { label: "Boards", href: "/app/product-studio", icon: HomeIcon },
-  { label: "Members", href: "/app/product-studio/members", icon: UsersIcon },
-  { label: "Activity", href: "/app/product-studio/activity", icon: ClockIcon },
-  { label: "Settings", href: "/app/product-studio/settings", icon: Cog6ToothIcon },
+const workspaceNavigation: Array<{
+  label: string;
+  href: WorkspaceAppRoute;
+  icon: HeroIcon;
+}> = [
+  { label: "Boards", href: APP_ROUTES.dashboard, icon: HomeIcon },
+  { label: "Members", href: APP_ROUTES.members, icon: UsersIcon },
+  { label: "Activity", href: APP_ROUTES.activity, icon: ClockIcon },
+  { label: "Settings", href: APP_ROUTES.settings, icon: Cog6ToothIcon },
 ];
 
 const fieldClass =
@@ -82,8 +93,8 @@ const selectClass =
 const realtimeConfigured = Boolean(process.env.NEXT_PUBLIC_REALTIME_URL?.trim());
 
 function isCurrentRoute(pathname: string, href: string) {
-  if (href === "/app/product-studio") {
-    return pathname === href || pathname.includes("/boards/");
+  if (href === APP_ROUTES.dashboard) {
+    return pathname === href || pathname.startsWith("/app/boards/");
   }
 
   return pathname === href;
@@ -107,11 +118,7 @@ function WorkspaceNav({
         return (
           <Link
             key={item.href}
-            href={
-              workspaceId
-                ? `${item.href}?workspaceId=${encodeURIComponent(workspaceId)}`
-                : item.href
-            }
+            href={workspaceRoutePath(item.href, workspaceId)}
             onClick={onNavigate}
             aria-current={active ? "page" : undefined}
             className={cx(
@@ -263,7 +270,7 @@ function RecentBoardLinks({
       {visibleBoards.map((board) => (
         <Link
           key={board.id}
-          href={`/app/product-studio/boards/${board.id}`}
+          href={boardPath(board.id)}
           onClick={onNavigate}
           className="truncate text-dark-text-alt outline-none hover:text-near-black-primary-text focus-visible:outline-2 focus-visible:outline-sky-blue-accent"
         >
@@ -272,11 +279,7 @@ function RecentBoardLinks({
       ))}
       {visibleBoards.length === 0 && (
         <Link
-          href={
-            workspaceId
-              ? `/app/product-studio?workspaceId=${encodeURIComponent(workspaceId)}`
-              : "/app/product-studio"
-          }
+          href={dashboardPath({ workspaceId })}
           onClick={onNavigate}
           className="text-dark-text-alt outline-none hover:text-near-black-primary-text focus-visible:outline-2 focus-visible:outline-sky-blue-accent"
         >
@@ -324,11 +327,7 @@ function LegacyWorkspaceShell({
   const searchWorkspace = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const query = String(new FormData(event.currentTarget).get("workspace-search") ?? "").trim();
-    const params = new URLSearchParams();
-    if (activeWorkspaceId) params.set("workspaceId", activeWorkspaceId);
-    if (query) params.set("q", query);
-    const suffix = params.size > 0 ? `?${params.toString()}` : "";
-    router.push(`/app/product-studio${suffix}`);
+    router.push(dashboardPath({ workspaceId: activeWorkspaceId, q: query }));
   };
 
   return (
@@ -371,7 +370,7 @@ function LegacyWorkspaceShell({
              </IconButton>
             <div className="text-base lg:hidden">
               <Link
-                href="/app/account"
+                href={APP_ROUTES.account}
                 aria-label="Open Account"
                 className="grid size-8 place-items-center rounded-radius-pill bg-slate-button-dark font-medium text-surface-white outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent"
               >
@@ -450,11 +449,11 @@ function LegacyWorkspaceShell({
               </IconButton>
             </div>
             <nav aria-label="Quick Navigation" className="grid gap-1 p-2">
-              {[...workspaceNavigation, { label: "Account", href: "/app/account", icon: UsersIcon }].map((item) => {
+              {[...workspaceNavigation, { label: "Account", href: APP_ROUTES.account, icon: UsersIcon }].map((item) => {
                 const Icon = item.icon;
                 const href =
-                  activeWorkspaceId && item.href.startsWith("/app/product-studio")
-                    ? `${item.href}?workspaceId=${encodeURIComponent(activeWorkspaceId)}`
+                  activeWorkspaceId && item.href !== APP_ROUTES.account
+                    ? workspaceRoutePath(item.href as WorkspaceAppRoute, activeWorkspaceId)
                     : item.href;
                 return (
                   <Link
@@ -551,8 +550,8 @@ export function WorkspacesPage() {
       title="Workspaces"
       description="Choose where you want to work or start a new workspace."
       action={
-        <PrimaryLink href="/app/onboarding" leading={<PlusIcon className="size-4 shrink-0 fill-current" aria-hidden="true" />}>
-          New Workspace
+        <PrimaryLink href={APP_ROUTES.workspaces} leading={<PlusIcon className="size-4 shrink-0 fill-current" aria-hidden="true" />}>
+          Manage Workspaces
         </PrimaryLink>
       }
     >
@@ -601,8 +600,8 @@ export function WorkspacesPage() {
             <p className="max-w-[52ch] text-base text-dark-text-alt sm:text-sm">
               A workspace keeps boards, members, comments, and permissions together.
             </p>
-            <PrimaryLink href="/app/onboarding" leading={<PlusIcon className="size-4 shrink-0 fill-current" aria-hidden="true" />}>
-              Set Up Workspace
+            <PrimaryLink href={APP_ROUTES.workspaces} leading={<PlusIcon className="size-4 shrink-0 fill-current" aria-hidden="true" />}>
+              Open Workspaces
             </PrimaryLink>
           </div>
         )}
@@ -622,7 +621,7 @@ export function WorkspacesPage() {
                 <li key={workspace.id}>
                   <div className="text-base sm:text-sm">
                     <Link
-                      href={`/app/product-studio?workspaceId=${encodeURIComponent(workspace.id)}`}
+                      href={dashboardPath({ workspaceId: workspace.id })}
                       className="flex min-h-36 flex-col justify-between gap-6 rounded-radius-xl bg-surface-white p-4 ring-1 ring-border-subtle outline-none motion-safe:transition-transform motion-safe:duration-200 hover:-translate-y-0.5 hover:ring-black/10 active:translate-y-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent"
                     >
                       <span className="flex items-start justify-between gap-4">
@@ -694,7 +693,7 @@ export function OnboardingPage() {
         boardTitle: selectedUseCase ? `${selectedUseCase} board` : "First board",
         document: { version: 1, nodes: [], edges: [] },
       });
-      const path = `/app/product-studio/boards/${result.board.id}`;
+      const path = boardPath(result.board.id);
       setCreatedBoardPath(path);
       setCreationState("idle");
       router.prefetch(path);
@@ -968,7 +967,7 @@ export function WorkspaceDashboardPage({
 
   const handleCreateBoard = async () => {
     if (!activeWorkspace) {
-      router.push("/app/onboarding");
+      router.push(APP_ROUTES.workspaces);
       return;
     }
 
@@ -980,7 +979,7 @@ export function WorkspaceDashboardPage({
         document: { version: 1, nodes: [], edges: [] },
       });
       setBoards((current) => [board, ...current]);
-      router.push(`/app/product-studio/boards/${board.id}`);
+      router.push(boardPath(board.id));
     } catch (error) {
       toast.show(error instanceof Error ? error.message : "The board could not be created.");
       setCreating(false);
@@ -1013,7 +1012,7 @@ export function WorkspaceDashboardPage({
         {[
           ["Active boards", loadState === "ready" ? String(activeBoards.length) : "—"],
           ["Your role", activeWorkspace?.role ?? "—"],
-          ["Durable storage", loadState === "ready" ? "Connected" : "Checking"],
+          ["Workspace access", loadState === "ready" ? "Scoped" : "Checking"],
         ].map(([label, value], index) => (
           <div key={label} className={cx("flex flex-col gap-1", index === 0 ? "sm:pr-5" : "sm:px-5")}>
             <dt className="truncate text-base font-medium sm:text-sm">{label}</dt>
@@ -1051,7 +1050,7 @@ export function WorkspaceDashboardPage({
             <li key={board.id}>
               <div className="text-base sm:text-sm">
                 <Link
-                  href={`/app/product-studio/boards/${board.id}`}
+                  href={boardPath(board.id)}
                   className="group flex flex-col outline-none motion-safe:transition-transform motion-safe:duration-200 hover:-translate-y-0.5 active:translate-y-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent"
                 >
                   <div className="relative aspect-[16/10] overflow-hidden rounded-[min(1vw,var(--radius-radius-lg))] bg-light-surface-tint outline-1 -outline-offset-1 outline-black/10">
@@ -1088,11 +1087,7 @@ export function WorkspaceDashboardPage({
           </h2>
           <div className="text-base font-medium sm:text-sm">
             <Link
-              href={
-                activeWorkspace
-                  ? `/app/product-studio/activity?workspaceId=${encodeURIComponent(activeWorkspace.id)}`
-                  : "/app/product-studio/activity"
-              }
+              href={workspaceRoutePath(APP_ROUTES.activity, activeWorkspace?.id)}
               className="text-dark-text-alt outline-none hover:text-near-black-primary-text focus-visible:outline-2 focus-visible:outline-sky-blue-accent"
             >
               View All
@@ -1107,7 +1102,7 @@ export function WorkspaceDashboardPage({
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-base text-near-black-primary-text sm:text-sm">
-                  {board.title} reached revision {board.revision}
+                  {board.title} was updated
                 </p>
                 <p className="text-base text-muted-gray sm:text-sm">
                   {new Date(board.updatedAt).toLocaleString()}
@@ -1334,7 +1329,7 @@ export function MembersPage({
     selectWorkspace,
     selectedWorkspaceId,
     workspaces,
-  } = useWorkspaceSelection(workspaceId, "/app/product-studio/members");
+  } = useWorkspaceSelection(workspaceId, APP_ROUTES.members);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [memberLoadState, setMemberLoadState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [memberResponseWorkspaceId, setMemberResponseWorkspaceId] = useState<string | null>(null);
@@ -1506,7 +1501,7 @@ export function MembersPage({
           <p className="text-pretty text-base text-dark-text-alt sm:text-sm">
             Members are attached to a workspace. Create one to start collaborating.
           </p>
-          <PrimaryLink href="/app/onboarding">Create Workspace</PrimaryLink>
+          <PrimaryLink href={APP_ROUTES.workspaces}>Open Workspaces</PrimaryLink>
         </div>
       )}
 
@@ -1765,15 +1760,15 @@ export function SettingsPage({ workspaceId }: { workspaceId?: string }) {
     selectWorkspace,
     selectedWorkspaceId,
     workspaces,
-  } = useWorkspaceSelection(workspaceId, "/app/product-studio/settings");
+  } = useWorkspaceSelection(workspaceId, APP_ROUTES.settings);
 
   return (
     <SharedWorkspaceShell
       title="Workspace Settings"
       description={
         activeWorkspace
-          ? `Review the deployed access and collaboration policy for ${activeWorkspace.name}.`
-          : "Review deployed workspace access and collaboration policy."
+          ? `Review access and collaboration settings for ${activeWorkspace.name}.`
+          : "Review workspace access and collaboration settings."
       }
       action={
         workspaces.length > 0 ? (
@@ -1806,35 +1801,25 @@ export function SettingsPage({ workspaceId }: { workspaceId?: string }) {
           <p className="text-pretty text-base text-dark-text-alt sm:text-sm">
             Create a workspace before reviewing its access and collaboration policy.
           </p>
-          <PrimaryLink href="/app/onboarding">Create Workspace</PrimaryLink>
+          <PrimaryLink href={APP_ROUTES.workspaces}>Open Workspaces</PrimaryLink>
         </div>
       )}
 
       {activeWorkspace && (
         <>
-          <div className="rounded-radius-lg bg-light-surface-tint px-4 py-3 ring-1 ring-border-subtle">
-            <p className="text-pretty text-base text-dark-text-alt sm:text-sm">
-              Workspace-wide preference editing is not exposed until a persisted policy contract is deployed. The states below reflect capabilities that are active now.
-            </p>
-          </div>
-
           <section aria-labelledby="general-settings-heading" className="grid gap-6 lg:grid-cols-[1fr_2fr]">
             <div className="flex flex-col gap-1">
               <h2 id="general-settings-heading" className="text-base font-semibold">Workspace</h2>
-              <p className="text-pretty text-base text-dark-text-alt sm:text-sm">Durable identity and access details.</p>
+              <p className="text-pretty text-base text-dark-text-alt sm:text-sm">Workspace identity and your access level.</p>
             </div>
-            <dl className="divide-y divide-border-subtle">
+            <dl>
               <div className="grid gap-1 pb-4 sm:grid-cols-[10rem_1fr] sm:gap-5">
                 <dt className="text-base font-medium sm:text-sm">Workspace Name</dt>
                 <dd className="text-base text-dark-text-alt sm:text-sm">{activeWorkspace.name}</dd>
               </div>
-              <div className="grid gap-1 py-4 sm:grid-cols-[10rem_1fr] sm:gap-5">
+              <div className="grid gap-1 border-t border-near-black-primary-text/8 pt-4 sm:grid-cols-[10rem_1fr] sm:gap-5">
                 <dt className="text-base font-medium sm:text-sm">Your Role</dt>
                 <dd className="text-base text-dark-text-alt sm:text-sm">{roleLabel(activeWorkspace.role)}</dd>
-              </div>
-              <div className="grid gap-1 pt-4 sm:grid-cols-[10rem_1fr] sm:gap-5">
-                <dt className="text-base font-medium sm:text-sm">Storage</dt>
-                <dd className="text-base text-dark-text-alt sm:text-sm">Durable PostgreSQL persistence</dd>
               </div>
             </dl>
           </section>
@@ -1843,11 +1828,11 @@ export function SettingsPage({ workspaceId }: { workspaceId?: string }) {
             <div className="flex flex-col items-start gap-3">
               <div className="flex flex-col gap-1">
                 <h2 id="collaboration-settings-heading" className="text-base font-semibold">Collaboration</h2>
-                <p className="text-pretty text-base text-dark-text-alt sm:text-sm">Capabilities enforced by workspace roles.</p>
+                <p className="text-pretty text-base text-dark-text-alt sm:text-sm">What your role can manage in this workspace.</p>
               </div>
               <div className="text-base font-medium sm:text-sm">
                 <Link
-                  href={`/app/product-studio/members?workspaceId=${encodeURIComponent(activeWorkspace.id)}`}
+                  href={workspaceRoutePath(APP_ROUTES.members, activeWorkspace.id)}
                   className="inline-flex h-8 items-center rounded-radius-md bg-surface-white px-2.5 text-near-black-primary-text ring-1 ring-border-subtle outline-none hover:bg-light-surface-tint focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent"
                 >
                   View Members
@@ -1862,41 +1847,41 @@ export function SettingsPage({ workspaceId }: { workspaceId?: string }) {
               />
               <ReadOnlySetting
                 title="Board Share Links"
-                description="Owners can create revocable viewer or commenter links from an authorized board."
-                status={activeWorkspace.role === "owner" ? "Available" : "Owner Only"}
+                description="Board owners and workspace owners can create revocable viewer or commenter links."
+                status="Per Board"
               />
               <ReadOnlySetting
                 title="Live Presence"
                 description={
                   realtimeConfigured
-                    ? "Board-scoped cursors and awareness use the configured realtime service."
-                    : "Live cursors and awareness are unavailable because this build has no public realtime URL."
+                    ? "Collaborators can see who is online and follow live cursors on a board."
+                    : "Online collaborators and live cursors are unavailable right now."
                 }
-                status={realtimeConfigured ? "Configured" : "Unavailable"}
+                status={realtimeConfigured ? "Available" : "Unavailable"}
               />
             </div>
           </section>
 
           <section aria-labelledby="ai-settings-heading" className="grid gap-6 border-t border-border-subtle pt-8 lg:grid-cols-[1fr_2fr]">
             <div className="flex flex-col gap-1">
-              <h2 id="ai-settings-heading" className="text-base font-semibold">AI Policy</h2>
-              <p className="text-pretty text-base text-dark-text-alt sm:text-sm">Server-enforced behavior for AI board proposals.</p>
+              <h2 id="ai-settings-heading" className="text-base font-semibold">Fabric Agent</h2>
+              <p className="text-pretty text-base text-dark-text-alt sm:text-sm">How agent suggestions become board changes.</p>
             </div>
             <div className="divide-y divide-border-subtle">
               <ReadOnlySetting
                 title="Streaming Responses"
-                description="AI proposal runs stream progress and a verified result without storing provider interactions."
-                status="Required"
+                description="Fabric agent shows progress while it prepares a suggestion."
+                status="On"
               />
               <ReadOnlySetting
                 title="Human Approval"
-                description="A proposal remains outside board history until an authorized editor reviews and applies it."
+                description="An authorized editor reviews every suggestion before it changes the board."
                 status="Required"
               />
               <ReadOnlySetting
-                title="Workspace Retrieval"
-                description="Cross-board workspace retrieval is not enabled in the current proposal skill."
-                status="Disabled"
+                title="Other Boards"
+                description="Fabric agent uses the current board and does not read other workspace boards."
+                status="Off"
               />
             </div>
           </section>
@@ -1933,7 +1918,7 @@ export function ActivityPage({ workspaceId }: { workspaceId?: string }) {
     selectWorkspace,
     selectedWorkspaceId,
     workspaces,
-  } = useWorkspaceSelection(workspaceId, "/app/product-studio/activity");
+  } = useWorkspaceSelection(workspaceId, APP_ROUTES.activity);
   const [items, setItems] = useState<WorkspaceActivityItem[]>([]);
   const [activityLoadState, setActivityLoadState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [responseWorkspaceId, setResponseWorkspaceId] = useState<string | null>(null);

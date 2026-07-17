@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { FabricWhiteboard } from "@/components/fabric-whiteboard";
 import { useCurrentUser } from "@/components/current-user-provider";
 import { Button, FabricLogo } from "@/components/ui";
+import { APP_ROUTES } from "@/lib/app-routes";
 import {
   collaborativeSyncMessage,
   collaborativeSyncState,
@@ -42,7 +43,7 @@ export function EditorRoutePage({
   const currentUser = useCurrentUser();
   const persistence = useBoardDocument(boardId, currentUser.id);
 
-  const openWorkspace = () => router.push("/app/product-studio");
+  const openWorkspace = () => router.push(APP_ROUTES.dashboard);
 
   if (persistence.loadState === "loading") {
     return (

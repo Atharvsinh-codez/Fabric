@@ -1,9 +1,9 @@
 "use client";
 
 import {
+  ArrowUpIcon,
   CheckIcon,
   ExclamationTriangleIcon,
-  PaperAirplaneIcon,
   SparklesIcon,
   StopIcon,
   XMarkIcon,
@@ -56,7 +56,6 @@ type ChatMessage = Readonly<{
   id: string;
   role: ConversationRole;
   content: string;
-  contextLabel?: string;
 }>;
 
 type CanvasViewport = Readonly<{
@@ -68,6 +67,11 @@ type CanvasViewport = Readonly<{
 
 const MAX_VISIBLE_MESSAGES = 50;
 const MAX_REQUEST_CONVERSATION = 12;
+const STARTER_PROMPTS = [
+  "Turn this board into a clear action plan.",
+  "Create a simple flow from the ideas on this board.",
+  "Organize this board into clear sections.",
+] as const;
 
 function currentViewport(editor: Editor): CanvasViewport {
   const viewport = editor.getViewportPageBounds();
@@ -146,14 +150,12 @@ export function FabricAiPanel({
   const createMessage = (
     role: ConversationRole,
     content: string,
-    contextLabel?: string,
   ): ChatMessage => {
     messageIdRef.current += 1;
     return {
       id: `fabric-ai-message-${messageIdRef.current}`,
       role,
       content: content.slice(0, 2_000),
-      ...(contextLabel ? { contextLabel } : {}),
     };
   };
 
@@ -279,7 +281,6 @@ export function FabricAiPanel({
       createMessage(
         "user",
         nextInstruction,
-        "Visible canvas",
       ),
     ));
     setInstruction("");
@@ -464,13 +465,13 @@ export function FabricAiPanel({
         onClose();
       }}
       className={cx(
-        "absolute inset-x-2 bottom-2 z-1100 flex max-h-[calc(88dvh-1rem)] flex-col overflow-hidden rounded-radius-2xl bg-surface-white/98 opacity-100 floating-shadow ring-1 ring-near-black-primary-text/8 backdrop-blur-xl transition-[transform,opacity] duration-(--motion-panel) ease-(--ease-out-quart) motion-reduce:transition-none sm:inset-x-auto sm:top-16 sm:right-auto sm:bottom-auto sm:left-3 sm:max-h-[calc(100dvh-5rem)] sm:w-[23rem]",
+        "absolute inset-x-2 bottom-2 z-1100 flex max-h-[calc(88dvh-1rem)] flex-col overflow-hidden rounded-radius-2xl bg-surface-white/98 opacity-100 floating-shadow ring-1 ring-near-black-primary-text/8 backdrop-blur-xl transition-[transform,opacity] duration-(--motion-panel) ease-(--ease-out-quart) motion-reduce:transition-none sm:inset-x-auto sm:top-16 sm:right-auto sm:bottom-auto sm:left-3 sm:h-[min(42rem,calc(100dvh-5rem))] sm:max-h-[calc(100dvh-5rem)] sm:w-[23rem]",
         open
           ? "translate-y-0 sm:translate-x-0"
           : "pointer-events-none translate-y-[calc(100%+0.5rem)] opacity-0 sm:translate-y-0 sm:-translate-x-[calc(100%+0.75rem)]",
       )}
     >
-      <header className="flex shrink-0 items-start justify-between gap-3 border-b border-near-black-primary-text/8 px-4 py-3.5">
+      <header className="flex shrink-0 items-start justify-between gap-3 border-b border-near-black-primary-text/8 px-4 py-3">
         <div className="flex min-w-0 items-start gap-2.5">
           <SparklesIcon
             className="size-4 h-lh shrink-0 fill-sky-blue-accent"
@@ -479,36 +480,68 @@ export function FabricAiPanel({
           <div className="min-w-0">
             <h2 id="fabric-ai-title" className="font-medium">Fabric agent</h2>
             <p className="text-pretty text-base text-muted-gray sm:text-sm">
-              Turns the visible canvas into editable work.
+              Create, organize, and refine the board.
             </p>
           </div>
         </div>
-        <IconButton label="Close Fabric agent" tooltipSide="right" onClick={onClose}>
+        <IconButton
+          label="Close Fabric agent"
+          tooltipSide="bottom"
+          tooltipAlign="end"
+          onClick={onClose}
+        >
           <XMarkIcon className="size-4 shrink-0 fill-current" aria-hidden="true" />
         </IconButton>
       </header>
 
       <div
         ref={conversationRef}
-        className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
+        className="min-h-0 flex-1 overflow-y-auto px-4 py-3.5"
         role="log"
         aria-label="Fabric agent conversation"
         aria-live="polite"
         aria-relevant="additions text"
       >
         <ol className="flex flex-col gap-4" role="list" aria-label="AI Conversation">
-          {messages.length === 0 ? (
-            <li className="flex items-start gap-2.5 review-panel-enter motion-reduce:animate-none">
-              <SparklesIcon
-                className="size-4 h-lh shrink-0 fill-sky-blue-accent"
-                aria-hidden="true"
-              />
-              <div className="min-w-0">
-                <p className="font-medium">What should Fabric make?</p>
-                <p className="text-pretty text-base text-muted-gray sm:text-sm">
-                  Ask for a diagram, plan, summary, explanation, or cleaner layout. Fabric reads the visible canvas and previews every board change first.
-                </p>
-              </div>
+          {messages.length === 0 && stage === "idle" && !error ? (
+            <li className="review-panel-enter motion-reduce:animate-none">
+              <section className="flex flex-col gap-4" aria-labelledby="fabric-ai-empty-title">
+                <div className="flex items-start gap-2.5">
+                  <SparklesIcon
+                    className="size-4 h-lh shrink-0 fill-sky-blue-accent"
+                    aria-hidden="true"
+                  />
+                  <div className="min-w-0">
+                    <h3 id="fabric-ai-empty-title" className="font-medium">
+                      Make the board clearer
+                    </h3>
+                    <p className="max-w-[34ch] text-pretty text-base text-muted-gray sm:text-sm">
+                      Describe the outcome. Fabric will draft editable work and show you every change before it is applied.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="overflow-hidden rounded-radius-lg bg-light-surface-tint ring-1 ring-near-black-primary-text/8">
+                  <p className="px-3 pt-2.5 pb-1 font-medium text-muted-gray">
+                    Try a starting point
+                  </p>
+                  <div className="divide-y divide-near-black-primary-text/8">
+                    {STARTER_PROMPTS.map((prompt) => (
+                      <button
+                        key={prompt}
+                        type="button"
+                        className="relative flex min-h-12 min-w-0 w-full items-center break-words px-3 py-2 text-left text-base font-medium text-dark-text-alt outline-none hover:bg-surface-white hover:text-near-black-primary-text focus-visible:-outline-offset-1 focus-visible:outline-2 focus-visible:outline-sky-blue-accent sm:min-h-9 sm:text-sm"
+                        onClick={() => {
+                          setInstruction(prompt);
+                          window.requestAnimationFrame(() => composerRef.current?.focus());
+                        }}
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </section>
             </li>
           ) : null}
 
@@ -528,26 +561,30 @@ export function FabricAiPanel({
               ) : null}
               <div
                 className={cx(
-                  "min-w-0 max-w-[88%]",
+                  "min-w-0 max-w-[90%]",
                   message.role === "user" &&
-                    "rounded-radius-xl bg-light-surface-tint px-3 py-2.5 ring-1 ring-border-subtle",
+                    "rounded-radius-xl bg-light-surface-tint px-3 py-2.5 ring-1 ring-near-black-primary-text/8",
                 )}
               >
+                <p
+                  className={cx(
+                    "pb-1 font-medium",
+                    message.role === "user" ? "text-muted-gray" : "text-sky-blue-accent",
+                  )}
+                >
+                  {message.role === "user" ? "You" : "Fabric agent"}
+                </p>
                 <p className="text-pretty whitespace-pre-wrap text-base sm:text-sm">
                   {message.content}
                 </p>
-                {message.contextLabel ? (
-                  <p className="pt-1 text-base text-muted-gray sm:text-sm">
-                    {message.contextLabel}
-                  </p>
-                ) : null}
               </div>
             </li>
           ))}
 
           {stage === "running" || stage === "applying" || stage === "finalizing" ? (
             <li
-              className="flex items-start gap-2.5 text-sky-blue-accent review-panel-enter motion-reduce:animate-none"
+              className="flex items-start gap-2.5 rounded-radius-lg bg-sky-blue-accent/6 p-3 text-sky-blue-accent ring-1 ring-sky-blue-accent/12 review-panel-enter motion-reduce:animate-none"
+              aria-label="Fabric agent activity"
             >
               <span className="grid size-4 h-lh shrink-0 place-items-center" aria-hidden="true">
                 <WaveSpinner
@@ -558,21 +595,24 @@ export function FabricAiPanel({
                   color="var(--accent)"
                 />
               </span>
-              <p className="min-w-0 text-pretty text-base sm:text-sm">{progress}</p>
+              <div className="min-w-0">
+                <p className="font-medium">Working on Your Board…</p>
+                <p className="text-pretty text-base text-dark-text-alt sm:text-sm">{progress}</p>
+              </div>
             </li>
           ) : null}
 
           {proposal && stage === "preview" ? (
             <li>
               <section
-                className="flex flex-col gap-3 rounded-radius-xl bg-light-surface-tint p-3.5 ring-1 ring-border-subtle review-panel-enter motion-reduce:animate-none"
+                className="overflow-hidden rounded-radius-xl bg-light-surface-tint ring-1 ring-near-black-primary-text/8 review-panel-enter motion-reduce:animate-none"
                 aria-label="AI Change Preview"
               >
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start justify-between gap-3 p-3.5">
                   <div className="min-w-0">
-                    <h3 className="font-medium">Change Preview</h3>
+                    <h3 className="font-medium">Review Changes</h3>
                     <p className="text-pretty text-base text-muted-gray sm:text-sm">
-                      Review every board edit before it is applied.
+                      Nothing changes until you apply this preview.
                     </p>
                   </div>
                   <p className="shrink-0 rounded-radius-pill bg-surface-white px-2 py-1 text-sm font-medium text-muted-gray ring-1 ring-near-black-primary-text/8 tabular-nums">
@@ -580,23 +620,26 @@ export function FabricAiPanel({
                   </p>
                 </div>
                 {proposal.riskClass !== "low" ? (
-                  <p className="text-pretty text-base text-(--warning) sm:text-sm">
+                  <p className="border-t border-near-black-primary-text/8 px-3.5 py-2.5 text-pretty text-base text-(--warning) sm:text-sm">
                     This proposal includes a higher-impact board edit. Review each change carefully.
                   </p>
                 ) : null}
-                <ol className="max-h-52 list-decimal overflow-y-auto pl-5" role="list">
+                <ol
+                  className="max-h-52 list-decimal divide-y divide-near-black-primary-text/8 overflow-y-auto border-t border-near-black-primary-text/8 pl-9 pr-3.5"
+                  role="list"
+                >
                   {proposal.patch.operations.map((operation, index) => (
                     <li
                       key={`${operation.type}-${index}`}
-                      className="py-1 text-base marker:font-medium marker:text-muted-gray sm:text-sm"
+                      className="py-2.5 text-base marker:font-medium marker:text-muted-gray sm:text-sm"
                     >
                       {operationLabel(operation)}
                     </li>
                   ))}
                 </ol>
-                <div className="flex flex-wrap justify-end gap-2 border-t border-near-black-primary-text/8 pt-3">
+                <div className="flex flex-wrap justify-end gap-2 border-t border-near-black-primary-text/8 bg-surface-white/72 p-3">
                   <Button tone="ghost" onClick={() => void cancelProposal()}>
-                    Discard
+                    Discard Preview
                   </Button>
                   <Button
                     tone="primary"
@@ -616,26 +659,32 @@ export function FabricAiPanel({
           ) : null}
 
           {stage === "applied" ? (
-            <li className="flex items-start gap-2.5 text-sky-blue-accent review-panel-enter motion-reduce:animate-none">
+            <li className="flex items-start gap-2.5 rounded-radius-lg bg-(--success-soft) p-3 text-(--success) review-panel-enter motion-reduce:animate-none">
               <CheckIcon className="size-4 h-lh shrink-0 fill-current" aria-hidden="true" />
-              <p className="text-pretty text-base sm:text-sm">{progress}</p>
+              <div className="min-w-0">
+                <p className="font-medium">Board Updated</p>
+                <p className="text-pretty text-base sm:text-sm">{progress}</p>
+              </div>
             </li>
           ) : null}
 
           {stage === "canceled" ? (
-            <li className="flex items-start gap-2.5 text-muted-gray review-panel-enter motion-reduce:animate-none">
+            <li className="flex items-start gap-2.5 rounded-radius-lg bg-light-surface-tint p-3 text-muted-gray review-panel-enter motion-reduce:animate-none">
               <StopIcon className="size-4 h-lh shrink-0 fill-current" aria-hidden="true" />
-              <p className="text-pretty text-base sm:text-sm">{progress}</p>
+              <div className="min-w-0">
+                <p className="font-medium">Request Canceled</p>
+                <p className="text-pretty text-base sm:text-sm">{progress}</p>
+              </div>
             </li>
           ) : null}
 
           {error ? (
             <li
               className={cx(
-                "flex items-start gap-2.5 rounded-radius-lg px-3 py-2.5 review-panel-enter motion-reduce:animate-none",
+                "flex items-start gap-2.5 rounded-radius-lg p-3 ring-1 review-panel-enter motion-reduce:animate-none",
                 pendingApproval
-                  ? "bg-(--warning-soft) text-(--warning)"
-                  : "bg-(--danger-soft) text-(--danger)",
+                  ? "bg-(--warning-soft) text-(--warning) ring-near-black-primary-text/8"
+                  : "bg-(--danger-soft) text-(--danger) ring-(--danger-border)",
               )}
               data-tone={pendingApproval ? "warning" : "danger"}
             >
@@ -645,7 +694,7 @@ export function FabricAiPanel({
               />
               <div className="min-w-0 flex-1">
                 <p className="font-medium">
-                  {pendingApproval ? "Save confirmation pending" : "Request needs attention"}
+                  {pendingApproval ? "Save Confirmation Pending" : "Request Needs Attention"}
                 </p>
                 <p className="text-pretty text-base sm:text-sm">{error}</p>
                 {pendingApproval ? (
@@ -661,7 +710,7 @@ export function FabricAiPanel({
         </ol>
       </div>
 
-      <div className="shrink-0 border-t border-near-black-primary-text/8 bg-surface-white p-3">
+      <div className="shrink-0 border-t border-near-black-primary-text/8 bg-surface-white/96 p-3">
         {!persistenceReady && !pendingApproval ? (
           <p
             className="pb-2 text-pretty text-base text-(--warning) sm:text-sm"
@@ -672,7 +721,7 @@ export function FabricAiPanel({
         ) : null}
 
         <form
-          className="rounded-radius-xl bg-light-surface-tint p-2 ring-1 ring-near-black-primary-text/10 focus-within:outline-2 focus-within:-outline-offset-1 focus-within:outline-sky-blue-accent"
+          className="rounded-radius-xl bg-light-surface-tint p-2 shadow-sm ring-1 ring-near-black-primary-text/8 focus-within:outline-2 focus-within:-outline-offset-1 focus-within:outline-sky-blue-accent"
           onSubmit={generateProposal}
         >
           <label htmlFor="fabric-ai-instruction" className="sr-only">
@@ -687,9 +736,9 @@ export function FabricAiPanel({
             onKeyDown={handleComposerKeyDown}
             rows={2}
             maxLength={2_000}
-            placeholder="Ask Fabric agent to write on the board…"
+            placeholder="Describe what you want on the board…"
             disabled={composerDisabled}
-            className="max-h-32 min-h-16 w-full resize-none bg-transparent p-2 text-base text-near-black-primary-text outline-none placeholder:text-muted-gray disabled:cursor-not-allowed disabled:opacity-55"
+            className="max-h-28 min-h-14 w-full resize-none bg-transparent p-2 text-base text-near-black-primary-text outline-none placeholder:text-muted-gray disabled:cursor-not-allowed disabled:opacity-55"
           />
           <div className="flex items-center justify-between gap-2 border-t border-near-black-primary-text/8 pt-2">
             <div className="flex min-w-0 items-center gap-1.5 px-1 text-muted-gray">
@@ -703,6 +752,11 @@ export function FabricAiPanel({
               >
                 Fabric agent
               </p>
+              <span
+                className="size-1 shrink-0 rounded-radius-pill bg-near-black-primary-text/20"
+                aria-hidden="true"
+              />
+              <p className="hidden truncate text-sm sm:block">Board editor</p>
             </div>
             <div className="flex shrink-0 items-center gap-1">
               {stage === "running" ? (
@@ -720,7 +774,7 @@ export function FabricAiPanel({
                 disabled={composerDisabled || instruction.trim().length === 0}
                 className="relative grid size-8 shrink-0 place-items-center rounded-radius-md bg-sky-blue-accent text-white outline-none ring-1 ring-sky-blue-accent active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent disabled:cursor-not-allowed disabled:opacity-40"
               >
-                <PaperAirplaneIcon
+                <ArrowUpIcon
                   className="size-4 shrink-0 fill-current"
                   aria-hidden="true"
                 />

@@ -24,13 +24,17 @@ import {
   FabricAiPanel,
   type FabricWhiteboardAiAdapter,
 } from "@/components/fabric-whiteboard/ai-panel";
+import { FabricBoardToolsPanel } from "@/components/fabric-whiteboard/board-tools-panel";
 import { fabricCanvasComponents } from "@/components/fabric-whiteboard/canvas-chrome";
 import { FabricCheckpointDialog } from "@/components/fabric-whiteboard/checkpoint-dialog";
 import { FabricCommentsPanel } from "@/components/fabric-whiteboard/comments-panel";
 import { FabricDialog } from "@/components/fabric-whiteboard/fabric-dialog";
 import { FabricExportDialog } from "@/components/fabric-whiteboard/export-dialog";
+import {
+  PresenceSummary,
+  remotePresenceEntries,
+} from "@/components/fabric-whiteboard/presence-summary";
 import { FabricShareDialog } from "@/components/fabric-whiteboard/share-dialog";
-import { FabricTemplateLibraryDialog } from "@/components/fabric-whiteboard/template-library-dialog";
 import {
   boardSyncLabel,
   FabricAiTrigger,
@@ -152,11 +156,10 @@ export function FabricWhiteboard({
     !accessLost && canCommentOnBoardState({ role, archivedAt });
   const [editor, setEditor] = useState<Editor | null>(null);
   const [aiFinalizing, setAiFinalizing] = useState(false);
-  const [panel, setPanel] = useState<"comments" | "ai" | null>(null);
+  const [panel, setPanel] = useState<"comments" | "ai" | "tools" | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [checkpointsOpen, setCheckpointsOpen] = useState(false);
-  const [templatesOpen, setTemplatesOpen] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [managementLost, setManagementLost] = useState(false);
   const [cameraVersion, setCameraVersion] = useState(0);
@@ -176,8 +179,7 @@ export function FabricWhiteboard({
     !accessLost &&
     role === "owner";
   const visiblePanel =
-    accessLost || (!canEdit && panel === "ai") ? null : panel;
-  const visibleTemplatesOpen = canEdit && templatesOpen;
+    accessLost || (!canEdit && (panel === "ai" || panel === "tools")) ? null : panel;
   const visibleShareOpen = canManageSharing && shareOpen;
   const acceptedMediaMimeTypes = acceptedBoardMediaMimeTypes(
     privateMediaEnabled,
@@ -345,12 +347,12 @@ export function FabricWhiteboard({
           </IconButton>
           {canEdit ? (
             <IconButton
-              label="Open Template Library"
-              active={visibleTemplatesOpen}
+              label="Open Board Tools"
+              active={visiblePanel === "tools"}
               disabled={!editor}
-              aria-haspopup="dialog"
-              aria-expanded={visibleTemplatesOpen}
-              onClick={() => setTemplatesOpen(true)}
+              aria-controls="fabric-board-tools-panel"
+              aria-expanded={visiblePanel === "tools"}
+              onClick={() => setPanel((current) => current === "tools" ? null : "tools")}
             >
               <RectangleStackIcon
                 className="size-4 shrink-0 fill-current"
@@ -427,6 +429,14 @@ export function FabricWhiteboard({
         />
       ) : null}
 
+      <FabricBoardToolsPanel
+        editor={editor}
+        open={visiblePanel === "tools"}
+        canEdit={canEdit}
+        onOpen={() => setPanel("tools")}
+        onClose={() => setPanel(null)}
+      />
+
       <FabricShareDialog
         boardId={boardId}
         workspaceId={workspaceId}
@@ -446,12 +456,6 @@ export function FabricWhiteboard({
         boardTitle={boardTitle}
         open={exportOpen}
         onClose={() => setExportOpen(false)}
-      />
-      <FabricTemplateLibraryDialog
-        editor={editor}
-        open={visibleTemplatesOpen}
-        canEdit={canEdit}
-        onClose={() => setTemplatesOpen(false)}
       />
       <FabricCheckpointDialog
         boardId={boardId}
@@ -512,15 +516,6 @@ export function FabricWhiteboard({
   );
 }
 
-function remotePresenceEntries(
-  awarenessStates: ReadonlyMap<number, RealtimeAwarenessState>,
-  localAwarenessClientId: number | null,
-) {
-  return [...awarenessStates.entries()].filter(
-    ([clientId]) => clientId !== localAwarenessClientId,
-  );
-}
-
 function hasRemotePresenceCursor(
   awarenessStates: ReadonlyMap<number, RealtimeAwarenessState>,
   localAwarenessClientId: number | null,
@@ -529,46 +524,6 @@ function hasRemotePresenceCursor(
     if (clientId !== localAwarenessClientId && state.cursor) return true;
   }
   return false;
-}
-
-function PresenceSummary({
-  awarenessStates,
-  localAwarenessClientId,
-}: {
-  awarenessStates: ReadonlyMap<number, RealtimeAwarenessState>;
-  localAwarenessClientId: number | null;
-}) {
-  const remoteEntries = remotePresenceEntries(
-    awarenessStates,
-    localAwarenessClientId,
-  );
-  const remoteCount = remoteEntries.length;
-  if (remoteCount === 0) return null;
-  return (
-    <div
-      className="hidden h-8 items-center pl-1 pr-2 sm:flex"
-      aria-label={`${remoteCount} ${remoteCount === 1 ? "collaborator" : "collaborators"} online`}
-      aria-live="polite"
-    >
-      <span className="flex -space-x-1.5" aria-hidden="true">
-        {remoteEntries.slice(0, 3).map(([clientId, state]) => {
-          const presence = resolvePresencePresentation(state);
-          return (
-            <span
-              key={clientId}
-              className="grid size-6 place-items-center rounded-full border-2 border-surface-white text-[0.625rem] font-semibold text-white"
-              style={{ backgroundColor: presence.color }}
-            >
-              {presence.initials}
-            </span>
-          );
-        })}
-      </span>
-      <span className="ml-2 text-sm font-medium text-muted-gray">
-        {remoteCount} online
-      </span>
-    </div>
-  );
 }
 
 function RemotePresenceCursors({

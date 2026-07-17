@@ -256,16 +256,19 @@ button:disabled {
   z-index: 200;
   display: none;
   width: max-content;
-  max-width: 180px;
-  padding: 5px 8px;
-  border-radius: 6px;
-  background: var(--surface-inverse);
-  color: var(--surface-1);
+  max-width: 11.25rem;
+  padding: 0.3125rem 0.5rem;
+  border-radius: var(--radius-control);
+  background: rgb(255 255 255 / 98%);
+  color: var(--text-2);
   content: attr(data-tooltip);
-  font-size: 12px;
-  line-height: 16px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1rem;
   pointer-events: none;
-  box-shadow: var(--shadow-float);
+  box-shadow:
+    0 0 0 1px rgb(18 18 18 / 8%),
+    0 0.375rem 1rem rgb(18 18 18 / 9%);
 }
 
 .tooltip-trigger[data-tooltip-side="right"]::after {
@@ -284,6 +287,20 @@ button:disabled {
   bottom: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
+}
+
+.tooltip-trigger[data-tooltip-side="bottom"][data-tooltip-align="start"]::after,
+.tooltip-trigger[data-tooltip-side="top"][data-tooltip-align="start"]::after {
+  right: auto;
+  left: 0;
+  transform: none;
+}
+
+.tooltip-trigger[data-tooltip-side="bottom"][data-tooltip-align="end"]::after,
+.tooltip-trigger[data-tooltip-side="top"][data-tooltip-align="end"]::after {
+  right: 0;
+  left: auto;
+  transform: none;
 }
 
 .tooltip-trigger:hover::after,
@@ -526,9 +543,11 @@ button:disabled {
   bottom: 0;
   left: max(0.75rem, env(safe-area-inset-left));
   right: max(0.75rem, env(safe-area-inset-right));
+  display: flex;
   width: auto;
-  max-width: 32.5rem;
-  pointer-events: auto;
+  min-width: 0;
+  justify-content: center;
+  pointer-events: none;
   opacity: 1;
   visibility: visible;
   transform: translate3d(0, 0, 0);
@@ -541,7 +560,11 @@ button:disabled {
 }
 
 .fabric-canvas-tool-dock > .tlui-main-toolbar {
-  justify-content: flex-start;
+  width: 100%;
+  min-width: 0;
+  max-width: 32.5rem;
+  flex: 0 1 32.5rem;
+  justify-content: center;
 }
 
 .fabric-canvas-tool-dock .tlui-main-toolbar__tools {
@@ -567,7 +590,8 @@ button:disabled {
 
 @media (max-width: 640px) {
   .fabric-tldraw[data-fabric-panel="ai"] .fabric-canvas-tool-dock,
-  .fabric-tldraw[data-fabric-panel="comments"] .fabric-canvas-tool-dock {
+  .fabric-tldraw[data-fabric-panel="comments"] .fabric-canvas-tool-dock,
+  .fabric-tldraw[data-fabric-panel="tools"] .fabric-canvas-tool-dock {
     pointer-events: none;
     opacity: 0;
     visibility: hidden;
@@ -580,11 +604,14 @@ button:disabled {
     left: calc(max(0.75rem, env(safe-area-inset-left)) + 23.75rem);
   }
 
-  .fabric-tldraw[data-fabric-panel="comments"] .fabric-canvas-tool-dock {
+  .fabric-tldraw[data-fabric-panel="comments"] .fabric-canvas-tool-dock,
+  .fabric-tldraw[data-fabric-panel="tools"] .fabric-canvas-tool-dock {
     right: calc(max(0.75rem, env(safe-area-inset-right)) + 23rem);
   }
 
   .fabric-tldraw[data-fabric-panel="comments"]
+    .fabric-canvas-color-panel[data-mobile="false"],
+  .fabric-tldraw[data-fabric-panel="tools"]
     .fabric-canvas-color-panel[data-mobile="false"] {
     pointer-events: none;
     opacity: 0;
@@ -598,7 +625,14 @@ button:disabled {
     left: calc(max(0.75rem, env(safe-area-inset-left)) + 23.75rem);
   }
 
+  .fabric-tldraw[data-fabric-panel="comments"] .fabric-canvas-tool-dock,
+  .fabric-tldraw[data-fabric-panel="tools"] .fabric-canvas-tool-dock {
+    right: calc(max(0.75rem, env(safe-area-inset-right)) + 23rem);
+  }
+
   .fabric-tldraw[data-fabric-panel="comments"]
+    .fabric-canvas-color-panel[data-mobile="false"],
+  .fabric-tldraw[data-fabric-panel="tools"]
     .fabric-canvas-color-panel[data-mobile="false"] {
     transform: translate3d(-23.75rem, 0, 0);
   }

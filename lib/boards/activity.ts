@@ -19,6 +19,7 @@ import type {
   WorkspaceActivityItem,
   WorkspaceActivityPage,
 } from "@/lib/boards/activity-contracts";
+import { boardActivityPath, memberActivityPath } from "@/lib/boards/activity-links";
 import { requireWorkspaceCapability } from "@/lib/boards/authorization";
 import { BoardApiError } from "@/lib/boards/http";
 import {
@@ -234,7 +235,7 @@ export async function listWorkspaceActivity(input: {
           : null,
         action: isCreation ? "created" : "Board content changed in",
         target: row.title,
-        targetHref: `/app/product-studio/boards/${row.id}`,
+        targetHref: boardActivityPath(row.id),
         occurredAt: row.updatedAt.toISOString(),
         occurredAtCursor: row.occurredAtCursor,
       };
@@ -246,7 +247,7 @@ export async function listWorkspaceActivity(input: {
       actorImage: resolveUserAvatar(row.actorAvatar).image,
       action: "commented in",
       target: row.boardTitle,
-      targetHref: `/app/product-studio/boards/${row.boardId}`,
+      targetHref: boardActivityPath(row.boardId),
       occurredAt: row.occurredAt.toISOString(),
       occurredAtCursor: row.occurredAtCursor,
     })),
@@ -257,7 +258,7 @@ export async function listWorkspaceActivity(input: {
       actorImage: resolveUserAvatar(row.actorAvatar).image,
       action: `joined as ${row.role} in`,
       target: "Member access",
-      targetHref: `/app/product-studio/members?workspaceId=${encodeURIComponent(input.workspaceId)}`,
+      targetHref: memberActivityPath(input.workspaceId),
       occurredAt: row.occurredAt.toISOString(),
       occurredAtCursor: row.occurredAtCursor,
     })),

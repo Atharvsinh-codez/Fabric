@@ -1,17 +1,15 @@
-import type { Metadata } from "next";
+import { permanentRedirect } from "next/navigation";
 
-import { SettingsPage } from "@/components/workspace-pages";
+import {
+  APP_ROUTES,
+  withSearchParams,
+  type RouteSearchParams,
+} from "@/lib/app-routes";
 
-export const metadata: Metadata = {
-  title: "Workspace Settings",
-  description: "Review collaboration and AI policy for your active Fabric workspace.",
-};
-
-export default async function ProductStudioSettingsPage({
+export default async function LegacyProductStudioSettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ workspaceId?: string | string[] }>;
+  searchParams: Promise<RouteSearchParams>;
 }) {
-  const { workspaceId } = await searchParams;
-  return <SettingsPage workspaceId={typeof workspaceId === "string" ? workspaceId : undefined} />;
+  permanentRedirect(withSearchParams(APP_ROUTES.settings, await searchParams));
 }

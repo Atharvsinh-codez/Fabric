@@ -82,6 +82,25 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  async redirects() {
+    return [
+      {
+        source: "/app/product-studio/boards/:boardId",
+        destination: "/app/boards/:boardId",
+        permanent: true,
+      },
+      {
+        source: "/app/product-studio",
+        destination: "/app/dashboard",
+        permanent: true,
+      },
+      {
+        source: "/app/product-studio/:path*",
+        destination: "/app/dashboard/:path*",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     return [
       {

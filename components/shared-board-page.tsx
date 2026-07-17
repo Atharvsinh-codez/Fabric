@@ -209,9 +209,6 @@ function AvailableSharedBoardPage({ share }: { share: PublicBoardShare }) {
                 Canvas is read-only · {share.permission === "commenter" ? "Signed-in guests can comment." : "Comments are view-only."}
               </p>
             </div>
-            <p className="hidden shrink-0 font-mono text-sm text-muted-gray md:block">
-              REV {share.revision}
-            </p>
           </div>
           {view === "canvas" ? <SharedTldrawCanvas share={share} /> : <SemanticListView share={share} />}
         </div>

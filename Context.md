@@ -343,3 +343,95 @@ Rules:
   - Transform-uncertain or grouped visible nodes remain readable context but require a future exact page-bounds projection before Fabric agent may mutate them through visible-canvas mode.
 - Next Steps:
   - Review the local frontend on a signed-in production-sized board, then commit/push and deploy only when requested.
+
+### [2026-07-17 17:46 IST] - Refine the Fabric agent conversation and recenter canvas tools
+- Request: Make the Fabric agent feel like a polished, structured agent conversation, return the complete canvas toolbar to the center, and replace the clipped high-contrast hover treatment without restoring selection-driven AI UI or touching tldraw internals.
+- Plan: Apply the UI Design build guidance to the existing light Fabric system, preserve every AI/canvas contract, add focused regression coverage, inspect the real whiteboard at desktop and mobile sizes, then run every release gate.
+- Actions:
+  - Reworked the Fabric agent into a denser outcome-led conversation with a compact welcome state, responsive starter prompts that fill the composer without submitting, clear user/agent identity, Ripple-only activity feedback, structured change review, stronger terminal states, and a tighter Arrow Up composer.
+  - Kept all selection counts, selection status, and selected-object send controls absent; the agent continues to operate through the previously authorized visible-canvas contract.
+  - Centered the complete 28-tool tldraw toolbar in the full safe canvas lane and recentered it within the remaining lane when the AI or comments panel is open, while preserving mobile panel hiding and every stock tool ID/order.
+  - Replaced dark pseudo-tooltips with a quiet elevated light treatment and added explicit start/center/end alignment to shared icon buttons so the Fabric agent close tooltip remains fully inside its clipped rounded panel.
+  - Kept the conversation as one polite live log and removed the nested assertive error announcement path to avoid duplicate screen-reader output.
+- Files Changed:
+  - `components/fabric-whiteboard/ai-panel.tsx` and its test - Structured conversation, starter prompts, review states, composer, loading, accessibility, and close-tooltip alignment.
+  - `components/fabric-whiteboard/canvas-chrome.tsx` and its test - Explicit centered toolbar placement and preserved stock-toolbar contract coverage.
+  - `components/ui.tsx` and `app/globals.css` - Shared tooltip alignment contract, elevated hover treatment, and safe-area/panel-aware toolbar centering.
+  - `Context.md` - Record the implementation and verification evidence.
+- Diff Summary:
+  - Sparse agent sidebar with weak hierarchy -> compact agent conversation with clear intent, progress, review, and completion states.
+  - Lower-left bounded toolbar -> complete toolbar centered in the usable canvas lane.
+  - Dark clipped hover pill -> light elevated tooltip with edge-aware alignment.
+- Validation:
+  - Real-browser inspection of the mounted whiteboard confirmed an exactly centered closed toolbar at 1440px, panel-aware recentering, a fully visible close tooltip, no desktop or 390px mobile horizontal overflow, and clean mobile toolbar hiding while the agent sheet is open; the temporary audit route and server were removed afterward.
+  - Focused component verification passed 2 files / 8 tests, followed by full `npm run verify`: 120 test files / 569 tests, every application/realtime/Worker typecheck, 15 Cloudflare runtime tests, ESLint, the tldraw invariant, and the production build.
+  - `npm run db:check`, `npm audit --omit=dev` with zero production vulnerabilities, generated Worker binding verification, Wrangler production/development dry-runs, and `git diff --check` passed.
+  - tldraw remains pinned at `4.2.0`; its dependency, patch, editor internals, and shape behavior are unchanged.
+- Risks/Notes:
+  - No API, AI authorization, realtime behavior, rate limit, database, environment variable, dependency, deployment, or Cloudflare storage change was introduced.
+  - Direct Next.js development preview still reports the existing frozen-tldraw CDN translation/font CSP warnings; they were not caused or broadened by this UI-only change.
+- Next Steps:
+  - Review the polished agent on a signed-in production-sized board, then commit/push and deploy only when requested.
+
+### [2026-07-17 18:28 IST] - Canonicalize workspace routes and ship live board previews
+- Request: Move the workspace home to `/app/dashboard`, move editors to `/app/boards/[boardId]`, replace synthetic board-card art with changing board previews, remove user-facing revision counters and infrastructure copy, make `/app` a polished multi-workspace control center, and show how many people are collaborating on a board.
+- Plan: Preserve all tenant/realtime contracts, add backward-compatible route redirects, render private previews from authorized durable state, reuse the existing transactional workspace API, then verify the combined UI at desktop/mobile sizes and run every release gate.
+- Actions:
+  - Added canonical protected dashboard, members, activity, settings, and board routes plus typed route builders. Legacy `/app/product-studio/**` URLs now permanently redirect while preserving query parameters and OAuth return compatibility.
+  - Replaced the synthetic card illustration with a same-origin, authenticated, tenant-authorized 640×400 PNG endpoint. The server renders bounded and escaped saved shapes, text, connectors, and drawing paths through Sharp; dashboard clients never receive full board documents.
+  - Versioned thumbnail URLs internally by document generation and durable revision, refreshed board summaries only on focus/visibility/back-navigation events, and kept refresh coalesced with no polling or authenticated edit throttling.
+  - Removed `Latest revision`, card revision pills, checkpoint revision numbers, and the public-share `REV` badge while retaining revision fields for concurrency and cache invalidation.
+  - Rebuilt `/app` as an all-workspaces control center with canonical Dashboard, Members, Settings, and Account destinations. Added an accessible one-field create-workspace dialog using the existing owner-membership/Unfiled-project transaction, synchronous double-submit protection, retryable errors, focus trapping/restoration, and immediate navigation to the new dashboard.
+  - Made the shared shell distinguish global and active-workspace navigation, removed the Workspace Settings Storage/PostgreSQL row and internal deployment wording, and kept member/project/board tenant scope intact.
+  - Added a responsive presence summary that shows the total people online, including the local editor, once another collaborator joins; remote initials and colors still come from server-authoritative awareness identity.
+- Files Changed:
+  - `app/app/dashboard/**`, `app/app/boards/[boardId]`, `app/app/product-studio/**`, `lib/app-routes.ts`, and activity-link helpers - Canonical routes, compatibility redirects, and tenant-safe deep links.
+  - `app/api/boards/[boardId]/thumbnail`, `lib/boards/preview-repository.ts`, `lib/boards/server/board-thumbnail.ts`, `components/board-preview.tsx`, and `components/workspace-dashboard-page.tsx` - Private durable board previews and event-driven freshness.
+  - `components/workspaces-page.tsx`, `components/workspace-shell.tsx`, and `components/workspace-pages.tsx` - Multi-workspace control center, creation dialog, global/workspace navigation, and simplified settings.
+  - `components/fabric-whiteboard/presence-summary.tsx`, `components/fabric-whiteboard.tsx`, checkpoint/share UI, and focused tests - Online collaborator count and removal of visible revision counters.
+- Diff Summary:
+  - Product-studio URLs -> canonical dashboard and board URLs with permanent compatibility redirects.
+  - Static Evidence cluster/Decision frame art -> authorized previews of the board's saved durable geometry that change after edits.
+  - Onboarding-only workspace creation and infrastructure-heavy settings -> direct workspace management with clear account/access destinations.
+  - Hidden remote-only presence count and exposed revision numbers -> responsive total-online presence and human-readable timestamps/checkpoints.
+- Validation:
+  - Desktop 1440×900 and mobile 390×844 browser checks passed with no page overflow, console errors, or runtime errors; workspace cards, private preview cards, hover state, dialog focus, Escape close, and revision-copy removal were exercised. Temporary preview files and server were removed.
+  - Focused integration verification passed 11 files / 26 tests. Full `npm run verify` passed 131 application test files / 595 tests, every application/realtime/Cloudflare/AI Worker TypeScript target, 15 Cloudflare runtime tests, ESLint, the pinned tldraw invariant, and the production build.
+  - The explicit Durable Object test for 100 authenticated sockets passed in 1.935 seconds; the suite also retains high-frequency legitimate-update, two-user convergence, hibernation, viewer denial, identity, scope, bounds, and revocation coverage.
+  - `npm run db:check`, `npm audit --omit=dev` with zero production vulnerabilities, generated Worker binding verification, explicit Wrangler production/development dry-runs, and `git diff --check` passed.
+  - A read-only production secret-name check confirmed both `REALTIME_COORDINATOR_SECRET` and `REALTIME_TICKET_SIGNING_KEY` are configured on the deployed Worker; no secret values were read or changed.
+- Risks/Notes:
+  - Uploaded image/video shapes render safe durable geometry in dashboard thumbnails; exact private R2 pixels are intentionally not fetched for every board card.
+  - No database migration, rate limit, dependency change, tldraw/editor/patch change, Worker storage mutation, deployment, commit, or push was performed.
+- Next Steps:
+  - Smoke the canonical routes with a signed-in production account and two real browsers, then commit/push and deploy only when requested.
+
+### [2026-07-17 19:05 IST] - Add student Board Tools without changing the canvas engine
+- Request: Make the whiteboard more interactive and useful for students with Miro-inspired learning tools, while keeping the current tldraw version, patch, internals, shape behavior, and watermark handling untouched.
+- Plan: Reuse the existing top-right template entry as one uncluttered Board Tools surface, create only native editable shapes through public Editor APIs, keep personal utilities local when they are not truly collaborative, and verify the UI at desktop and mobile sizes before running every release gate.
+- Actions:
+  - Added a responsive Board Tools panel with Study, Calculator, Focus, and Templates tabs. The centered stock creation toolbar and right-side color controls remain unchanged.
+  - Added four editable native study layouts: Cornell Notes, Concept Map, Study Planner, and Recall Cards. Each insertion is viewport-centered, one undo step, capacity-checked, and automatically participates in the existing Yjs multiplayer document.
+  - Added a bounded local expression parser for arithmetic, parentheses, powers, percentages, constants, square root, absolute value, rounding, floor/ceiling, and logarithms. It uses no dynamic evaluation, network request, storage, or model call and can add a validated calculation card to the board.
+  - Added a personal 15/25/50-minute focus timer with start, pause, reset, time extension, progress, completion announcements, and a minimized My Focus chip. The UI explicitly identifies it as device-local rather than implying shared classroom state.
+  - Preserved the four existing Fabric planning templates inside the new panel, added keyboard/touch/accessibility states, and kept tool insertion hidden on view-only boards.
+- Files Changed:
+  - `components/fabric-whiteboard/board-tools-panel.tsx` and test - Responsive student-tool UI, calculator, focus timer, template access, announcements, and interaction coverage.
+  - `lib/boards/study-calculator.ts` and test - Safe bounded expression tokenizer/parser, validation, formatting, and adversarial cases.
+  - `lib/boards/tldraw-study-tools.ts` and test - Deterministic native study layouts and calculation-card insertion with public Editor history/capacity handling.
+  - `components/fabric-whiteboard.tsx` and `app/globals.css` - Reuse the existing top-right action and reserve the usable canvas lane while Board Tools is open.
+- Diff Summary:
+  - Template-only dialog -> one organized Board Tools workspace for learning, calculation, focus, and existing planning templates.
+  - Static study suggestions -> editable, undoable, multiplayer-native board layouts.
+  - No in-board study utility -> safe calculator cards and an honestly local focus timer.
+- Validation:
+  - Focused verification passed 5 files / 41 tests, including the new parser, insertion rollback/history behavior, panel accessibility/interactions, existing templates, and canvas chrome.
+  - Desktop 1440x900 and mobile 390x844 browser checks confirmed bounded panels, full-size calculator keys, calculator insertion, minimized timer behavior, no horizontal overflow, and no console warnings or errors; the temporary preview route and server were removed afterward.
+  - Full `npm run verify` passed 134 application test files / 622 tests, every application/realtime/Cloudflare/AI Worker TypeScript target, 15 Cloudflare runtime tests, ESLint, the production build, and the frozen tldraw invariant.
+  - `npm run db:check`, `npm audit --omit=dev` with zero production vulnerabilities, generated Worker binding verification, explicit Wrangler production/development dry-runs, credential-safe inspection, and `git diff --check` passed.
+  - tldraw remains pinned at `4.2.0`; its dependency, patch, editor internals, canvas tool IDs, shape behavior, and watermark handling were not changed.
+- Risks/Notes:
+  - The focus timer is intentionally personal. A synchronized classroom timer, voting, reactions, or presenter controls require explicit server-authoritative Durable Object state and permission design in a later milestone.
+  - No database migration, API, rate limit, environment variable, dependency, Worker, Cloudflare storage, deployment, commit, or push change was introduced.
+- Next Steps:
+  - Exercise the native study layouts with two signed-in collaborators, then design shared classroom facilitation state separately before adding synchronized timers, voting, reactions, or presenter controls.

@@ -24,18 +24,29 @@ import CloseIcon from "reicon-react/icons/X";
 
 import { useCurrentUser } from "@/components/current-user-provider";
 import { FabricLogo, IconButton, UserAvatar, cx } from "@/components/ui";
+import {
+  APP_ROUTES,
+  boardPath,
+  dashboardPath,
+  workspaceRoutePath,
+  type WorkspaceAppRoute,
+} from "@/lib/app-routes";
 import { listBoards, type BoardSummary } from "@/lib/boards/client";
 
-const workspaceNavigation: Array<{ label: string; href: string; icon: IconComponent }> = [
-  { label: "Boards", href: "/app/product-studio", icon: BoardsIcon },
-  { label: "Members", href: "/app/product-studio/members", icon: MembersIcon },
-  { label: "Activity", href: "/app/product-studio/activity", icon: ActivityIcon },
-  { label: "Settings", href: "/app/product-studio/settings", icon: SettingsIcon },
+const workspaceNavigation: Array<{
+  label: string;
+  href: WorkspaceAppRoute;
+  icon: IconComponent;
+}> = [
+  { label: "Boards", href: APP_ROUTES.dashboard, icon: BoardsIcon },
+  { label: "Members", href: APP_ROUTES.members, icon: MembersIcon },
+  { label: "Activity", href: APP_ROUTES.activity, icon: ActivityIcon },
+  { label: "Settings", href: APP_ROUTES.settings, icon: SettingsIcon },
 ];
 
 function isCurrentRoute(pathname: string, href: string) {
-  if (href === "/app/product-studio") {
-    return pathname === href || pathname.includes("/boards/");
+  if (href === APP_ROUTES.dashboard) {
+    return pathname === href || pathname.startsWith("/app/boards/");
   }
 
   return pathname === href;
@@ -59,11 +70,7 @@ function WorkspaceNav({
         return (
           <Link
             key={item.href}
-            href={
-              workspaceId
-                ? `${item.href}?workspaceId=${encodeURIComponent(workspaceId)}`
-                : item.href
-            }
+            href={workspaceRoutePath(item.href, workspaceId)}
             onClick={onNavigate}
             aria-current={active ? "page" : undefined}
             className={cx(
@@ -100,12 +107,12 @@ function WorkspaceNav({
 function AccountLink({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const user = useCurrentUser();
-  const active = pathname === "/app/account";
+  const active = pathname === APP_ROUTES.account;
 
   return (
     <div className="text-base sm:text-sm">
       <Link
-        href="/app/account"
+        href={APP_ROUTES.account}
         onClick={onNavigate}
         aria-current={active ? "page" : undefined}
         className={cx(
@@ -186,7 +193,7 @@ function RecentBoardLinks({
       ) : visibleBoards.map((board) => (
         <Link
           key={board.id}
-          href={`/app/product-studio/boards/${board.id}`}
+          href={boardPath(board.id)}
           onClick={onNavigate}
           className="group flex min-w-0 items-center gap-2 rounded-radius-md px-1 py-1.5 text-dark-text-alt outline-none hover:bg-surface-white/65 hover:text-near-black-primary-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent"
         >
@@ -197,9 +204,7 @@ function RecentBoardLinks({
       {!loadingFallback && visibleBoards.length === 0 && (
         <Link
           href={
-            workspaceId
-              ? `/app/product-studio?workspaceId=${encodeURIComponent(workspaceId)}`
-              : "/app/product-studio"
+            dashboardPath({ workspaceId })
           }
           onClick={onNavigate}
           className="rounded-radius-md px-1 py-1.5 text-dark-text-alt outline-none hover:bg-surface-white/65 hover:text-near-black-primary-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent"
@@ -222,7 +227,7 @@ function WorkspaceSidebarContent({
   workspaceId?: string;
   workspaceName?: string;
 }) {
-  const workspaceLabel = workspaceName ?? (workspaceId ? "Workspace" : "All workspaces");
+  const workspaceLabel = workspaceName ?? (workspaceId ? "Workspace" : "All Workspaces");
   const workspaceInitials = workspaceLabel
     .split(/\s+/)
     .filter(Boolean)
@@ -236,7 +241,7 @@ function WorkspaceSidebarContent({
       <div className="flex h-16 shrink-0 items-center px-4">
         <Link
           href="/"
-          aria-label="Fabric home"
+          aria-label="Homepage"
           onClick={onNavigate}
           className="rounded-radius-sm outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent"
         >
@@ -246,7 +251,7 @@ function WorkspaceSidebarContent({
 
       <div className="px-3 text-base sm:text-sm">
         <Link
-          href="/app"
+          href={APP_ROUTES.workspaces}
           onClick={onNavigate}
           className="flex min-h-11 min-w-0 items-center gap-2.5 rounded-radius-lg bg-surface-white/72 px-2.5 font-medium ring-1 ring-near-black-primary-text/6 outline-none hover:bg-surface-white focus-visible:outline-2 focus-visible:outline-sky-blue-accent sm:min-h-10"
         >
@@ -260,15 +265,25 @@ function WorkspaceSidebarContent({
         </Link>
       </div>
 
-      <div className="px-3 pt-5">
-        <WorkspaceNav onNavigate={onNavigate} workspaceId={workspaceId} />
-      </div>
+      {workspaceId ? (
+        <>
+          <div className="px-3 pt-5">
+            <WorkspaceNav onNavigate={onNavigate} workspaceId={workspaceId} />
+          </div>
 
-      <RecentBoardLinks
-        workspaceId={workspaceId}
-        initialBoards={recentBoards}
-        onNavigate={onNavigate}
-      />
+          <RecentBoardLinks
+            workspaceId={workspaceId}
+            initialBoards={recentBoards}
+            onNavigate={onNavigate}
+          />
+        </>
+      ) : (
+        <div className="flex-1 px-4 pt-8">
+          <p className="text-pretty text-base text-muted-gray sm:text-sm">
+            Choose a workspace to open its boards, members, activity, and settings.
+          </p>
+        </div>
+      )}
 
       <div className="border-t border-sky-blue-accent/10 p-3">
         <AccountLink onNavigate={onNavigate} />
@@ -369,7 +384,7 @@ export function WorkspaceShell({
   const router = useRouter();
   const user = useCurrentUser();
   const activeWorkspaceId = workspaceId ?? searchParams.get("workspaceId") ?? undefined;
-  const canSearchBoards = pathname.startsWith("/app/product-studio");
+  const canSearchBoards = pathname === APP_ROUTES.dashboard;
 
   useModalFocus(mobileNav, mobileNavRef, () => setMobileNav(false));
   useModalFocus(commandOpen, commandRef, () => setCommandOpen(false));
@@ -390,12 +405,8 @@ export function WorkspaceShell({
   const searchWorkspace = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const query = String(new FormData(event.currentTarget).get("workspace-search") ?? "").trim();
-    const params = new URLSearchParams();
-    if (activeWorkspaceId) params.set("workspaceId", activeWorkspaceId);
-    if (query) params.set("q", query);
-    const suffix = params.size > 0 ? `?${params.toString()}` : "";
     setMobileSearch(false);
-    router.push(`/app/product-studio${suffix}`);
+    router.push(dashboardPath({ workspaceId: activeWorkspaceId, q: query }));
     window.requestAnimationFrame(() => mobileSearchTriggerRef.current?.focus());
   };
 
@@ -460,7 +471,13 @@ export function WorkspaceShell({
             </IconButton>
           </div>
           <div className="min-w-0 flex-1 lg:hidden">
-            <FabricLogo />
+            <Link
+              href="/"
+              aria-label="Homepage"
+              className="inline-flex rounded-radius-sm outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent"
+            >
+              <FabricLogo />
+            </Link>
           </div>
           <div className="hidden min-w-0 flex-1 lg:block">
             {canSearchBoards ? searchForm() : null}
@@ -497,7 +514,7 @@ export function WorkspaceShell({
             </IconButton>
             <div className="text-base lg:hidden">
               <Link
-                href="/app/account"
+                href={APP_ROUTES.account}
                 aria-label="Open account"
                 className="grid size-9 place-items-center rounded-radius-pill outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent"
               >
@@ -590,18 +607,25 @@ export function WorkspaceShell({
             </div>
             <nav aria-label="Quick navigation" className="grid gap-1 p-2">
               {[
-                ...workspaceNavigation,
-                { label: "Account", href: "/app/account", icon: UserIcon },
+                ...(activeWorkspaceId
+                  ? workspaceNavigation.map((item) => ({
+                      ...item,
+                      href: workspaceRoutePath(item.href, activeWorkspaceId),
+                    }))
+                  : [
+                      {
+                        label: "All Workspaces",
+                        href: APP_ROUTES.workspaces,
+                        icon: BoardsIcon,
+                      },
+                    ]),
+                { label: "Account", href: APP_ROUTES.account, icon: UserIcon },
               ].map((item) => {
                 const Icon = item.icon;
-                const href =
-                  activeWorkspaceId && item.href.startsWith("/app/product-studio")
-                    ? `${item.href}?workspaceId=${encodeURIComponent(activeWorkspaceId)}`
-                    : item.href;
                 return (
                   <Link
                     key={item.href}
-                    href={href}
+                    href={item.href}
                     onClick={() => setCommandOpen(false)}
                     className="flex min-h-11 items-center gap-3 rounded-radius-lg px-3 text-base font-medium outline-none hover:bg-light-surface-tint focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-sky-blue-accent sm:text-sm"
                   >

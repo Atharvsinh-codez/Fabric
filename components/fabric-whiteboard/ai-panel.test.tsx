@@ -145,8 +145,9 @@ describe("Fabric agent canvas sidebar", () => {
     );
     renderPanel({ editor });
 
-    expect(container.textContent).toContain("What should Fabric make?");
-    expect(container.textContent).toContain("Fabric reads the visible canvas");
+    expect(container.textContent).toContain("Make the board clearer");
+    expect(container.textContent).toContain("Try a starting point");
+    expect(container.textContent).toContain("show you every change before it is applied");
     expect(container.textContent).not.toMatch(/No Selection|Objects? Selected/i);
     const panel = container.querySelector<HTMLElement>(
       '[aria-label="Fabric agent"]',
@@ -157,16 +158,31 @@ describe("Fabric agent canvas sidebar", () => {
     ).toBe("Fabric agent");
     expect(
       panel?.querySelector<HTMLTextAreaElement>("#fabric-ai-instruction")?.placeholder,
-    ).toBe("Ask Fabric agent to write on the board…");
+    ).toBe("Describe what you want on the board…");
     expect(panel?.className).toContain("inset-x-2");
     expect(panel?.className).toContain("bottom-2");
     expect(panel?.className).toContain("rounded-radius-2xl");
     expect(panel?.className).toContain("sm:left-3");
     expect(panel?.className).toContain("sm:right-auto");
     expect(panel?.className).toContain("sm:w-[23rem]");
+    expect(panel?.className).toContain("sm:h-[min(42rem,calc(100dvh-5rem))]");
     expect(panel?.className).toContain("sm:bottom-auto");
     expect(panel?.className).not.toContain("sm:rounded-none");
     expect(container.querySelector("[data-wave-spinner]")).toBeNull();
+    expect(
+      panel?.querySelector('[aria-label="Close Fabric agent"]')?.getAttribute(
+        "data-tooltip-align",
+      ),
+    ).toBe("end");
+
+    const starter = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === "Turn this board into a clear action plan.",
+    );
+    expect(starter?.className).toContain("break-words");
+    act(() => starter?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(
+      panel?.querySelector<HTMLTextAreaElement>("#fabric-ai-instruction")?.value,
+    ).toBe("Turn this board into a clear action plan.");
 
     writePrompt("Write a clear three-step launch plan.");
     await sendPrompt();
@@ -184,9 +200,9 @@ describe("Fabric agent canvas sidebar", () => {
     expect(container.textContent).toContain(
       "I drafted a concise synthesis from the visible canvas.",
     );
-    expect(container.textContent).toContain("Change Preview");
+    expect(container.textContent).toContain("Review Changes");
     expect(container.textContent).toContain("Apply Changes");
-    expect(container.textContent).toContain("Discard");
+    expect(container.textContent).toContain("Discard Preview");
     expect(container.querySelector("[data-wave-spinner]")).toBeNull();
 
     act(() => root.render(null));
@@ -237,7 +253,7 @@ describe("Fabric agent canvas sidebar", () => {
     expect(container.textContent).toContain("1. Use everything visible");
     expect(container.textContent).toContain("2. Create a new group");
     expect(container.textContent).not.toMatch(/select(?:ed|ion)?/i);
-    expect(container.textContent).not.toContain("Change Preview");
+    expect(container.textContent).not.toContain("Review Changes");
     expect(container.textContent).not.toContain("Apply Changes");
   });
 

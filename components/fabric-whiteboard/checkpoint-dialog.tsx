@@ -163,7 +163,7 @@ export function FabricCheckpointDialog({
                       <div className="min-w-0">
                         <p className="truncate font-medium">{checkpoint.name}</p>
                         <p className="text-base text-muted-gray sm:text-sm">
-                          Revision {checkpoint.sourceRevision} · {formatCheckpointDate(checkpoint.createdAt)}
+                          {formatCheckpointDate(checkpoint.createdAt)}
                         </p>
                         <p className="truncate text-base text-muted-gray sm:text-sm">
                           {checkpoint.creatorName ?? "Fabric member"}

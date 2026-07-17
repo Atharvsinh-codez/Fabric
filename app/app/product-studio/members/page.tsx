@@ -1,37 +1,15 @@
-import type { Metadata } from "next";
+import { permanentRedirect } from "next/navigation";
 
-import { MembersPage } from "@/components/workspace-pages";
-import { requireProtectedPagePrincipal } from "@/lib/auth/page-principal";
-import { loadWorkspaceBootstrap } from "@/lib/boards/dashboard-loader";
-import { isWorkspaceRolloutEnabled } from "@/lib/rollout/workspace-rollout";
+import {
+  APP_ROUTES,
+  withSearchParams,
+  type RouteSearchParams,
+} from "@/lib/app-routes";
 
-export const metadata: Metadata = {
-  title: "Members",
-  description: "Manage access to your active Fabric workspace.",
-};
-
-export default async function ProductStudioMembersPage({
+export default async function LegacyProductStudioMembersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ workspaceId?: string | string[] }>;
+  searchParams: Promise<RouteSearchParams>;
 }) {
-  const { workspaceId } = await searchParams;
-  const requestedWorkspaceId =
-    typeof workspaceId === "string" ? workspaceId : undefined;
-  const principal = await requireProtectedPagePrincipal();
-  const workspaces = await loadWorkspaceBootstrap(principal.id);
-  const activeWorkspace =
-    workspaces.find((workspace) => workspace.id === requestedWorkspaceId) ??
-    workspaces[0] ??
-    null;
-  const organizationWorkspaceId =
-    activeWorkspace && isWorkspaceRolloutEnabled(activeWorkspace.id)
-      ? activeWorkspace.id
-      : null;
-  return (
-    <MembersPage
-      workspaceId={requestedWorkspaceId}
-      organizationWorkspaceId={organizationWorkspaceId}
-    />
-  );
+  permanentRedirect(withSearchParams(APP_ROUTES.members, await searchParams));
 }

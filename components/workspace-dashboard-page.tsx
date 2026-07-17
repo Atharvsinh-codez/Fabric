@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -14,9 +15,16 @@ import AddIcon from "reicon-react/icons/Add2";
 import ArrowRightIcon from "reicon-react/icons/ArrowRight";
 import RefreshIcon from "reicon-react/icons/Refresh";
 
+import { BoardPreview } from "@/components/board-preview";
+import { BoardCoverPicker } from "@/components/board-cover-picker";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { Button } from "@/components/ui";
-import { BoardCoverPicker } from "@/components/board-cover-picker";
+import {
+  APP_ROUTES,
+  boardPath,
+  dashboardPath,
+  workspaceRoutePath,
+} from "@/lib/app-routes";
 import {
   archiveBoard,
   createBoard as createBoardRequest,
@@ -43,6 +51,14 @@ const BOARD_VIEWS = [
 ] as const;
 type BoardView = (typeof BOARD_VIEWS)[number];
 const BOARD_STATUSES = ["draft", "active", "review", "approved"] as const;
+const BOARD_VIEW_LABELS: Record<BoardView, string> = {
+  recent: "Recent",
+  favorite: "Favorites",
+  pinned: "Pinned",
+  shared: "Shared With Me",
+  archived: "Archived",
+  all: "All Boards",
+};
 
 const dashboardDateFormatter = new Intl.DateTimeFormat("en", {
   month: "short",
@@ -60,117 +76,6 @@ function formatDashboardDate(value: string) {
 
 function canEditBoard(role: BoardSummary["role"]): boolean {
   return role === "owner" || role === "editor";
-}
-
-function BoardPreview({ board }: { board: BoardSummary }) {
-  if (board.cover?.kind === "asset") {
-    return (
-      <div
-        className="relative aspect-[16/10] overflow-hidden rounded-t-radius-xl bg-cover bg-center bg-no-repeat"
-        style={{
-          backgroundImage: `url(/api/boards/${encodeURIComponent(board.id)}/assets/${encodeURIComponent(board.cover.assetId)})`,
-        }}
-        aria-hidden="true"
-      >
-        <div className="absolute inset-0 bg-linear-to-t from-black/55 via-black/5 to-transparent" />
-        <p className="absolute right-3 bottom-3 rounded-radius-pill bg-black/55 px-2 py-1 text-[0.6875rem] font-medium text-white backdrop-blur-sm">
-          Revision {board.revision}
-        </p>
-      </div>
-    );
-  }
-  const variant =
-    [...board.id].reduce((sum, character) => sum + character.charCodeAt(0), 0) %
-    3;
-  const layouts = [
-    {
-      note: "top-[13%] left-[8%] w-[38%] -rotate-2 bg-[#fff1a8] text-[#644c00]",
-      cluster:
-        "top-[15%] right-[8%] w-[34%] rotate-1 bg-[#dff3ff] text-[#075b86]",
-      frame: "bottom-[12%] left-[26%] w-[48%] bg-surface-white",
-      connector: "top-[47%] left-[38%] w-[24%] rotate-[19deg]",
-    },
-    {
-      note: "top-[16%] right-[9%] w-[36%] rotate-2 bg-[#eee8ff] text-[#5d459f]",
-      cluster:
-        "top-[12%] left-[8%] w-[35%] -rotate-1 bg-[#e4f5e8] text-[#26734d]",
-      frame: "bottom-[11%] left-[12%] w-[54%] bg-surface-white",
-      connector: "top-[48%] left-[28%] w-[32%] -rotate-[16deg]",
-    },
-    {
-      note: "top-[12%] left-[11%] w-[35%] rotate-1 bg-[#ffe7dc] text-[#8a3e24]",
-      cluster:
-        "top-[21%] right-[9%] w-[37%] -rotate-2 bg-[#dff3ff] text-[#075b86]",
-      frame: "bottom-[10%] right-[19%] w-[52%] bg-surface-white",
-      connector: "top-[45%] left-[41%] w-[24%] rotate-[29deg]",
-    },
-  ] as const;
-  const layout = layouts[variant] ?? layouts[0];
-  const presetTone =
-    board.cover?.kind === "preset"
-      ? {
-          sky: "bg-[#eef8ff]",
-          mint: "bg-[#edf9f0]",
-          violet: "bg-[#f3efff]",
-          sunset: "bg-[#fff1ea]",
-          sand: "bg-[#faf3e5]",
-          slate: "bg-[#eef1f4]",
-        }[board.cover.value]
-      : "bg-[var(--canvas)]";
-
-  return (
-    <div
-      className={`relative aspect-[16/10] overflow-hidden rounded-t-radius-xl ${presetTone} [background-image:linear-gradient(rgb(18_18_18/4%)_1px,transparent_1px),linear-gradient(90deg,rgb(18_18_18/4%)_1px,transparent_1px)] [background-size:22px_22px]`}
-      aria-hidden="true"
-    >
-      <div className="absolute inset-x-0 top-0 h-20 bg-linear-to-b from-sky-blue-accent/7 to-transparent" />
-
-      <div
-        className={`absolute rounded-radius-md p-2.5 shadow-sm ring-1 ring-black/5 motion-safe:transition-transform motion-safe:duration-300 group-hover:-translate-y-1 ${layout.note}`}
-      >
-        <p className="line-clamp-2 text-[0.6875rem] font-medium">
-          {board.title}
-        </p>
-        <div className="flex flex-col gap-1 pt-2">
-          <span className="h-1 w-full rounded-radius-pill bg-current opacity-15" />
-          <span className="h-1 w-3/4 rounded-radius-pill bg-current opacity-10" />
-        </div>
-      </div>
-
-      <div
-        className={`absolute rounded-radius-md p-2.5 shadow-sm ring-1 ring-black/5 motion-safe:transition-transform motion-safe:duration-300 group-hover:translate-x-1 ${layout.cluster}`}
-      >
-        <p className="text-[0.625rem] font-medium">Evidence cluster</p>
-        <div className="grid grid-cols-3 gap-1 pt-2">
-          <span className="h-7 rounded-radius-sm bg-white/72" />
-          <span className="h-7 rounded-radius-sm bg-white/72" />
-          <span className="h-7 rounded-radius-sm bg-white/72" />
-        </div>
-      </div>
-
-      <div
-        className={`absolute rounded-radius-lg p-2.5 shadow-sm ring-1 ring-black/6 motion-safe:transition-transform motion-safe:duration-300 group-hover:translate-y-0.5 ${layout.frame}`}
-      >
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-[0.625rem] font-medium">Decision frame</p>
-          <span className="size-1.5 rounded-radius-pill bg-sky-blue-accent" />
-        </div>
-        <div className="grid grid-cols-3 gap-1 pt-2">
-          <span className="h-5 rounded-radius-sm bg-[#e8f5ff]" />
-          <span className="h-5 rounded-radius-sm bg-[#f0ebff]" />
-          <span className="h-5 rounded-radius-sm bg-[#e4f6e9]" />
-        </div>
-      </div>
-
-      <span
-        className={`absolute h-px origin-left bg-sky-blue-accent/48 ${layout.connector}`}
-      />
-
-      <p className="absolute right-3 bottom-3 rounded-radius-pill bg-surface-white/88 px-2 py-1 text-[0.6875rem] font-medium text-muted-gray shadow-sm ring-1 ring-black/5 backdrop-blur-sm">
-        Revision {board.revision}
-      </p>
-    </div>
-  );
 }
 
 function DashboardToast({ message }: { message: string | null }) {
@@ -248,6 +153,7 @@ export function WorkspaceDashboardPage({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
   const boardRequestVersion = useRef(0);
+  const foregroundRefreshAt = useRef(0);
 
   useEffect(
     () => () => {
@@ -297,8 +203,40 @@ export function WorkspaceDashboardPage({
   );
   const visibleBoards = activeBoards;
 
+  const refreshCurrentBoardPage = useCallback(async () => {
+    if (!activeWorkspaceId) return;
+    const requestVersion = ++boardRequestVersion.current;
+    try {
+      const boardPage = await listBoardsPage({
+        workspaceId: activeWorkspaceId,
+        view: activeView,
+        q: organizationEnabled ? normalizedQuery || undefined : undefined,
+        projectId: activeProjectId,
+        status: activeStatus,
+      });
+      if (boardRequestVersion.current !== requestVersion) return;
+      setBoards(boardPage.boards);
+      setBoardPagination({
+        queryKey: boardQueryKey,
+        nextCursor: boardPage.nextCursor,
+      });
+    } catch {
+      // Foreground refresh is opportunistic. Keep the already rendered board
+      // list if the network is temporarily unavailable.
+    }
+  }, [
+    activeProjectId,
+    activeStatus,
+    activeView,
+    activeWorkspaceId,
+    boardQueryKey,
+    normalizedQuery,
+    organizationEnabled,
+  ]);
+
   useEffect(() => {
     if (!activeWorkspaceId) return;
+    foregroundRefreshAt.current = Date.now();
     const requestVersion = ++boardRequestVersion.current;
     let active = true;
     void Promise.all([
@@ -341,6 +279,33 @@ export function WorkspaceDashboardPage({
     organizationEnabled,
     query,
   ]);
+
+  useEffect(() => {
+    if (!activeWorkspaceId) return;
+
+    const refreshAfterReturn = () => {
+      if (loadState !== "ready" || document.visibilityState === "hidden") return;
+      const now = Date.now();
+      if (now - foregroundRefreshAt.current < 3_000) return;
+      foregroundRefreshAt.current = now;
+      void refreshCurrentBoardPage();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") refreshAfterReturn();
+    };
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) refreshAfterReturn();
+    };
+
+    window.addEventListener("focus", refreshAfterReturn);
+    window.addEventListener("pageshow", handlePageShow);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("focus", refreshAfterReturn);
+      window.removeEventListener("pageshow", handlePageShow);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [activeWorkspaceId, loadState, refreshCurrentBoardPage]);
 
   const retryLoad = async () => {
     const requestVersion = ++boardRequestVersion.current;
@@ -438,7 +403,7 @@ export function WorkspaceDashboardPage({
     if (loadState !== "ready") return;
 
     if (!activeWorkspace) {
-      router.push("/app/onboarding");
+      router.push(APP_ROUTES.onboarding);
       return;
     }
 
@@ -451,7 +416,7 @@ export function WorkspaceDashboardPage({
         document: { version: 1, nodes: [], edges: [] },
       });
       setBoards((current) => [board, ...current]);
-      router.push(`/app/product-studio/boards/${board.id}`);
+      router.push(boardPath(board.id));
     } catch (error) {
       showToast(
         error instanceof Error
@@ -474,7 +439,15 @@ export function WorkspaceDashboardPage({
       if (value) params.set(key, value);
       else params.delete(key);
     }
-    router.push(`/app/product-studio?${params.toString()}`);
+    router.push(
+      dashboardPath({
+        workspaceId: params.get("workspaceId"),
+        q: params.get("q"),
+        view: params.get("view"),
+        projectId: params.get("projectId"),
+        status: params.get("status"),
+      }),
+    );
   };
 
   const handleCreateProject = async (event: FormEvent<HTMLFormElement>) => {
@@ -639,12 +612,7 @@ export function WorkspaceDashboardPage({
               loadState === "ready" ? String(activeBoards.length) : "—",
             ],
             ["Your role", activeWorkspace?.role ?? "—"],
-            [
-              "Latest revision",
-              loadState === "ready" && activeBoards[0]
-                ? `#${activeBoards[0].revision}`
-                : "—",
-            ],
+            ["Current view", BOARD_VIEW_LABELS[activeView]],
           ].map(([label, value]) => (
             <div key={label} className="min-w-0 px-4 py-3.5 sm:px-5 sm:py-4">
               <dt className="truncate text-sm font-medium text-muted-gray">
@@ -982,7 +950,7 @@ export function WorkspaceDashboardPage({
                   >
                     <article className="soft-shadow overflow-hidden rounded-radius-xl bg-surface-white ring-1 ring-near-black-primary-text/7">
                       <Link
-                        href={`/app/product-studio/boards/${board.id}`}
+                        href={boardPath(board.id)}
                         aria-label={`Open ${board.title}`}
                         className="group outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-sky-blue-accent"
                       >
@@ -992,7 +960,7 @@ export function WorkspaceDashboardPage({
                         <div className="flex min-w-0 items-start gap-3">
                           <div className="min-w-0 flex-1">
                             <Link
-                              href={`/app/product-studio/boards/${board.id}`}
+                              href={boardPath(board.id)}
                               className="group flex min-w-0 items-center gap-2 rounded-radius-sm outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent"
                             >
                               <p className="truncate text-base font-medium text-near-black-primary-text sm:text-sm">
@@ -1164,11 +1132,7 @@ export function WorkspaceDashboardPage({
                 </p>
               </div>
               <Link
-                href={
-                  activeWorkspace
-                    ? `/app/product-studio/activity?workspaceId=${encodeURIComponent(activeWorkspace.id)}`
-                    : "/app/product-studio/activity"
-                }
+                href={workspaceRoutePath(APP_ROUTES.activity, activeWorkspace?.id)}
                 className="shrink-0 rounded-radius-sm text-sm font-medium text-dark-text-alt outline-none hover:text-near-black-primary-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent"
               >
                 View all
@@ -1191,7 +1155,7 @@ export function WorkspaceDashboardPage({
                 {activeBoards.slice(0, 4).map((board) => (
                   <li key={board.id}>
                     <Link
-                      href={`/app/product-studio/boards/${board.id}`}
+                      href={boardPath(board.id)}
                       className="flex items-start gap-3 rounded-radius-sm py-3.5 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent"
                     >
                       <div
@@ -1204,8 +1168,8 @@ export function WorkspaceDashboardPage({
                         <p className="truncate text-sm text-near-black-primary-text">
                           {board.title}
                         </p>
-                        <p className="mt-0.5 text-[0.75rem] text-muted-gray">
-                          Revision {board.revision}
+                        <p className="mt-0.5 text-[0.75rem] capitalize text-muted-gray">
+                          {board.projectName ?? "Unfiled"} · {board.status}
                         </p>
                         <time
                           dateTime={board.updatedAt}
