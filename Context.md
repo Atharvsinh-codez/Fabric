@@ -566,3 +566,32 @@ Rules:
 - Risks/Notes:
   - Real tenant, ownership, archival, read-only capability, malformed-protocol, corrupt-document, payload-bound, and slow-consumer protections remain in force; only the false-positive UI path and low authenticated ticket throttle were removed.
   - The Worker secret repair is live as version `ab99af28-141d-45b2-9925-693d0e3050b0`. Application source changes are local and have not been committed, pushed, or deployed in this step.
+
+### [2026-07-17 22:21 IST] - Keep board recovery quiet and scale update fan-out
+- Request: Remove the top and bottom save warnings during ordinary whiteboard editing, show recovery only when leaving, improve Fabric agent sync feedback, and optimize collaboration saves for more than 100 simultaneous users.
+- Plan: Preserve local recovery and durable authorization, move recovery behind explicit leave actions, simplify agent progress into a compact neutral status, and remove duplicated per-update socket work without adding authenticated rate limits.
+- Actions:
+  - Removed the persistent toolbar error control and automatic bottom-right sync notice from the live canvas.
+  - Added leave-aware recovery for actionable offline, conflict, and error states, while browser unload protection now covers every pending draft.
+  - Reworked Fabric agent syncing, applying, and finalizing into compact Ripple activity states while retaining exact durable receipt confirmation and actionable real failures.
+  - Reused committed-update broadcast statistics for shadow telemetry, eliminating a second full authenticated-socket enumeration and attachment decode per update.
+  - Added real update fan-out coverage for a 101-collaborator Durable Object room.
+- Files Changed:
+  - `components/fabric-whiteboard.tsx`, `components/fabric-whiteboard/status-controls.tsx`, and focused tests - Leave-only recovery with no in-board warning surfaces.
+  - `components/fabric-whiteboard/ai-panel.tsx` and test - Calm compact board-sync and durable-save feedback.
+  - `lib/boards/use-board-document.ts` - Pending-draft protection on actual browser leave.
+  - `cloudflare/realtime/worker.ts` and `cloudflare/realtime/worker.runtime.ts` - Single-pass update fan-out telemetry and 101-user runtime coverage.
+- Diff Summary:
+  - Persistent editing warnings -> quiet canvas with recovery shown only when leaving.
+  - Alarm-like agent sync copy -> compact neutral Ripple progress with durable confirmation unchanged.
+  - Two authenticated socket scans per committed update -> one broadcast pass reused for delivery and telemetry counts.
+- Validation:
+  - Board recovery UI tests passed: 2 files / 7 tests; Fabric agent tests passed: 6 tests.
+  - Application TypeScript and focused ESLint passed.
+  - Cloudflare realtime Worker TypeScript and all 16 runtime tests passed, including a committed update delivered across 101 authenticated collaborators.
+  - `git diff --check` passed.
+- Risks/Notes:
+  - Genuine access revocation, read-only capability, malformed data, document bounds, and slow-consumer protections remain unchanged. No authenticated edit or IP rate limit was added.
+  - No tldraw dependency, patch, editor internals, watermark behavior, database, environment variable, secret, deployment, or Durable Object storage migration changed.
+- Next Steps:
+  - Publish the verified source revision; deploy the Worker separately only when explicitly requested.

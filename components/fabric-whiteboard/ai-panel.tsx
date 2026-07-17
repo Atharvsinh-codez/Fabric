@@ -146,6 +146,13 @@ export function FabricAiPanel({
     busy ||
     stage === "preview" ||
     pendingApproval !== null;
+  const activityTitle = stage === "running"
+    ? "Preparing Preview…"
+    : stage === "applying"
+      ? "Applying Changes…"
+      : stage === "finalizing"
+        ? "Saving Changes…"
+        : null;
 
   const createMessage = (
     role: ConversationRole,
@@ -213,12 +220,12 @@ export function FabricAiPanel({
           runIdRef.current = null;
           setPendingApproval(null);
           setStage("applied");
-          setProgress("Changes applied and durably confirmed.");
+          setProgress("Changes applied and safely saved.");
           setMessages((current) => appendMessage(
             current,
             createMessage(
               "assistant",
-              "The approved changes are on the board and durably confirmed.",
+              "The approved changes are on the board and safely saved.",
             ),
           ));
           onFinalizingChange(false);
@@ -235,8 +242,8 @@ export function FabricAiPanel({
           setStage("error");
           setError(
             caught instanceof AiProposalClientError
-              ? `${caught.message} The board change remains applied. Retry confirmation after sync completes.`
-              : "The board change was applied, but Fabric could not confirm its durable AI receipt. Retry confirmation after sync completes.",
+              ? `${caught.message} Your changes remain on the board. Wait for sync, then retry save confirmation.`
+              : "Your changes are on the board, but Fabric could not confirm the save yet. Wait for sync, then retry confirmation.",
           );
           onFinalizingChange(false);
           return;
@@ -245,7 +252,7 @@ export function FabricAiPanel({
       if (!canceled) {
         setStage("error");
         setError(
-          "The board change was applied, but durable AI confirmation is still pending. Check sync and retry confirmation.",
+          "Your changes are on the board, but Fabric is still waiting to confirm the save. Check sync, then retry confirmation.",
         );
         onFinalizingChange(false);
       }
@@ -412,7 +419,7 @@ export function FabricAiPanel({
     }
 
     setStage("applying");
-    setProgress("Applying the approved board changes…");
+    setProgress("Adding your approved changes to the board.");
     setError(null);
     onFinalizingChange(true);
     try {
@@ -423,7 +430,7 @@ export function FabricAiPanel({
       setProposal(null);
       setPendingApproval({ runId, proposal });
       setStage("finalizing");
-      setProgress("Saving the approved changes and confirming their durable receipt…");
+      setProgress("The board is updated. Fabric is confirming the save.");
       previewChangeVersionRef.current = null;
     } catch {
       setStage("error");
@@ -438,7 +445,7 @@ export function FabricAiPanel({
     if (!pendingApproval) return;
     setError(null);
     setStage("finalizing");
-    setProgress("Rechecking the saved board and durable AI receipt…");
+    setProgress("Fabric is checking the board save again.");
     onFinalizingChange(true);
     setApprovalAttempt((current) => current + 1);
   }
@@ -581,10 +588,12 @@ export function FabricAiPanel({
             </li>
           ))}
 
-          {stage === "running" || stage === "applying" || stage === "finalizing" ? (
+          {activityTitle ? (
             <li
-              className="flex items-start gap-2.5 rounded-radius-lg bg-sky-blue-accent/6 p-3 text-sky-blue-accent ring-1 ring-sky-blue-accent/12 review-panel-enter motion-reduce:animate-none"
+              className="flex items-start gap-2.5 py-1.5 text-muted-gray review-panel-enter motion-reduce:animate-none"
               aria-label="Fabric agent activity"
+              data-ai-activity-stage={stage}
+              data-tone="neutral"
             >
               <span className="grid size-4 h-lh shrink-0 place-items-center" aria-hidden="true">
                 <WaveSpinner
@@ -596,8 +605,8 @@ export function FabricAiPanel({
                 />
               </span>
               <div className="min-w-0">
-                <p className="font-medium">Working on Your Board…</p>
-                <p className="text-pretty text-base text-dark-text-alt sm:text-sm">{progress}</p>
+                <p className="font-medium text-near-black-primary-text">{activityTitle}</p>
+                <p className="text-pretty text-base sm:text-sm">{progress}</p>
               </div>
             </li>
           ) : null}
@@ -712,12 +721,29 @@ export function FabricAiPanel({
 
       <div className="shrink-0 border-t border-near-black-primary-text/8 bg-surface-white/96 p-3">
         {!persistenceReady && !pendingApproval ? (
-          <p
-            className="pb-2 text-pretty text-base text-(--warning) sm:text-sm"
+          <div
+            className="flex items-start gap-2 px-2 pb-2 text-muted-gray"
             role="status"
+            aria-label="Fabric agent syncing"
+            data-ai-sync-status
+            data-tone="neutral"
           >
-            Fabric agent will unlock when the board and live collaboration finish syncing.
-          </p>
+            <span className="grid size-4 h-lh shrink-0 place-items-center" aria-hidden="true">
+              <WaveSpinner
+                animation="ripple"
+                pattern="square3x3"
+                dotShape="rounded"
+                size="xs"
+                color="var(--accent)"
+              />
+            </span>
+            <div className="min-w-0">
+              <p className="font-medium text-near-black-primary-text">Syncing Board…</p>
+              <p className="text-pretty text-base sm:text-sm">
+                Fabric agent will be ready as soon as this board is up to date.
+              </p>
+            </div>
+          </div>
         ) : null}
 
         <form

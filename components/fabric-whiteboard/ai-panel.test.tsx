@@ -71,7 +71,8 @@ describe("Fabric agent canvas sidebar", () => {
     document.body.append(container);
     root = createRoot(container);
     aiClient.cancelAiProposal.mockClear();
-    aiClient.finalizeAiProposal.mockClear();
+    aiClient.finalizeAiProposal.mockReset();
+    aiClient.finalizeAiProposal.mockResolvedValue({ status: "approved" });
     aiClient.streamAiProposal.mockReset();
   });
 
@@ -85,10 +86,14 @@ describe("Fabric agent canvas sidebar", () => {
     editor,
     applyProposal = async () => undefined,
     onClose = vi.fn(),
+    onFinalizingChange = vi.fn(),
+    persistenceReady = true,
   }: {
     editor: Editor;
     applyProposal?: FabricWhiteboardAiAdapter["applyProposal"];
     onClose?: () => void;
+    onFinalizingChange?: (finalizing: boolean) => void;
+    persistenceReady?: boolean;
   }) {
     act(() => {
       root.render(
@@ -100,9 +105,9 @@ describe("Fabric agent canvas sidebar", () => {
           durableSequence={1}
           adapter={{ applyProposal }}
           open
-          persistenceReady
+          persistenceReady={persistenceReady}
           readChangeVersion={() => 0}
-          onFinalizingChange={() => undefined}
+          onFinalizingChange={onFinalizingChange}
           onClose={onClose}
         />,
       );
@@ -209,6 +214,29 @@ describe("Fabric agent canvas sidebar", () => {
     expect(aiClient.cancelAiProposal).toHaveBeenCalledWith("run:canvas");
   });
 
+  it("shows ordinary board sync as a calm, compact status", () => {
+    const { editor } = createEditorHarness();
+    renderPanel({ editor, persistenceReady: false });
+
+    const syncStatus = container.querySelector<HTMLElement>(
+      "[data-ai-sync-status]",
+    );
+    expect(syncStatus?.dataset.tone).toBe("neutral");
+    expect(syncStatus?.textContent).toContain("Syncing Board…");
+    expect(syncStatus?.textContent).toContain(
+      "Fabric agent will be ready as soon as this board is up to date.",
+    );
+    expect(syncStatus?.className).toContain("text-muted-gray");
+    expect(syncStatus?.className).not.toContain("warning");
+    expect(
+      syncStatus?.querySelector<HTMLElement>("[data-wave-spinner]")?.dataset.animation,
+    ).toBe("ripple");
+    expect(
+      container.querySelector<HTMLTextAreaElement>("#fabric-ai-instruction")?.disabled,
+    ).toBe(true);
+    expect(container.textContent).not.toContain("finish syncing");
+  });
+
   it("always uses the visible canvas and never reads the editor selection", async () => {
     const { editor, getSelectedShapes } = createEditorHarness();
     aiClient.streamAiProposal.mockImplementation(
@@ -257,9 +285,13 @@ describe("Fabric agent canvas sidebar", () => {
     expect(container.textContent).not.toContain("Apply Changes");
   });
 
-  it("applies a reviewed patch once and finalizes its exact durable receipt", async () => {
+  it("keeps save confirmation calm until the exact durable receipt is confirmed", async () => {
     const { editor } = createEditorHarness();
     const applyProposal = vi.fn(async () => undefined);
+    let resolveFinalize: ((value: { status: string }) => void) | undefined;
+    aiClient.finalizeAiProposal.mockImplementation(() => new Promise((resolve) => {
+      resolveFinalize = resolve;
+    }));
     aiClient.streamAiProposal.mockImplementation(
       ({ onRunId }: { onRunId?: (runId: string) => void }) => {
         onRunId?.("run:approval");
@@ -289,7 +321,29 @@ describe("Fabric agent canvas sidebar", () => {
       baseDurableSequence: 1,
       observedDurableSequence: 1,
     });
-    expect(container.textContent).toContain("Changes applied and durably confirmed.");
+    const finalizingStatus = container.querySelector<HTMLElement>(
+      '[data-ai-activity-stage="finalizing"]',
+    );
+    expect(finalizingStatus?.dataset.tone).toBe("neutral");
+    expect(finalizingStatus?.textContent).toContain("Saving Changes…");
+    expect(finalizingStatus?.textContent).toContain(
+      "The board is updated. Fabric is confirming the save.",
+    );
+    expect(
+      finalizingStatus?.querySelector<HTMLElement>("[data-wave-spinner]")?.dataset.animation,
+    ).toBe("ripple");
+    expect(container.textContent).not.toContain("Board Updated");
+    expect(container.textContent).not.toContain("safely saved");
+
+    await act(async () => {
+      resolveFinalize?.({ status: "approved" });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector('[data-ai-activity-stage="finalizing"]')).toBeNull();
+    expect(container.textContent).toContain("Board Updated");
+    expect(container.textContent).toContain("Changes applied and safely saved.");
   });
 
   it("shows streamed progress, supports cancel, and keeps close available", async () => {

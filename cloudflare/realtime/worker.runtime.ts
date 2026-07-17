@@ -337,6 +337,16 @@ describe("Fabric realtime Durable Object runtime", () => {
     const { ticket } = await mintTicket();
     const socket = await connectSocket();
     expect((await authenticate(socket, ticket)).type).toBe("auth.ok");
+    const receiver = await connectSocket();
+    expect(
+      (
+        await authenticate(
+          receiver,
+          (await mintTicket({ principalId: OTHER_PRINCIPAL_ID })).ticket,
+          OTHER_CLIENT_INSTANCE_ID,
+        )
+      ).type,
+    ).toBe("auth.ok");
 
     const document = new Y.Doc();
     document.getMap("records").set("shape:1", { type: "rectangle" });
@@ -344,6 +354,7 @@ describe("Fabric realtime Durable Object runtime", () => {
     document.destroy();
     const messageId = crypto.randomUUID();
     const ack = nextFrame(socket);
+    const remote = nextFrame(receiver);
     socket.send(
       JSON.stringify({
         protocolVersion: REALTIME_PROTOCOL_VERSION,
@@ -361,6 +372,11 @@ describe("Fabric realtime Durable Object runtime", () => {
       messageId,
       payload: { duplicate: false, sequence: 1 },
     });
+    expect(await remote).toMatchObject({
+      type: "sync.update",
+      messageId,
+      payload: { sequence: 1 },
+    });
     const telemetry = log.mock.calls
       .map(([entry]) => String(entry))
       .map((entry) => JSON.parse(entry) as Record<string, unknown>)
@@ -371,7 +387,7 @@ describe("Fabric realtime Durable Object runtime", () => {
       sequence: 1,
       duplicate: false,
       rate: { messages: 1, bytes: update.byteLength },
-      fanout: { delivered: 0, authenticatedConnections: 1 },
+      fanout: { delivered: 1, authenticatedConnections: 2 },
     });
     expect(telemetry).toHaveProperty("latencyMs.handler");
   });
@@ -404,6 +420,55 @@ describe("Fabric realtime Durable Object runtime", () => {
       });
     }
     expect(frames.some((frame) => frame.type === "error")).toBe(false);
+  }, 20_000);
+
+  it("fans a committed update out across a 101-collaborator room", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const collaboratorCount = 101;
+    const clientInstanceIds = Array.from({ length: collaboratorCount }, () =>
+      crypto.randomUUID(),
+    );
+    const [sockets, tickets] = await Promise.all([
+      Promise.all(
+        Array.from({ length: collaboratorCount }, () => connectSocket()),
+      ),
+      Promise.all(
+        Array.from({ length: collaboratorCount }, () => mintTicket()),
+      ),
+    ]);
+    await Promise.all(
+      sockets.map(async (socket, index) => {
+        expect(
+          (await authenticate(socket, tickets[index].ticket, clientInstanceIds[index]))
+            .type,
+        ).toBe("auth.ok");
+      }),
+    );
+
+    const source = new Y.Doc();
+    source.getMap("records").set("shape:fanout", { type: "rectangle" });
+    const update = Y.encodeStateAsUpdate(source);
+    source.destroy();
+
+    const remoteFrames = Promise.all(sockets.slice(1).map(nextFrame));
+    const { frame: ack } = sendSyncUpdate(
+      sockets[0],
+      update,
+      clientInstanceIds[0],
+    );
+    expect(await ack).toMatchObject({
+      type: "sync.ack",
+      payload: { duplicate: false, sequence: 1 },
+    });
+    const received = await remoteFrames;
+    expect(received).toHaveLength(collaboratorCount - 1);
+    expect(
+      received.every(
+        (frame) =>
+          frame.type === "sync.update" &&
+          (frame.payload as { sequence?: unknown }).sequence === 1,
+      ),
+    ).toBe(true);
   }, 20_000);
 
   it("converges two independently edited Yjs clients through committed room updates", async () => {

@@ -38,8 +38,7 @@ import { FabricShareDialog } from "@/components/fabric-whiteboard/share-dialog";
 import {
   boardSyncLabel,
   FabricAiTrigger,
-  FabricSyncNotice,
-  FabricSyncStatus,
+  shouldOpenSyncRecoveryOnLeave,
 } from "@/components/fabric-whiteboard/status-controls";
 import { Button, IconButton } from "@/components/ui";
 import type {
@@ -185,6 +184,14 @@ export function FabricWhiteboard({
     privateMediaEnabled,
   );
 
+  const handleOpenWorkspace = useCallback(() => {
+    if (shouldOpenSyncRecoveryOnLeave(syncState)) {
+      setRecoveryOpen(true);
+      return;
+    }
+    onOpenWorkspace();
+  }, [onOpenWorkspace, syncState]);
+
   useEffect(() => {
     hasRemoteCursorRef.current = hasRemoteCursor;
   }, [hasRemoteCursor]);
@@ -304,7 +311,7 @@ export function FabricWhiteboard({
       <div className="pointer-events-none absolute inset-x-2 top-2 z-1000 flex items-start justify-between gap-2 sm:inset-x-3 sm:top-3">
         <div className="pointer-events-auto flex min-w-0 max-w-[calc(100%_-_6rem)] flex-col gap-2 sm:max-w-[calc(100%_-_14rem)] lg:flex-row lg:items-center">
           <div className="flex min-w-0 items-center gap-2 rounded-radius-lg bg-surface-white p-1 floating-shadow">
-            <IconButton label="Open Workspace" onClick={onOpenWorkspace}>
+            <IconButton label="Open Workspace" onClick={handleOpenWorkspace}>
               <ArrowLeftIcon className="size-4 shrink-0 fill-current" aria-hidden="true" />
             </IconButton>
             <div className="hidden min-w-0 pr-2 sm:block">
@@ -332,10 +339,6 @@ export function FabricWhiteboard({
           <PresenceSummary
             awarenessStates={awarenessStates}
             localAwarenessClientId={localAwarenessClientId}
-          />
-          <FabricSyncStatus
-            state={syncState}
-            onOpenRecovery={() => setRecoveryOpen(true)}
           />
           <IconButton
             label="Open Comments"
@@ -373,12 +376,6 @@ export function FabricWhiteboard({
           ) : null}
         </div>
       </div>
-
-      <FabricSyncNotice
-        state={syncState}
-        message={syncMessage}
-        onOpenRecovery={() => setRecoveryOpen(true)}
-      />
 
       {isArchived && !accessLost ? (
         <p
@@ -474,6 +471,10 @@ export function FabricWhiteboard({
         onRetrySave={onRetrySave}
         onReloadRemote={onReloadRemote}
         onDownloadLocalCopy={onDownloadLocalCopy}
+        onLeaveBoard={() => {
+          setRecoveryOpen(false);
+          onOpenWorkspace();
+        }}
       />
     </>
   );
@@ -584,6 +585,7 @@ function RecoveryDialog({
   onRetrySave,
   onReloadRemote,
   onDownloadLocalCopy,
+  onLeaveBoard,
 }: {
   state: BoardSyncState;
   message: string | null;
@@ -592,6 +594,7 @@ function RecoveryDialog({
   onRetrySave: () => void;
   onReloadRemote: () => void;
   onDownloadLocalCopy: () => void;
+  onLeaveBoard: () => void;
 }) {
   return (
     <FabricDialog
@@ -629,6 +632,9 @@ function RecoveryDialog({
             }}
           >
             Reload Remote Board
+          </Button>
+          <Button tone="danger" onClick={onLeaveBoard}>
+            Leave Board
           </Button>
         </div>
       </div>

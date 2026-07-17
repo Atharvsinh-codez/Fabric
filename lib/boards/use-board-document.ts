@@ -490,13 +490,13 @@ export function useBoardDocument(boardId: string, principalId: string) {
   }, [scheduleFlush]);
 
   useEffect(() => {
-    const protectUnsavedMemoryDraft = (event: BeforeUnloadEvent) => {
-      if (!pendingRef.current || draftStoredRef.current) return;
+    const protectPendingDraft = (event: BeforeUnloadEvent) => {
+      if (!pendingRef.current) return;
       event.preventDefault();
       event.returnValue = "";
     };
-    window.addEventListener("beforeunload", protectUnsavedMemoryDraft);
-    return () => window.removeEventListener("beforeunload", protectUnsavedMemoryDraft);
+    window.addEventListener("beforeunload", protectPendingDraft);
+    return () => window.removeEventListener("beforeunload", protectPendingDraft);
   }, []);
 
   const queueCanvasChange = useCallback(

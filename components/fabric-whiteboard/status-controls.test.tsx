@@ -6,8 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   FabricAiTrigger,
-  FabricSyncNotice,
-  FabricSyncStatus,
+  shouldOpenSyncRecoveryOnLeave,
 } from "./status-controls";
 
 describe("whiteboard status controls", () => {
@@ -24,7 +23,6 @@ describe("whiteboard status controls", () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
-    vi.useRealTimers();
   });
 
   function render(node: ReactNode) {
@@ -94,61 +92,11 @@ describe("whiteboard status controls", () => {
     ).toBeNull();
   });
 
-  it("keeps normal saved and syncing states out of the toolbar", () => {
-    render(<FabricSyncStatus state="saving" onOpenRecovery={() => undefined} />);
-    expect(container.innerHTML).toBe("");
-
-    render(<FabricSyncStatus state="synced" onOpenRecovery={() => undefined} />);
-    expect(container.innerHTML).toBe("");
-  });
-
-  it("keeps actionable sync states connected to recovery", () => {
-    const onOpenRecovery = vi.fn();
-    render(<FabricSyncStatus state="offline" onOpenRecovery={onOpenRecovery} />);
-
-    const recoveryButton = container.querySelector<HTMLButtonElement>("button");
-    expect(recoveryButton?.getAttribute("aria-label")).toBe(
-      "Offline. Open Save Recovery",
-    );
-    act(() => recoveryButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    expect(onOpenRecovery).toHaveBeenCalledOnce();
-  });
-
-  it("automatically clears the offline notice while retaining recovery access", () => {
-    vi.useFakeTimers();
-    const onOpenRecovery = vi.fn();
-    render(
-      <FabricSyncNotice
-        state="offline"
-        message="Realtime is temporarily unavailable."
-        onOpenRecovery={onOpenRecovery}
-      />,
-    );
-
-    expect(container.textContent).toContain(
-      "Live collaboration is offline. Your work remains on this device while Fabric reconnects.",
-    );
-    act(() => vi.advanceTimersByTime(6_000));
-    expect(container.querySelector('[aria-label="Board Sync Notice"]')).toBeNull();
-    expect(onOpenRecovery).not.toHaveBeenCalled();
-  });
-
-  it("lets the user dismiss a notice or open recovery immediately", () => {
-    vi.useFakeTimers();
-    const onOpenRecovery = vi.fn();
-    render(
-      <FabricSyncNotice
-        state="error"
-        message="Fabric could not save this board."
-        onOpenRecovery={onOpenRecovery}
-      />,
-    );
-
-    const review = [...container.querySelectorAll("button")].find(
-      (button) => button.textContent?.trim() === "Review Sync",
-    );
-    act(() => review?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    expect(onOpenRecovery).toHaveBeenCalledOnce();
-    expect(container.querySelector('[aria-label="Board Sync Notice"]')).toBeNull();
+  it("offers recovery only when an actionable sync state meets a leave attempt", () => {
+    expect(shouldOpenSyncRecoveryOnLeave("synced")).toBe(false);
+    expect(shouldOpenSyncRecoveryOnLeave("saving")).toBe(false);
+    expect(shouldOpenSyncRecoveryOnLeave("offline")).toBe(true);
+    expect(shouldOpenSyncRecoveryOnLeave("conflict")).toBe(true);
+    expect(shouldOpenSyncRecoveryOnLeave("error")).toBe(true);
   });
 });

@@ -100,6 +100,10 @@ type AuthenticatedAttachment = {
 };
 type SocketAttachment = PendingAttachment | AuthenticatedAttachment;
 type BufferedWebSocket = WebSocket & { readonly bufferedAmount?: number };
+type BroadcastResult = Readonly<{
+  delivered: number;
+  authenticatedConnections: number;
+}>;
 type SyncUpdateEnvelope = Extract<
   RealtimeClientEnvelope,
   { type: "sync.update" }
@@ -1253,6 +1257,8 @@ export class FabricBoardRoom extends DurableObject<Env> {
       attachment.clientInstanceId,
     );
     const fanoutStartedAt = performance.now();
+    // Reuse the broadcast pass for connection telemetry so high-fanout rooms
+    // do not deserialize every socket attachment twice per committed update.
     const fanout = this.broadcast(remoteFrame, socket);
     const fanoutLatencyMs = performance.now() - fanoutStartedAt;
     this.emitUpdateShadowTelemetry({
@@ -1263,7 +1269,8 @@ export class FabricBoardRoom extends DurableObject<Env> {
       handlerStartedAt,
       storageLatencyMs,
       fanoutLatencyMs,
-      fanout,
+      fanout: fanout.delivered,
+      authenticatedConnections: fanout.authenticatedConnections,
     });
   }
 
@@ -1301,14 +1308,17 @@ export class FabricBoardRoom extends DurableObject<Env> {
     storageLatencyMs: number;
     fanoutLatencyMs: number;
     fanout: number;
+    authenticatedConnections?: number;
   }): void {
     const elapsedWindowMs = Math.max(
       1,
       Date.now() - input.attachment.updateWindowStartedAt,
     );
-    const authenticatedConnections = this.ctx
-      .getWebSockets("fabric-room")
-      .filter((peer) => authenticatedAttachment(peer) !== null).length;
+    const authenticatedConnections =
+      input.authenticatedConnections ??
+      this.ctx
+        .getWebSockets("fabric-room")
+        .filter((peer) => authenticatedAttachment(peer) !== null).length;
     const round = (value: number): number => Math.round(value * 100) / 100;
     console.log(
       JSON.stringify({
@@ -1723,13 +1733,16 @@ export class FabricBoardRoom extends DurableObject<Env> {
     );
   }
 
-  private broadcast(serialized: string, except?: WebSocket): number {
+  private broadcast(serialized: string, except?: WebSocket): BroadcastResult {
     let delivered = 0;
+    let authenticatedConnections = 0;
     for (const peer of this.ctx.getWebSockets("fabric-room")) {
-      if (peer === except || !authenticatedAttachment(peer)) continue;
+      if (!authenticatedAttachment(peer)) continue;
+      authenticatedConnections += 1;
+      if (peer === except) continue;
       if (sendSocket(peer, serialized)) delivered += 1;
     }
-    return delivered;
+    return { delivered, authenticatedConnections };
   }
 
   private broadcastAwarenessRemoval(socket: WebSocket): void {
