@@ -122,6 +122,12 @@ export type FabricWhiteboardProps = Readonly<{
   onOpenWorkspace: () => void;
   onCheckpointRestored: () => void | Promise<void>;
   onBoardAccessChanged: () => void | Promise<unknown>;
+  onRefreshAgentCheckpoint: (
+    snapshot: CanvasDocumentSnapshot,
+  ) => Promise<{
+    revision: number;
+    documentGenerationId: string;
+  } | null>;
   awarenessStates?: ReadonlyMap<number, RealtimeAwarenessState>;
   localAwarenessClientId?: number | null;
   onAwarenessChange?: (state: RealtimeAwarenessState | null) => void;
@@ -154,6 +160,7 @@ export function FabricWhiteboard({
   onOpenWorkspace,
   onCheckpointRestored,
   onBoardAccessChanged,
+  onRefreshAgentCheckpoint,
   awarenessStates = EMPTY_AWARENESS,
   localAwarenessClientId = null,
   onAwarenessChange,
@@ -195,6 +202,11 @@ export function FabricWhiteboard({
   const acceptedMediaMimeTypes = acceptedBoardMediaMimeTypes(
     privateMediaEnabled,
   );
+
+  const refreshAiCheckpoint = useCallback(async () => {
+    if (!editor) return null;
+    return onRefreshAgentCheckpoint(documentAdapter.toCanvasDocument(editor));
+  }, [documentAdapter, editor, onRefreshAgentCheckpoint]);
 
   const handleOpenWorkspace = useCallback(() => {
     if (shouldOpenSyncRecoveryOnLeave(syncState)) {
@@ -436,6 +448,7 @@ export function FabricWhiteboard({
           readChangeVersion={() => changeVersionRef.current}
           onFinalizingChange={setAiFinalizing}
           onRetrySync={onRetrySave}
+          onRefreshCheckpoint={refreshAiCheckpoint}
           onClose={() => setPanel(null)}
         />
       ) : null}

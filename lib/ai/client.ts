@@ -94,23 +94,42 @@ const CanceledPayloadSchema = z
   })
   .strict();
 
+const HttpErrorResponseSchema = z
+  .object({
+    error: z
+      .object({
+        code: z.string().min(1).max(120).optional(),
+        message: z.string().min(1).max(2_000).optional(),
+        details: z.record(z.string(), z.unknown()).optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
 export type AiClientEvent = FabricAiSseEnvelope;
 
 export class AiProposalClientError extends Error {
   readonly code: string;
   readonly retryable: boolean;
   readonly status?: number;
+  readonly details?: Readonly<Record<string, unknown>>;
 
   constructor(
     code: string,
     message: string,
-    options: { retryable?: boolean; status?: number } = {},
+    options: {
+      retryable?: boolean;
+      status?: number;
+      details?: Readonly<Record<string, unknown>>;
+    } = {},
   ) {
     super(message);
     this.name = "AiProposalClientError";
     this.code = code;
     this.retryable = options.retryable ?? false;
     this.status = options.status;
+    this.details = options.details;
   }
 }
 
@@ -157,18 +176,21 @@ function parseSseRecord(record: string): AiClientEvent | null {
 async function readHttpError(response: Response): Promise<AiProposalClientError> {
   let code = "request_failed";
   let message = "The AI proposal could not be started. Try again.";
+  let details: Readonly<Record<string, unknown>> | undefined;
   try {
-    const body = (await response.json()) as {
-      error?: { code?: string; message?: string };
-    };
-    if (body.error?.code) code = body.error.code;
-    if (body.error?.message) message = body.error.message;
+    const parsed = HttpErrorResponseSchema.safeParse(await response.json());
+    if (parsed.success) {
+      if (parsed.data.error?.code) code = parsed.data.error.code;
+      if (parsed.data.error?.message) message = parsed.data.error.message;
+      details = parsed.data.error?.details;
+    }
   } catch {
     // Preserve the safe fallback when a proxy returns a non-JSON response.
   }
   return new AiProposalClientError(code, message, {
     retryable: response.status === 429 || response.status >= 500,
     status: response.status,
+    details,
   });
 }
 

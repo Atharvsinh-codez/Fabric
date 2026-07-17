@@ -34,6 +34,10 @@ export type BoardSyncState =
 export type BoardLoadState = "loading" | "ready" | "not-found" | "error";
 export type BoardAccessRefreshState = "current" | "refreshing" | "lost";
 export type BoardAccessRefreshResult = "refreshed" | "lost" | "unavailable";
+export type AgentCheckpointMetadata = Readonly<{
+  revision: number;
+  documentGenerationId: string;
+}>;
 
 type StoredBoardDraft = Readonly<{
   version: typeof DRAFT_STORAGE_VERSION;
@@ -183,6 +187,8 @@ export function useBoardDocument(boardId: string, principalId: string) {
   const accessLostRef = useRef(false);
   const accessRefreshPromiseRef =
     useRef<Promise<BoardAccessRefreshResult> | null>(null);
+  const agentCheckpointRefreshPromiseRef =
+    useRef<Promise<AgentCheckpointMetadata | null> | null>(null);
   const flushPendingRef = useRef<() => Promise<void>>(async () => undefined);
 
   const clearSaveTimer = useCallback(() => {
@@ -656,6 +662,93 @@ export function useBoardDocument(boardId: string, principalId: string) {
     }
   }, [boardId, principalId, scheduleFlush]);
 
+  const refreshAgentCheckpoint = useCallback((
+    snapshot: CanvasDocumentSnapshot,
+  ): Promise<AgentCheckpointMetadata | null> => {
+    const existing = agentCheckpointRefreshPromiseRef.current;
+    if (existing) return existing;
+
+    const refresh = (async (): Promise<AgentCheckpointMetadata | null> => {
+      const startingBoard = boardRef.current;
+      const currentDocument = localDocumentRef.current ?? baseDocumentRef.current;
+      const startingLoadSequence = loadSequenceRef.current;
+      const startingLocalFingerprint = localFingerprintRef.current;
+      if (!startingBoard || !currentDocument || accessLostRef.current) return null;
+      if (
+        pendingRef.current ||
+        savingRef.current ||
+        conflictRef.current
+      ) {
+        return null;
+      }
+      // A semantic-only projection is not enough to prove that the mounted
+      // tldraw/Yjs store matches the authoritative recovery checkpoint.
+      if (!snapshot.tldraw) return null;
+      const capturedDocument = writeCanvasDocument(currentDocument, snapshot);
+      const capturedFingerprint = documentFingerprint(capturedDocument);
+
+      try {
+        const remoteBoard = await getBoard(boardId);
+        const currentBoard = boardRef.current;
+        if (!currentBoard || loadSequenceRef.current !== startingLoadSequence) {
+          return null;
+        }
+        if (
+          accessLostRef.current ||
+          pendingRef.current ||
+          savingRef.current ||
+          conflictRef.current ||
+          currentBoard.revision !== startingBoard.revision ||
+          localFingerprintRef.current !== startingLocalFingerprint
+        ) {
+          return null;
+        }
+        if (
+          remoteBoard.documentGenerationId !==
+          currentBoard.documentGenerationId
+        ) {
+          return null;
+        }
+
+        const remoteFingerprint = documentFingerprint(remoteBoard.document);
+        if (
+          capturedFingerprint !== remoteFingerprint ||
+          remoteBoard.revision < currentBoard.revision
+        ) return null;
+
+        const nextBoard: BoardDetail = {
+          ...remoteBoard,
+          // Preserve the fresh mounted-editor capture by reference. Updating
+          // board metadata must not replace or remount the live Yjs store.
+          document: capturedDocument,
+        };
+        accessLostRef.current = false;
+        boardRef.current = nextBoard;
+        baseDocumentRef.current = remoteBoard.document;
+        localDocumentRef.current = capturedDocument;
+        localFingerprintRef.current = capturedFingerprint;
+        lastSavedFingerprintRef.current = remoteFingerprint;
+        removeStoredDraft(principalId, boardId);
+        setBoard(nextBoard);
+        setAccessRefreshState("current");
+        return {
+          revision: remoteBoard.revision,
+          documentGenerationId: remoteBoard.documentGenerationId,
+        };
+      } catch {
+        return null;
+      }
+    })();
+
+    agentCheckpointRefreshPromiseRef.current = refresh;
+    void refresh.finally(() => {
+      if (agentCheckpointRefreshPromiseRef.current === refresh) {
+        agentCheckpointRefreshPromiseRef.current = null;
+      }
+    });
+    return refresh;
+  }, [boardId, principalId]);
+
   const refreshBoardAccess = useCallback((): Promise<BoardAccessRefreshResult> => {
     const existing = accessRefreshPromiseRef.current;
     if (existing) return existing;
@@ -758,6 +851,7 @@ export function useBoardDocument(boardId: string, principalId: string) {
     queueTldrawChange,
     retryLoad: loadBoard,
     retrySave,
+    refreshAgentCheckpoint,
     refreshBoardAccess,
     reloadRemote,
     downloadLocalCopy,

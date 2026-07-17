@@ -297,6 +297,7 @@ function LoadedFabricWhiteboard({
       onOpenWorkspace={onOpenWorkspace}
       onCheckpointRestored={() => persistence.reloadRemote()}
       onBoardAccessChanged={refreshBoardAccess}
+      onRefreshAgentCheckpoint={persistence.refreshAgentCheckpoint}
       awarenessStates={adapter.realtime.awareness}
       localAwarenessClientId={adapter.realtime.localAwarenessClientId}
       onAwarenessChange={adapter.realtime.setAwarenessState}

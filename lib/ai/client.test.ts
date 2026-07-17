@@ -160,6 +160,41 @@ describe("streamAiProposal", () => {
     } satisfies Partial<AiProposalClientError>);
   });
 
+  it("preserves stale snapshot HTTP status, code, and safe server details", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json(
+          {
+            error: {
+              code: "stale_sequence",
+              message: "The board changed before the AI run was created.",
+              details: {
+                currentDurableSequence: 9,
+                requestedDurableSequence: 8,
+              },
+            },
+          },
+          { status: 409 },
+        ),
+      ),
+    );
+
+    const promise = streamAiProposal({
+      request,
+      signal: new AbortController().signal,
+    });
+    await expect(promise).rejects.toMatchObject({
+      code: "stale_sequence",
+      status: 409,
+      retryable: false,
+      details: {
+        currentDurableSequence: 9,
+        requestedDurableSequence: 8,
+      },
+    } satisfies Partial<AiProposalClientError>);
+  });
+
   it("reconnects to the same durable run after an incomplete stream", async () => {
     const ready = {
       patch: {

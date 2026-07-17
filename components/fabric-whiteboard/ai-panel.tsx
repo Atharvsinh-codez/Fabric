@@ -111,6 +111,7 @@ export function FabricAiPanel({
   readChangeVersion,
   onFinalizingChange,
   onRetrySync,
+  onRefreshCheckpoint,
   onClose,
 }: {
   editor: Editor | null;
@@ -124,6 +125,10 @@ export function FabricAiPanel({
   readChangeVersion: () => number;
   onFinalizingChange: (finalizing: boolean) => void;
   onRetrySync: () => void;
+  onRefreshCheckpoint: () => Promise<{
+    revision: number;
+    documentGenerationId: string;
+  } | null>;
   onClose: () => void;
 }) {
   const [instruction, setInstruction] = useState("");
@@ -285,7 +290,7 @@ export function FabricAiPanel({
     const controller = new AbortController();
     abortRef.current?.abort();
     abortRef.current = controller;
-    const startChangeVersion = readChangeVersion();
+    let expectedChangeVersion = readChangeVersion();
     setMessages((current) => appendMessage(
       current,
       createMessage(
@@ -302,18 +307,19 @@ export function FabricAiPanel({
     runIdRef.current = null;
 
     try {
-      const nextResult = await streamAiProposal({
-        request: {
-          skill: "canvas-agent",
-          boardId,
-          workspaceId,
-          documentGenerationId,
-          durableSequence,
-          instruction: nextInstruction,
-          selection: visibleCanvasSelection,
-          viewport: viewportSnapshot,
-          conversation,
-        },
+      const proposalRequest: AiProposalRequest = {
+        skill: "canvas-agent",
+        boardId,
+        workspaceId,
+        documentGenerationId,
+        durableSequence,
+        instruction: nextInstruction,
+        selection: visibleCanvasSelection,
+        viewport: viewportSnapshot,
+        conversation,
+      };
+      const streamRequest = (request: AiProposalRequest) => streamAiProposal({
+        request,
         signal: controller.signal,
         onRunId: (runId) => {
           runIdRef.current = runId;
@@ -327,6 +333,36 @@ export function FabricAiPanel({
           }
         },
       });
+      let nextResult;
+      try {
+        nextResult = await streamRequest(proposalRequest);
+      } catch (caught) {
+        if (
+          controller.signal.aborted ||
+          !(caught instanceof AiProposalClientError) ||
+          caught.code !== "stale_sequence"
+        ) {
+          throw caught;
+        }
+        const refreshedCheckpoint = await onRefreshCheckpoint().catch(() => null);
+        if (
+          controller.signal.aborted ||
+          !refreshedCheckpoint ||
+          refreshedCheckpoint.documentGenerationId !== documentGenerationId ||
+          refreshedCheckpoint.revision <= proposalRequest.durableSequence
+        ) {
+          throw caught;
+        }
+        // Capture the instruction and visible-canvas context once. Only the
+        // freshly verified authoritative checkpoint advances for this single
+        // silent retry.
+        expectedChangeVersion = readChangeVersion();
+        runIdRef.current = null;
+        nextResult = await streamRequest({
+          ...proposalRequest,
+          durableSequence: refreshedCheckpoint.revision,
+        });
+      }
       if (!("patch" in nextResult)) {
         const visibleCanvasQuestion = nextResult.reason === "missing-selection"
           ? "Tell me which part of the visible canvas to use, or describe what I should create."
@@ -347,14 +383,14 @@ export function FabricAiPanel({
         return;
       }
       const nextProposal = nextResult;
-      if (readChangeVersion() !== startChangeVersion) {
+      if (readChangeVersion() !== expectedChangeVersion) {
         setStage("error");
         setError(
           "The board changed while Fabric agent was working. Review the board and send your request again.",
         );
         return;
       }
-      previewChangeVersionRef.current = startChangeVersion;
+      previewChangeVersionRef.current = expectedChangeVersion;
       setProposal(nextProposal);
       setStage("preview");
       setProgress("Preview ready for review.");

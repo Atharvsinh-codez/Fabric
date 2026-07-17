@@ -689,3 +689,67 @@ Rules:
   - tldraw remains pinned at `4.2.0`; its package, patch, internals, shape behavior, and watermark handling are unchanged.
 - Next Steps:
   - Verify two signed-in browsers on the published build, including simultaneous drawing, panning, and the online-people panel.
+
+### [2026-07-17 23:24 IST] - Preserve typed AI snapshot race errors
+- Request: Preserve proposal-route `stale_sequence` response metadata in the browser AI client so the UI can distinguish snapshot races.
+- Plan: Reuse the existing typed AI client error, validate the shared JSON error envelope, and retain safe status, code, and details without changing server authorization.
+- Actions:
+  - Added bounded schema validation for AI HTTP error envelopes.
+  - Extended `AiProposalClientError` with readonly server details while retaining its status, code, message, and retryability contract.
+  - Added a focused `409 stale_sequence` regression covering current/requested durable sequence details.
+- Files Changed:
+  - `lib/ai/client.ts` - Typed HTTP error-detail preservation.
+  - `lib/ai/client.test.ts` - Stale snapshot response regression coverage.
+- Diff Summary:
+  - Proposal HTTP error details discarded -> validated details preserved on the typed client error.
+- Validation:
+  - Focused AI client tests passed: 1 file / 8 tests.
+  - Application TypeScript, scoped ESLint, and focused `git diff --check` passed.
+- Risks/Notes:
+  - Non-JSON or malformed proxy responses still use the existing safe fallback; 409 errors remain non-retryable unless UI policy handles the specific stale code.
+  - No AI route, panel, editor, Worker, database, dependency, tldraw, deployment, or git change was introduced.
+- Next Steps:
+  - Let the Fabric agent UI handle `stale_sequence` by refreshing readiness and inviting one clean retry.
+
+### [2026-07-17 23:30 IST] - Refresh stale AI checkpoint metadata without remounting
+- Request: Find the safe way to recover Fabric agent from `stale_sequence` while retaining the current collaborative editor and local Yjs state.
+- Plan: Accept a fresh full editor snapshot, compare it with the authoritative recovery document, and adopt only matching revision metadata under strict no-save/no-conflict guards.
+- Actions:
+  - Added a coalesced `refreshAgentCheckpoint(snapshot)` hook callback returning the authoritative revision and generation or `null` when refresh is unsafe.
+  - Rebuilt the submitted snapshot on the current local recovery document and required an exact remote fingerprint, unchanged generation, unchanged local fingerprint, stable load sequence, and no pending/saving/conflict/access-loss state before and after the fetch.
+  - Updated only board metadata and recovery refs after a match; canvas state and `editorVersion` remain untouched, so the mounted Yjs/tldraw editor is not replaced.
+- Files Changed:
+  - `lib/boards/use-board-document.ts` and focused test - Safe agent checkpoint metadata refresh, coalescing, mismatch rejection, and mid-flight save protection.
+  - `Context.md` - Recorded the diagnosed race and focused recovery primitive.
+- Diff Summary:
+  - Full remote reload/remount required to learn a newer revision -> exact snapshot-verified metadata refresh with no editor remount.
+- Validation:
+  - Focused hook tests passed: 1 file / 3 tests.
+  - Scoped ESLint and focused `git diff --check` passed.
+- Risks/Notes:
+  - Realtime does not carry Neon revision numbers, and remote Yjs changes do not update this hook's local checkpoint ref; the caller must capture the mounted editor snapshot at retry time.
+  - No AI panel, API, Worker, database, dependency, tldraw internals, deployment, or git operation changed in this focused task.
+- Next Steps:
+  - Wire the callback through the whiteboard shell so one typed `stale_sequence` response can refresh and retry once.
+
+### [2026-07-17 23:33 IST] - Silently recover harmless Fabric agent checkpoint races
+- Request: Remove the false Fabric agent error shown when collaboration has completed but another collaborator's recovery checkpoint advanced the board revision before the AI run starts.
+- Plan: Preserve snapshot authorization, verify the mounted editor against the latest authoritative checkpoint, and retry only the typed stale-revision race once without interrupting the user.
+- Actions:
+  - Wired the live editor snapshot into the safe checkpoint metadata refresh without reloading or remounting the board.
+  - On the first `stale_sequence` response, refreshes the authoritative revision and silently retries only when the full document matches, the generation is unchanged, and the revision advanced.
+  - Reuses the original prompt, canvas context, conversation, and abort signal; no duplicate chat message is created.
+  - Kept real conflicts visible and bounded recovery to one attempt, including cancellation, generation mismatch, non-advancing revision, unavailable refresh, and repeated-stale coverage.
+- Files Changed:
+  - `components/fabric-whiteboard/ai-panel.tsx` and test - One-time silent stale-checkpoint recovery and boundary coverage.
+  - `components/fabric-whiteboard.tsx`, test, and `components/editor-route-page.tsx` - Fresh mounted-editor snapshot wiring.
+  - `lib/boards/use-board-document.ts` and test - Exact-match metadata refresh without editor remount.
+  - `lib/ai/client.ts` and test - Typed AI HTTP error metadata preservation.
+- Validation:
+  - Focused AI, persistence, panel, and whiteboard tests passed: 4 files / 28 tests.
+  - Application TypeScript, scoped ESLint, and `git diff --check` passed.
+- Risks/Notes:
+  - A genuinely different remote document, replaced generation, active local save, conflict, cancellation, or second stale response is never auto-retried.
+  - No Worker, database, API authorization, dependency, rate limit, tldraw version, patch, internals, shape, or watermark change was introduced.
+- Next Steps:
+  - Publish through GitHub main and verify one agent request after a two-browser collaboration checkpoint on the production custom domain.

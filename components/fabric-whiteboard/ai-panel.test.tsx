@@ -13,11 +13,18 @@ const aiClient = vi.hoisted(() => ({
 
 vi.mock("@/lib/ai/client", () => ({
   AiProposalClientError: class AiProposalClientError extends Error {
-    readonly code = "test_error";
+    readonly code: string;
+
+    constructor(code: string, message: string) {
+      super(message);
+      this.name = "AiProposalClientError";
+      this.code = code;
+    }
   },
   ...aiClient,
 }));
 
+import { AiProposalClientError } from "@/lib/ai/client";
 import {
   FabricAiPanel,
   type FabricWhiteboardAiAdapter,
@@ -89,6 +96,8 @@ describe("Fabric agent canvas sidebar", () => {
     onFinalizingChange = vi.fn(),
     boardReadiness = "ready",
     onRetrySync = vi.fn(),
+    onRefreshCheckpoint = vi.fn(async () => null),
+    durableSequence = 1,
   }: {
     editor: Editor;
     applyProposal?: FabricWhiteboardAiAdapter["applyProposal"];
@@ -96,6 +105,11 @@ describe("Fabric agent canvas sidebar", () => {
     onFinalizingChange?: (finalizing: boolean) => void;
     boardReadiness?: "ready" | "syncing" | "needs-retry";
     onRetrySync?: () => void;
+    onRefreshCheckpoint?: () => Promise<{
+      revision: number;
+      documentGenerationId: string;
+    } | null>;
+    durableSequence?: number;
   }) {
     act(() => {
       root.render(
@@ -104,13 +118,14 @@ describe("Fabric agent canvas sidebar", () => {
           boardId="board:test"
           workspaceId="workspace:test"
           documentGenerationId="generation:test"
-          durableSequence={1}
+          durableSequence={durableSequence}
           adapter={{ applyProposal }}
           open
           boardReadiness={boardReadiness}
           readChangeVersion={() => 0}
           onFinalizingChange={onFinalizingChange}
           onRetrySync={onRetrySync}
+          onRefreshCheckpoint={onRefreshCheckpoint}
           onClose={onClose}
         />,
       );
@@ -292,6 +307,165 @@ describe("Fabric agent canvas sidebar", () => {
     );
     expect(getSelectedShapes).not.toHaveBeenCalled();
     expect(container.textContent).not.toMatch(/No Selection|Objects? Selected/i);
+  });
+
+  it("silently retries one stale sequence with the latest checkpoint and no duplicate message", async () => {
+    const { editor } = createEditorHarness();
+    const onRefreshCheckpoint = vi.fn(async () => ({
+      revision: 2,
+      documentGenerationId: "generation:test",
+    }));
+    aiClient.streamAiProposal
+      .mockRejectedValueOnce(new AiProposalClientError(
+        "stale_sequence",
+        "The board changed before the AI run was created.",
+      ))
+      .mockImplementationOnce(
+        ({ onRunId }: { onRunId?: (runId: string) => void }) => {
+          onRunId?.("run:stale-retry");
+          return Promise.resolve(canvasPreview);
+        },
+      );
+    renderPanel({ editor, durableSequence: 1, onRefreshCheckpoint });
+
+    const instruction = "Create a launch plan from everything visible.";
+    writePrompt(instruction);
+    await sendPrompt();
+
+    expect(aiClient.streamAiProposal).toHaveBeenCalledTimes(2);
+    expect(onRefreshCheckpoint).toHaveBeenCalledOnce();
+    const firstCall = aiClient.streamAiProposal.mock.calls[0]?.[0];
+    const retryCall = aiClient.streamAiProposal.mock.calls[1]?.[0];
+    expect(firstCall?.request).toEqual(expect.objectContaining({
+      durableSequence: 1,
+      instruction,
+      selection: [],
+      viewport: { x: 100, y: 200, width: 960, height: 640 },
+      conversation: [],
+    }));
+    expect(retryCall?.request).toEqual({
+      ...firstCall?.request,
+      durableSequence: 2,
+    });
+    expect(retryCall?.signal).toBe(firstCall?.signal);
+    const visibleInstructionMessages = [...container.querySelectorAll("li p")]
+      .filter((node) => node.textContent === instruction);
+    expect(visibleInstructionMessages).toHaveLength(1);
+    expect(container.textContent).toContain("Review Changes");
+    expect(container.textContent).not.toContain("Request Needs Attention");
+  });
+
+  it("never retries a non-stale typed failure", async () => {
+    const { editor } = createEditorHarness();
+    const onRefreshCheckpoint = vi.fn(async () => ({
+      revision: 2,
+      documentGenerationId: "generation:test",
+    }));
+    aiClient.streamAiProposal.mockRejectedValue(new AiProposalClientError(
+      "provider_unavailable",
+      "Fabric agent is temporarily unavailable.",
+    ));
+    renderPanel({ editor, onRefreshCheckpoint });
+
+    writePrompt("Summarize the visible board.");
+    await sendPrompt();
+
+    expect(aiClient.streamAiProposal).toHaveBeenCalledTimes(1);
+    expect(onRefreshCheckpoint).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("Fabric agent is temporarily unavailable.");
+  });
+
+  it.each([
+    ["unavailable", null],
+    ["a replaced document", {
+      revision: 2,
+      documentGenerationId: "generation:replacement",
+    }],
+    ["a non-advancing revision", {
+      revision: 1,
+      documentGenerationId: "generation:test",
+    }],
+  ] as const)(
+    "does not retry stale sequence after checkpoint refresh reports %s",
+    async (_case, refreshedCheckpoint) => {
+      const { editor } = createEditorHarness();
+      const onRefreshCheckpoint = vi.fn(async () => refreshedCheckpoint);
+      aiClient.streamAiProposal.mockRejectedValue(new AiProposalClientError(
+        "stale_sequence",
+        "The board changed before the AI run was created.",
+      ));
+      renderPanel({ editor, onRefreshCheckpoint });
+
+      writePrompt("Organize the visible canvas.");
+      await sendPrompt();
+
+      expect(onRefreshCheckpoint).toHaveBeenCalledOnce();
+      expect(aiClient.streamAiProposal).toHaveBeenCalledTimes(1);
+      expect(container.textContent).toContain(
+        "The board changed before the AI run was created.",
+      );
+    },
+  );
+
+  it("limits repeated stale sequence failures to one retry", async () => {
+    const { editor } = createEditorHarness();
+    const onRefreshCheckpoint = vi.fn(async () => ({
+      revision: 2,
+      documentGenerationId: "generation:test",
+    }));
+    aiClient.streamAiProposal.mockRejectedValue(new AiProposalClientError(
+      "stale_sequence",
+      "The board changed again before the retry started.",
+    ));
+    renderPanel({ editor, onRefreshCheckpoint });
+
+    writePrompt("Create a visible-canvas plan.");
+    await sendPrompt();
+
+    expect(onRefreshCheckpoint).toHaveBeenCalledOnce();
+    expect(aiClient.streamAiProposal).toHaveBeenCalledTimes(2);
+    expect(container.textContent).toContain(
+      "The board changed again before the retry started.",
+    );
+  });
+
+  it("does not retry when the request is canceled during checkpoint refresh", async () => {
+    const { editor } = createEditorHarness();
+    let resolveRefresh: ((value: {
+      revision: number;
+      documentGenerationId: string;
+    }) => void) | undefined;
+    const onRefreshCheckpoint = vi.fn(() => new Promise<{
+      revision: number;
+      documentGenerationId: string;
+    }>((resolve) => {
+      resolveRefresh = resolve;
+    }));
+    aiClient.streamAiProposal.mockRejectedValueOnce(new AiProposalClientError(
+      "stale_sequence",
+      "The board changed before the AI run was created.",
+    ));
+    renderPanel({ editor, onRefreshCheckpoint });
+
+    writePrompt("Create a visible-canvas plan.");
+    await sendPrompt();
+    expect(onRefreshCheckpoint).toHaveBeenCalledOnce();
+
+    const cancel = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Cancel AI Response"]',
+    );
+    await act(async () => {
+      cancel?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      resolveRefresh?.({
+        revision: 2,
+        documentGenerationId: "generation:test",
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(aiClient.streamAiProposal).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain("Request canceled.");
   });
 
   it("shows a model clarification as chat without an empty change preview", async () => {

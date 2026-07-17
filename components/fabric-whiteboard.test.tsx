@@ -100,6 +100,7 @@ function whiteboardProps(
     onOpenWorkspace: vi.fn(),
     onCheckpointRestored: vi.fn(),
     onBoardAccessChanged: vi.fn(),
+    onRefreshAgentCheckpoint: vi.fn(async () => null),
     ...overrides,
   };
 }
