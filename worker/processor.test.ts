@@ -29,7 +29,7 @@ const job = {
   maxAttempts: 1,
   runStatus: "queued" as const,
   skillVersion: "2.0.0",
-  promptVersion: "canvas-agent.plan.v2",
+  promptVersion: "canvas-agent.plan.v4",
   provider: "openai-compatible",
   model: "gcli/grok-4.5-medium",
   principalId: "33333333-3333-4333-8333-333333333333",

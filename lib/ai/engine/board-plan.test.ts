@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BOARD_PLAN_ENUM_DOMAINS,
   BOARD_PLAN_JSON_SCHEMA,
   BOARD_PLAN_LIMITS,
   BoardPlanSchema,
@@ -166,6 +167,88 @@ describe("BoardPlan v1", () => {
     expect(BoardPlanSchema.safeParse(candidate).success).toBe(false);
   });
 
+  it("rejects provider-invented diagram and arrangement aliases", () => {
+    const diagramNodeRoleAlias = {
+      ...completeProposal,
+      actions: [
+        {
+          kind: "addDiagram",
+          key: "flow",
+          layout: "flow-horizontal",
+          nodes: [
+            { key: "start", role: "start", label: "Start" },
+            { key: "finish", role: "end", label: "Finish" },
+          ],
+          connections: [{ from: "start", to: "finish" }],
+        },
+      ],
+    };
+    const diagramNodeExtraRole = {
+      ...completeProposal,
+      actions: [
+        {
+          kind: "addDiagram",
+          key: "flow",
+          layout: "flow-horizontal",
+          nodes: [
+            { key: "start", shape: "ellipse", role: "start", label: "Start" },
+            { key: "finish", shape: "rectangle", role: "end", label: "Finish" },
+          ],
+          connections: [{ from: "start", to: "finish" }],
+        },
+      ],
+    };
+    const arrangementAliases = {
+      ...completeProposal,
+      actions: [
+        {
+          kind: "arrangeSelection",
+          selectionRefs: ["s1", "s2"],
+          layout: "grid",
+          columns: 2,
+        },
+      ],
+    };
+    const arrangementExtraAliases = {
+      ...completeProposal,
+      actions: [
+        {
+          kind: "arrangeSelection",
+          selectionRefs: ["s1", "s2"],
+          arrangement: "grid",
+          spacing: "comfortable",
+          layout: "grid",
+          columns: 2,
+        },
+      ],
+    };
+    const inventedMindMapEnums = {
+      schemaVersion: 1,
+      kind: "proposal",
+      summary: "Create a mind map.",
+      placement: "viewport-center",
+      flow: "radial",
+      actions: [
+        {
+          kind: "addDiagram",
+          key: "map",
+          layout: "radial",
+          nodes: [
+            { key: "root", shape: "ellipse", label: "Root" },
+            { key: "branch", shape: "note", label: "Branch" },
+          ],
+          connections: [{ from: "root", to: "branch" }],
+        },
+      ],
+    };
+
+    expect(BoardPlanSchema.safeParse(diagramNodeRoleAlias).success).toBe(false);
+    expect(BoardPlanSchema.safeParse(diagramNodeExtraRole).success).toBe(false);
+    expect(BoardPlanSchema.safeParse(arrangementAliases).success).toBe(false);
+    expect(BoardPlanSchema.safeParse(arrangementExtraAliases).success).toBe(false);
+    expect(BoardPlanSchema.safeParse(inventedMindMapEnums).success).toBe(false);
+  });
+
   it("rejects duplicate or dangling diagram keys and self-connections", () => {
     const diagramBase = {
       ...completeProposal,
@@ -312,6 +395,11 @@ describe("BoardPlan v1", () => {
 
     const serialized = JSON.stringify(BOARD_PLAN_JSON_SCHEMA);
     expect(serialized).toContain('"additionalProperties":false');
+    expect(serialized).toContain("Canonical diagram-node field");
+    expect(serialized).toContain("Canonical arrangement field");
+    for (const domain of Object.values(BOARD_PLAN_ENUM_DOMAINS)) {
+      expect(serialized).toContain(`"enum":${JSON.stringify(domain)}`);
+    }
     expect(serialized).toContain('"const":"proposal"');
     expect(serialized).toContain('"const":"clarification"');
     expect(serialized).not.toContain("workspaceId");

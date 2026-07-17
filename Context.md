@@ -281,3 +281,30 @@ Rules:
   - The Codex in-app browser runtime failed before page navigation with a local kernel setup error; this did not affect Fabric or its deployed health checks.
 - Next Steps:
   - Push the lock-only correction, require the replacement GitHub Actions run to pass, then execute the authenticated selected-drawing and exact-R2 visual checks when a signed-in browser session and R2-backed board asset are available.
+
+### [2026-07-17 12:37 IST] - Close real-provider mind-map and arrangement drift
+- Request: Do not accept an agent that passes one algebra demo but still produces bad or rejected output for normal board work; measure the configured provider across several real tasks and fix every repeatable contract failure.
+- Plan: Probe summarize, solve, mind-map, and selection arrangement through the exact production-style provider adapter, isolate provider/schema/compiler failures, make the canonical contract self-describing without permissive repair, then repeat the matrix and full release suite.
+- Actions:
+  - Found that prompt v2 passed summarize and solve but repeatedly emitted an extra diagram-node `role` field and invented arrangement fields; prompt v3 fixed those field names but exposed invented mind-map enum values.
+  - Centralized all 12 BoardPlan enum domains so runtime Zod, generated provider JSON Schema, and prompt guidance share the same exhaustive values.
+  - Added typed, schema-validated minimal examples for all seven actions plus complete mind-map and arrange-selection proposals, explicitly separating proposal `flow` from diagram `layout` and forbidding observed aliases and synonyms.
+  - Bumped prompt provenance to `canvas-agent.plan.v4` and updated queued-job test fixtures so rolling deployments continue to reject genuinely stale prompt versions rather than silently mixing contracts.
+  - Added strict alias-rejection, enum/schema parity, canonical example, and 14,000-byte combined static contract budget tests. No field stripping, loose normalizer, retrying model repair turn, tldraw change, or weaker authorization was introduced.
+- Files Changed:
+  - `lib/ai/engine/board-plan.ts` and tests - Shared closed enum domains, provider schema descriptions, and strict drift regression cases.
+  - `lib/ai/skills/board-assistance.v1.ts` and tests - Prompt v4 canonical actions/proposals, exhaustive enum guidance, provenance, and prompt-size guard.
+  - `worker/processor.test.ts` and `worker/repository.test.ts` - Current prompt provenance in valid queued-job fixtures.
+- Diff Summary:
+  - Incomplete schema examples that let a non-strict gateway invent fields/enums -> one typed canonical contract shared by validation, schema generation, and model guidance.
+  - Single happy-path provider smoke -> repeated real-provider quality matrix covering generated text, math, diagrams, connectors, and selected-object movement.
+- Validation:
+  - Prompt v4 passed 7/7 valid real-provider attempts: summarize once, solve twice, mind-map twice, and arrange twice. Every response passed JSON/Zod validation, deterministic compilation, native-editable and scenario-specific correctness checks, with nonzero tokens.
+  - First content arrived in 2.147-4.316 seconds and total completion took 2.577-5.077 seconds across the matrix; mind maps compiled to four nodes and three connectors, while arrangement touched all and only the writable selection.
+  - Independent review found no P0/P1 issue; all 12 runtime enum domains, provider schema enums, prompt paths, trust boundary, and additive API surface matched.
+  - `npm run verify` passed: 119 test files / 537 tests, every application/realtime/Worker typecheck, 15 Cloudflare runtime tests, ESLint, the pinned tldraw invariant, and the production Node 22 build.
+- Risks/Notes:
+  - The configured gateway does not enforce strict JSON Schema, so canonical guidance remains part of the versioned provider contract; runtime parsing and semantic validation still fail closed on any future drift.
+  - Authenticated visual production checking remains operationally pending because the current Codex browser kernel requires an app restart and production currently has no board image marked `r2_ready`.
+- Next Steps:
+  - Commit and push prompt v4 with the npm 10 lock correction, require GitHub Actions and the Node 22 Vercel deployment to pass, then perform the signed drawing/R2 check after the browser restart and first R2-backed board upload.

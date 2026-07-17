@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CANONICAL_BOARD_PLAN_ACTION_EXAMPLES,
+  CANONICAL_BOARD_PLAN_ENUM_GUIDANCE,
+  CANONICAL_BOARD_PLAN_PROPOSAL_EXAMPLES,
   CANVAS_AGENT_SKILL,
   MAX_BOARD_ASSISTANCE_INPUT_BYTES,
   MAX_BOARD_ASSISTANCE_WALL_TIME_MS,
@@ -9,6 +12,12 @@ import {
   getBoardAssistanceSkill,
 } from "./board-assistance.v1";
 import { buildAuthorizedBoardScene } from "../engine/authorized-scene";
+import {
+  BOARD_PLAN_ENUM_DOMAINS,
+  BOARD_PLAN_JSON_SCHEMA,
+  BoardPlanActionSchema,
+  BoardProposalSchema,
+} from "../engine/board-plan";
 import type { AiProposalRequest } from "../proposal-request";
 import type { CanvasNode } from "../../types";
 
@@ -29,7 +38,7 @@ describe("canvas-agent skill", () => {
     expect(getBoardAssistanceSkill()).toBe(CANVAS_AGENT_SKILL);
     expect(CANVAS_AGENT_SKILL.manifest.id).toBe("canvas-agent");
     expect(CANVAS_AGENT_SKILL.manifest.version).toBe("2.0.0");
-    expect(CANVAS_AGENT_SKILL.manifest.promptVersion).toBe("canvas-agent.plan.v2");
+    expect(CANVAS_AGENT_SKILL.manifest.promptVersion).toBe("canvas-agent.plan.v4");
     expect(CANVAS_AGENT_SKILL.manifest.allowedOperations).toEqual(
       expect.arrayContaining(["createNode", "createConnector", "updateNode", "moveNode"]),
     );
@@ -38,6 +47,77 @@ describe("canvas-agent skill", () => {
       expect.arrayContaining(["diamond", "triangle", "hexagon"]),
     );
     expect(CANVAS_AGENT_SKILL.allowedCreatedNodeTypes).not.toContain("image");
+  });
+
+  it("embeds schema-valid canonical examples for every BoardPlan action", () => {
+    expect(CANONICAL_BOARD_PLAN_ACTION_EXAMPLES.map((action) => action.kind)).toEqual([
+      "composeText",
+      "addCards",
+      "addShapes",
+      "addDiagram",
+      "arrangeSelection",
+      "editSelection",
+      "styleSelection",
+    ]);
+
+    for (const action of CANONICAL_BOARD_PLAN_ACTION_EXAMPLES) {
+      expect(BoardPlanActionSchema.safeParse(action).success).toBe(true);
+      expect(CANVAS_AGENT_SKILL.systemInstruction).toContain(JSON.stringify(action));
+    }
+
+    expect(CANVAS_AGENT_SKILL.systemInstruction).toContain(
+      'Diagram nodes use "shape", never "role".',
+    );
+    expect(CANVAS_AGENT_SKILL.systemInstruction).toContain(
+      'arrangeSelection uses "selectionRefs", "arrangement", and "spacing"',
+    );
+    expect(CANVAS_AGENT_SKILL.systemInstruction).toContain(
+      'it never uses "layout", "columns", "ids", or a numeric gap',
+    );
+  });
+
+  it("embeds every closed enum domain and complete mind-map and arrangement proposals", () => {
+    expect(CANVAS_AGENT_SKILL.systemInstruction).toContain(
+      CANONICAL_BOARD_PLAN_ENUM_GUIDANCE,
+    );
+    for (const domain of Object.values(BOARD_PLAN_ENUM_DOMAINS)) {
+      for (const value of domain) {
+        expect(CANONICAL_BOARD_PLAN_ENUM_GUIDANCE).toContain(JSON.stringify(value));
+      }
+    }
+
+    for (const proposal of Object.values(CANONICAL_BOARD_PLAN_PROPOSAL_EXAMPLES)) {
+      expect(BoardProposalSchema.safeParse(proposal).success).toBe(true);
+      expect(CANVAS_AGENT_SKILL.systemInstruction).toContain(JSON.stringify(proposal));
+    }
+
+    const mindMap = CANONICAL_BOARD_PLAN_PROPOSAL_EXAMPLES.mindMap;
+    const mindMapAction = mindMap.actions[0];
+    expect(mindMap.flow).toBe("vertical");
+    expect(mindMapAction.kind).toBe("addDiagram");
+    expect(mindMapAction.layout).toBe("mind-map");
+
+    const arrangement = CANONICAL_BOARD_PLAN_PROPOSAL_EXAMPLES.arrangeSelection;
+    const arrangementAction = arrangement.actions[0];
+    expect(arrangement.flow).toBe("grid");
+    expect(arrangementAction.kind).toBe("arrangeSelection");
+    expect(arrangementAction).toMatchObject({
+      arrangement: "grid",
+      spacing: "compact",
+      selectionRefs: ["s1", "s2"],
+    });
+    expect(CANVAS_AGENT_SKILL.systemInstruction).toContain(
+      'only addDiagram.layout is "mind-map". "radial" is not valid anywhere',
+    );
+  });
+
+  it("keeps the trusted static contract small enough for fast model turns", () => {
+    const encoder = new TextEncoder();
+    const instructionBytes = encoder.encode(CANVAS_AGENT_SKILL.systemInstruction).byteLength;
+    const providerSchemaBytes = encoder.encode(JSON.stringify(BOARD_PLAN_JSON_SCHEMA)).byteLength;
+
+    expect(instructionBytes).toBeLessThanOrEqual(7_000);
+    expect(instructionBytes + providerSchemaBytes).toBeLessThanOrEqual(14_000);
   });
 
   it("uses a compact fast plan budget instead of the former 16k/180s patch budget", () => {

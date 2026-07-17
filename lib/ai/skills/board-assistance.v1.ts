@@ -1,6 +1,11 @@
 import type { CanvasCreatableNodeType } from "../canvas-patch";
 import type { SkillManifest } from "../contracts";
 import {
+  BOARD_PLAN_ENUM_DOMAINS,
+  type BoardPlanAction,
+  type BoardProposal,
+} from "../engine/board-plan";
+import {
   buildSelectionOnlyAuthorizedScene,
   modelSceneContext,
 } from "../engine/authorized-scene";
@@ -13,6 +18,124 @@ export type CanvasAgentSkill = Readonly<{
   progressMessage: string;
   systemInstruction: string;
 }>;
+
+/**
+ * Minimal, compiler-valid examples embedded verbatim in the provider prompt.
+ * Keeping them as typed data makes prompt drift fail TypeScript before release;
+ * runtime tests additionally pass every example through the strict Zod schema.
+ */
+export const CANONICAL_BOARD_PLAN_ACTION_EXAMPLES = Object.freeze([
+  {
+    kind: "composeText",
+    key: "answer",
+    presentation: "typed",
+    blocks: [{ role: "answer", text: "x = 4" }],
+  },
+  {
+    kind: "addCards",
+    cards: [{ key: "card_1", variant: "note", title: "Key point" }],
+  },
+  {
+    kind: "addShapes",
+    shapes: [{ key: "shape_1", shape: "rectangle", label: "Step" }],
+  },
+  {
+    kind: "addDiagram",
+    key: "diagram",
+    layout: "flow-horizontal",
+    nodes: [
+      { key: "start", shape: "ellipse", label: "Start" },
+      { key: "finish", shape: "rectangle", label: "Finish" },
+    ],
+    connections: [{ from: "start", to: "finish" }],
+  },
+  {
+    kind: "arrangeSelection",
+    selectionRefs: ["s1", "s2"],
+    arrangement: "grid",
+    spacing: "comfortable",
+  },
+  {
+    kind: "editSelection",
+    edits: [{ selectionRef: "s1", title: "Updated title" }],
+  },
+  {
+    kind: "styleSelection",
+    selectionRefs: ["s1"],
+    style: { tone: "blue" },
+  },
+] as const satisfies readonly BoardPlanAction[]);
+
+const CANONICAL_BOARD_PLAN_ACTION_EXAMPLES_TEXT =
+  CANONICAL_BOARD_PLAN_ACTION_EXAMPLES.map((action) => JSON.stringify(action)).join("\n");
+
+export const CANONICAL_BOARD_PLAN_PROPOSAL_EXAMPLES = Object.freeze({
+  mindMap: {
+    schemaVersion: 1,
+    kind: "proposal",
+    summary: "Create a compact mind map.",
+    placement: "viewport-center",
+    flow: "vertical",
+    actions: [
+      {
+        kind: "addDiagram",
+        key: "topic_map",
+        layout: "mind-map",
+        nodes: [
+          { key: "topic", shape: "ellipse", label: "Topic" },
+          { key: "branch_1", shape: "note", label: "Branch 1" },
+          { key: "branch_2", shape: "note", label: "Branch 2" },
+        ],
+        connections: [
+          { from: "topic", to: "branch_1" },
+          { from: "topic", to: "branch_2" },
+        ],
+      },
+    ],
+  },
+  arrangeSelection: {
+    schemaVersion: 1,
+    kind: "proposal",
+    summary: "Arrange the selected cards in a compact grid.",
+    placement: "selection-right",
+    flow: "grid",
+    actions: [
+      {
+        kind: "arrangeSelection",
+        selectionRefs: ["s1", "s2"],
+        arrangement: "grid",
+        spacing: "compact",
+      },
+    ],
+  },
+} as const satisfies Readonly<Record<"mindMap" | "arrangeSelection", BoardProposal>>);
+
+const CANONICAL_BOARD_PLAN_PROPOSAL_EXAMPLES_TEXT = Object.values(
+  CANONICAL_BOARD_PLAN_PROPOSAL_EXAMPLES,
+).map((proposal) => JSON.stringify(proposal)).join("\n");
+
+const BOARD_PLAN_ENUM_PROMPT_PATHS = Object.freeze({
+  placement: "proposal.placement",
+  flow: "proposal.flow",
+  tone: "tone wherever the schema permits it",
+  textBlockRole: "composeText.blocks[].role",
+  cardVariant: "addCards.cards[].variant",
+  nativeShape: "addShapes.shapes[].shape",
+  diagramNodeShape: "addDiagram.nodes[].shape",
+  diagramLayout: "addDiagram.layout",
+  arrangement: "arrangeSelection.arrangement",
+  spacing: "arrangeSelection.spacing",
+  textTone: "styleSelection.style.textTone",
+  clarificationReason: "clarification.reason",
+} satisfies Readonly<Record<keyof typeof BOARD_PLAN_ENUM_DOMAINS, string>>);
+
+export const CANONICAL_BOARD_PLAN_ENUM_GUIDANCE = (
+  Object.keys(BOARD_PLAN_ENUM_DOMAINS) as Array<keyof typeof BOARD_PLAN_ENUM_DOMAINS>
+).map((domain) =>
+  `- ${BOARD_PLAN_ENUM_PROMPT_PATHS[domain]}: ${BOARD_PLAN_ENUM_DOMAINS[domain]
+    .map((value) => JSON.stringify(value))
+    .join(", ")}`
+).join("\n");
 
 const SYSTEM_INSTRUCTION = `You are Fabric agent, a precise planning assistant for an editable multiplayer canvas. Return exactly one BoardPlan JSON object matching the supplied schema. Do not return Markdown, prose outside JSON, code fences, HTML, SVG, Mermaid, base64, URLs, Fabric identifiers, tenant scope, canvas coordinates, sizes, temporary IDs, or low-level CanvasPatch operations.
 
@@ -27,7 +150,7 @@ Planning rules:
 - Solve the user's actual request first. Preserve exact facts, equations, Unicode symbols, and multilingual text.
 - Use composeText with presentation "typed" for all answers, prose, math, equations, labels, and Unicode content. Fabric emits exact native editable text and does not synthesize fake handwriting.
 - Use addCards for notes or summaries, addShapes for standalone native shapes, and addDiagram for connected flows or systems.
-- For diagrams, use short node labels, meaningful shape roles, valid logical keys, and only necessary labeled connections.
+- For diagrams, use short node labels, meaningful native shape values, valid logical keys, and only necessary labeled connections. Each node uses the exact field "shape"; never add or substitute a "role" field.
 - Use arrangeSelection only when the user asks to reorganize selected objects. Use editSelection or styleSelection only for explicit changes to authorized selected objects.
 - Choose a semantic placement and flow. Fabric—not you—assigns coordinates, dimensions, native IDs, collision-free layout, frame containment, and connector ordering.
 - Keep plans concise. Do not repeat the same answer in multiple actions and do not create decorative filler.
@@ -37,17 +160,21 @@ Planning rules:
 Canonical JSON field names are mandatory even if the provider ignores response_format:
 - A proposal root is exactly {"schemaVersion":1,"kind":"proposal","summary":"...","placement":"viewport-center","flow":"vertical","actions":[...]}.
 - A clarification root is exactly {"schemaVersion":1,"kind":"clarification","reason":"ambiguous","question":"...","choices":[]}.
-- composeText is exactly {"kind":"composeText","key":"answer","presentation":"typed","blocks":[{"role":"answer","text":"..."}]}.
-- addCards uses {"kind":"addCards","cards":[{"key":"card_1","variant":"note","title":"...","body":"..."}]}.
-- addShapes uses {"kind":"addShapes","shapes":[{"key":"shape_1","shape":"rectangle","label":"..."}]}.
-- addDiagram uses {"kind":"addDiagram","key":"diagram","layout":"flow-horizontal","nodes":[...],"connections":[...]}.
+- Every enum is a closed set. Use exactly one quoted value from these domains; never invent a synonym:
+${CANONICAL_BOARD_PLAN_ENUM_GUIDANCE}
+- The following seven lines are the exact minimal canonical form of every action and its child objects. Copy their field names and nesting; add optional fields only when the supplied schema permits them:
+${CANONICAL_BOARD_PLAN_ACTION_EXAMPLES_TEXT}
+- These are complete canonical proposals for the two commonly confused cases:
+${CANONICAL_BOARD_PLAN_PROPOSAL_EXAMPLES_TEXT}
+- A mind map still uses proposal flow "vertical", "horizontal", or "grid"; only addDiagram.layout is "mind-map". "radial" is not valid anywhere.
+- Diagram nodes use "shape", never "role". addDiagram alone uses "layout". arrangeSelection uses "selectionRefs", "arrangement", and "spacing"; it never uses "layout", "columns", "ids", or a numeric gap.
 - Never rename kind to type, blocks to content, selectionRefs to ids, actions to operations, or place placement/flow inside an action.`;
 
 export const CANVAS_AGENT_SKILL: CanvasAgentSkill = Object.freeze({
   manifest: Object.freeze({
     id: "canvas-agent",
     version: "2.0.0",
-    promptVersion: "canvas-agent.plan.v2",
+    promptVersion: "canvas-agent.plan.v4",
     description: "Plan correct native canvas changes for Fabric's deterministic compiler.",
     requiredCapabilities: ["board:read", "board:propose-ai-patch"],
     allowedTools: [],

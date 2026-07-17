@@ -2,6 +2,55 @@ import { z } from "zod";
 
 export const BOARD_PLAN_SCHEMA_VERSION = 1 as const;
 
+/**
+ * Exact string domains shared by runtime validation, the provider JSON Schema,
+ * and the model prompt. Keep these paths exhaustive for every z.enum in v1 so
+ * a model never has to invent a synonym such as "radial" or "columns".
+ */
+export const BOARD_PLAN_ENUM_DOMAINS = Object.freeze({
+  placement: Object.freeze([
+    "selection-right",
+    "selection-below",
+    "viewport-center",
+  ] as const),
+  flow: Object.freeze(["vertical", "horizontal", "grid"] as const),
+  tone: Object.freeze(["neutral", "blue", "green", "yellow", "purple", "red"] as const),
+  textBlockRole: Object.freeze(["heading", "body", "equation", "answer", "label"] as const),
+  cardVariant: Object.freeze(["note", "summary"] as const),
+  nativeShape: Object.freeze([
+    "rectangle",
+    "ellipse",
+    "diamond",
+    "triangle",
+    "hexagon",
+  ] as const),
+  diagramNodeShape: Object.freeze([
+    "note",
+    "summary",
+    "rectangle",
+    "ellipse",
+    "diamond",
+    "triangle",
+    "hexagon",
+  ] as const),
+  diagramLayout: Object.freeze([
+    "flow-horizontal",
+    "flow-vertical",
+    "hierarchy",
+    "mind-map",
+    "cycle",
+  ] as const),
+  arrangement: Object.freeze(["row", "column", "grid", "circle"] as const),
+  spacing: Object.freeze(["compact", "comfortable", "spacious"] as const),
+  textTone: Object.freeze(["dark", "light", "muted"] as const),
+  clarificationReason: Object.freeze([
+    "ambiguous",
+    "missing-context",
+    "missing-selection",
+    "unsupported",
+  ] as const),
+});
+
 export const BOARD_PLAN_LIMITS = Object.freeze({
   maxActions: 16,
   maxGeneratedElements: 40,
@@ -44,14 +93,7 @@ export const BoardSelectionReferenceSchema = z
     "Selection references must be existing opaque references, not temporary IDs",
   );
 
-export const BoardPlanToneSchema = z.enum([
-  "neutral",
-  "blue",
-  "green",
-  "yellow",
-  "purple",
-  "red",
-]);
+export const BoardPlanToneSchema = z.enum(BOARD_PLAN_ENUM_DOMAINS.tone);
 
 const SummarySchema = z.string().trim().min(1).max(240);
 const TitleSchema = z.string().trim().min(1).max(120);
@@ -60,7 +102,7 @@ const LabelSchema = z.string().trim().min(1).max(160);
 
 const TextBlockSchema = z
   .object({
-    role: z.enum(["heading", "body", "equation", "answer", "label"]),
+    role: z.enum(BOARD_PLAN_ENUM_DOMAINS.textBlockRole),
     text: z
       .string()
       .min(1)
@@ -82,7 +124,7 @@ const ComposeTextActionSchema = z
 const CardSchema = z
   .object({
     key: BoardPlanKeySchema,
-    variant: z.enum(["note", "summary"]),
+    variant: z.enum(BOARD_PLAN_ENUM_DOMAINS.cardVariant),
     title: TitleSchema,
     body: BodySchema.optional(),
     tone: BoardPlanToneSchema.optional(),
@@ -99,13 +141,7 @@ const AddCardsActionSchema = z
     addDuplicateKeyIssues(value.cards, context, ["cards"]);
   });
 
-const NativeShapeSchema = z.enum([
-  "rectangle",
-  "ellipse",
-  "diamond",
-  "triangle",
-  "hexagon",
-]);
+const NativeShapeSchema = z.enum(BOARD_PLAN_ENUM_DOMAINS.nativeShape);
 
 const ShapeSchema = z
   .object({
@@ -130,15 +166,9 @@ const AddShapesActionSchema = z
 const DiagramNodeSchema = z
   .object({
     key: BoardPlanKeySchema,
-    shape: z.enum([
-      "note",
-      "summary",
-      "rectangle",
-      "ellipse",
-      "diamond",
-      "triangle",
-      "hexagon",
-    ]),
+    shape: z.enum(BOARD_PLAN_ENUM_DOMAINS.diagramNodeShape).describe(
+      'Canonical diagram-node field: use "shape" with one allowed native shape; "role" is not valid.',
+    ),
     label: LabelSchema,
     detail: BodySchema.optional(),
     tone: BoardPlanToneSchema.optional(),
@@ -158,13 +188,7 @@ const AddDiagramActionSchema = z
     kind: z.literal("addDiagram"),
     key: BoardPlanKeySchema,
     title: TitleSchema.optional(),
-    layout: z.enum([
-      "flow-horizontal",
-      "flow-vertical",
-      "hierarchy",
-      "mind-map",
-      "cycle",
-    ]),
+    layout: z.enum(BOARD_PLAN_ENUM_DOMAINS.diagramLayout),
     nodes: z.array(DiagramNodeSchema).min(2).max(BOARD_PLAN_LIMITS.maxDiagramNodes),
     connections: z
       .array(DiagramConnectionSchema)
@@ -212,9 +236,15 @@ const UniqueSelectionReferencesSchema = z
 const ArrangeSelectionActionSchema = z
   .object({
     kind: z.literal("arrangeSelection"),
-    selectionRefs: UniqueSelectionReferencesSchema.min(2),
-    arrangement: z.enum(["row", "column", "grid", "circle"]),
-    spacing: z.enum(["compact", "comfortable", "spacious"]),
+    selectionRefs: UniqueSelectionReferencesSchema.min(2).describe(
+      'Canonical array of opaque writable handles; use "selectionRefs", never "ids".',
+    ),
+    arrangement: z.enum(BOARD_PLAN_ENUM_DOMAINS.arrangement).describe(
+      'Canonical arrangement field; "layout" and "columns" are not valid aliases.',
+    ),
+    spacing: z.enum(BOARD_PLAN_ENUM_DOMAINS.spacing).describe(
+      'Canonical spacing field; use one named spacing value and never a numeric gap.',
+    ),
   })
   .strict();
 
@@ -250,7 +280,7 @@ const EditSelectionActionSchema = z
 const SelectionStyleSchema = z
   .object({
     tone: BoardPlanToneSchema.optional(),
-    textTone: z.enum(["dark", "light", "muted"]).optional(),
+    textTone: z.enum(BOARD_PLAN_ENUM_DOMAINS.textTone).optional(),
   })
   .strict()
   .refine(
@@ -281,8 +311,8 @@ export const BoardProposalSchema = z
     schemaVersion: z.literal(BOARD_PLAN_SCHEMA_VERSION),
     kind: z.literal("proposal"),
     summary: SummarySchema,
-    placement: z.enum(["selection-right", "selection-below", "viewport-center"]),
-    flow: z.enum(["vertical", "horizontal", "grid"]),
+    placement: z.enum(BOARD_PLAN_ENUM_DOMAINS.placement),
+    flow: z.enum(BOARD_PLAN_ENUM_DOMAINS.flow),
     actions: z.array(BoardPlanActionSchema).min(1).max(BOARD_PLAN_LIMITS.maxActions),
   })
   .strict()
@@ -404,7 +434,7 @@ export const BoardClarificationSchema = z
   .object({
     schemaVersion: z.literal(BOARD_PLAN_SCHEMA_VERSION),
     kind: z.literal("clarification"),
-    reason: z.enum(["ambiguous", "missing-context", "missing-selection", "unsupported"]),
+    reason: z.enum(BOARD_PLAN_ENUM_DOMAINS.clarificationReason),
     question: z.string().trim().min(1).max(400),
     choices: z.array(z.string().trim().min(1).max(120)).max(4),
   })
