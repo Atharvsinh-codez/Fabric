@@ -4,7 +4,7 @@ import type { FabricModelProvider } from "../lib/ai/contracts";
 import { buildAuthorizedBoardScene } from "../lib/ai/engine/authorized-scene";
 
 const repository = vi.hoisted(() => ({
-  baseSnapshotIsCurrent: vi.fn(),
+  readBaseSnapshotStatus: vi.fn(),
   readAiRunControl: vi.fn(),
   recordClarificationReady: vi.fn(),
   recordProposalReady: vi.fn(),
@@ -74,7 +74,7 @@ function providerOutput(output: unknown, usage = { totalTokens: 42 }): FabricMod
 
 beforeEach(() => {
   vi.clearAllMocks();
-  repository.baseSnapshotIsCurrent.mockResolvedValue(true);
+  repository.readBaseSnapshotStatus.mockReset().mockResolvedValue("current");
   repository.readAiRunControl.mockResolvedValue({
     status: "queued",
     cancelRequestedAt: null,
@@ -87,6 +87,32 @@ beforeEach(() => {
 });
 
 describe("durable AI processor v2", () => {
+  it("rejects a stale board scope or generation before invoking the provider", async () => {
+    repository.readBaseSnapshotStatus.mockResolvedValueOnce("stale");
+    const createTurn = vi.fn();
+    const provider: FabricModelProvider = {
+      provider: "openai-compatible",
+      model: job.model,
+      createTurn,
+    };
+
+    await processClaimedAiJob({
+      sql: {} as never,
+      job,
+      provider,
+      leaseMs: 60_000,
+    });
+
+    expect(createTurn).not.toHaveBeenCalled();
+    expect(repository.recordRunFailure).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        status: "stale_generation",
+        error: expect.objectContaining({ code: "stale_generation" }),
+      }),
+    );
+  });
+
   it("compiles a semantic BoardPlan into an ordered native CanvasPatch", async () => {
     const plan = {
       schemaVersion: 1,
@@ -182,6 +208,141 @@ describe("durable AI processor v2", () => {
       }),
     ]);
     expect(repository.recordRunFailure).not.toHaveBeenCalled();
+  });
+
+  it("keeps a self-contained additive proposal when the same generation advances", async () => {
+    repository.readBaseSnapshotStatus
+      .mockResolvedValueOnce("advanced")
+      .mockResolvedValueOnce("advanced");
+    const plan = {
+      schemaVersion: 1,
+      kind: "proposal",
+      summary: "Added a standalone review workflow.",
+      placement: "viewport-center",
+      flow: "horizontal",
+      actions: [{
+        kind: "addDiagram",
+        key: "review_flow",
+        title: "Review flow",
+        layout: "flow-horizontal",
+        nodes: [
+          { key: "draft", shape: "note", label: "Draft" },
+          { key: "review", shape: "diamond", label: "Review" },
+        ],
+        connections: [{ from: "draft", to: "review" }],
+      }],
+    };
+
+    await processClaimedAiJob({
+      sql: {} as never,
+      job,
+      provider: providerOutput(plan),
+      leaseMs: 60_000,
+    });
+
+    expect(repository.recordProposalReady).toHaveBeenCalledOnce();
+    expect(repository.recordProposalReady.mock.calls[0]?.[1]).toMatchObject({
+      proposal: {
+        patch: {
+          base: { durableSequence: job.baseDurableSequence },
+          operations: [
+            { type: "createNode" },
+            { type: "createNode" },
+            { type: "createNode" },
+            { type: "createConnector" },
+          ],
+        },
+      },
+    });
+    expect(repository.recordRunFailure).not.toHaveBeenCalled();
+  });
+
+  it("rejects a mutation proposal when the same generation advances", async () => {
+    repository.readBaseSnapshotStatus
+      .mockResolvedValueOnce("current")
+      .mockResolvedValueOnce("advanced");
+    const plan = {
+      schemaVersion: 1,
+      kind: "proposal",
+      summary: "Renamed a selected note.",
+      placement: "selection-below",
+      flow: "vertical",
+      actions: [{
+        kind: "editSelection",
+        edits: [{ selectionRef: "s1", title: "Updated title" }],
+      }],
+    };
+
+    await processClaimedAiJob({
+      sql: {} as never,
+      job,
+      provider: providerOutput(plan),
+      leaseMs: 60_000,
+    });
+
+    expect(repository.recordProposalReady).not.toHaveBeenCalled();
+    expect(repository.recordRunFailure).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        status: "stale_generation",
+        usage: expect.objectContaining({
+          fabric: expect.objectContaining({ compiledOperationCount: 1 }),
+        }),
+        error: expect.objectContaining({ code: "stale_generation" }),
+      }),
+    );
+  });
+
+  it("returns a clarification after a same-generation revision advance", async () => {
+    repository.readBaseSnapshotStatus
+      .mockResolvedValueOnce("current")
+      .mockResolvedValueOnce("advanced");
+    const clarification = {
+      schemaVersion: 1,
+      kind: "clarification",
+      reason: "ambiguous",
+      question: "Should the workflow cover review or publishing?",
+      choices: ["Review", "Publishing"],
+    };
+
+    await processClaimedAiJob({
+      sql: {} as never,
+      job,
+      provider: providerOutput(clarification),
+      leaseMs: 60_000,
+    });
+
+    expect(repository.recordClarificationReady).toHaveBeenCalledOnce();
+    expect(repository.recordRunFailure).not.toHaveBeenCalled();
+  });
+
+  it("rejects a clarification after the board scope or generation becomes stale", async () => {
+    repository.readBaseSnapshotStatus
+      .mockResolvedValueOnce("current")
+      .mockResolvedValueOnce("stale");
+    const clarification = {
+      schemaVersion: 1,
+      kind: "clarification",
+      reason: "ambiguous",
+      question: "Which workflow should I create?",
+      choices: ["Review", "Publishing"],
+    };
+
+    await processClaimedAiJob({
+      sql: {} as never,
+      job,
+      provider: providerOutput(clarification),
+      leaseMs: 60_000,
+    });
+
+    expect(repository.recordClarificationReady).not.toHaveBeenCalled();
+    expect(repository.recordRunFailure).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        status: "stale_generation",
+        error: expect.objectContaining({ code: "stale_generation" }),
+      }),
+    );
   });
 
   it("repairs harmless provider schema drift without losing plan content", async () => {

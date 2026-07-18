@@ -26,6 +26,7 @@ import {
   streamAiProposal,
 } from "@/lib/ai/client";
 import type { ProposalReadyPayload } from "@/lib/ai/contracts";
+import { isSelfContainedAdditivePatch } from "@/lib/ai/patch-concurrency";
 import type { AiProposalRequest } from "@/lib/ai/proposal-request";
 import type { AgentBoardReadinessState } from "@/lib/boards/collaborative-sync";
 
@@ -383,7 +384,10 @@ export function FabricAiPanel({
         return;
       }
       const nextProposal = nextResult;
-      if (readChangeVersion() !== expectedChangeVersion) {
+      if (
+        readChangeVersion() !== expectedChangeVersion &&
+        !isSelfContainedAdditivePatch(nextProposal.patch)
+      ) {
         setStage("error");
         setError(
           "The board changed while Fabric agent was working. Review the board and send your request again.",
@@ -437,7 +441,19 @@ export function FabricAiPanel({
 
   async function applyProposal() {
     if (!editor || !proposal || stage !== "preview") return;
-    if (previewChangeVersionRef.current !== readChangeVersion()) {
+    const canRebaseAdditivePatch = isSelfContainedAdditivePatch(proposal.patch);
+    if (proposal.patch.base.documentGenerationId !== documentGenerationId) {
+      setStage("error");
+      setError(
+        "This preview targets an older board version. Discard it and send a fresh request before applying changes.",
+      );
+      setProposal(null);
+      return;
+    }
+    if (
+      !canRebaseAdditivePatch &&
+      previewChangeVersionRef.current !== readChangeVersion()
+    ) {
       setStage("error");
       setError(
         "The board changed after this preview was created. Discard it and send a fresh request before applying changes.",
@@ -446,8 +462,9 @@ export function FabricAiPanel({
       return;
     }
     if (
-      proposal.patch.base.documentGenerationId !== documentGenerationId ||
-      proposal.patch.base.durableSequence !== durableSequence
+      proposal.patch.base.durableSequence > durableSequence ||
+      (!canRebaseAdditivePatch &&
+        proposal.patch.base.durableSequence !== durableSequence)
     ) {
       setStage("error");
       setError(

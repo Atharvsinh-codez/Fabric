@@ -878,3 +878,28 @@ Rules:
   - No Worker guard, database, API rate limit, dependency, tldraw version, patch, internals, shape behavior, or watermark change was introduced.
 - Next Steps:
   - Publish through GitHub main and retry the workflow after deployment.
+
+### [2026-07-18 14:16 IST] - Preserve additive AI output during live editing
+- Request: Keep Fabric agent working from the board snapshot captured at Send while people continue drawing and saving normally.
+- Plan: Treat the durable request scene as immutable model context, permit only self-contained additive output across newer revisions, and retain strict protection for scope changes and existing-object mutations.
+- Actions:
+  - Replaced the duplicate exact-revision Worker gate with an active-board status that distinguishes current, same-generation advanced, and stale scope/generation snapshots.
+  - Continued processing the captured scene when the same board generation advances, including saves that land before the Worker claims the job.
+  - Added a shared classifier that permits only create-only patches whose parents and connector endpoints are earlier temporary objects in the same patch.
+  - Allowed those additive previews to remain usable across local edits and to finalize against the latest durable revision.
+  - Kept archive, workspace, generation, revision rewind, existing-node mutation, and approval-projection checks fail-closed.
+- Files Changed:
+  - `lib/ai/patch-concurrency.ts` and test - Self-contained additive patch classification and regression matrix.
+  - `worker/repository.ts` and test - Current/advanced/stale active-board snapshot status.
+  - `worker/processor.ts` and test - Immutable request-snapshot processing with additive-only concurrent-save support.
+  - `components/fabric-whiteboard/ai-panel.tsx` and test - Keep additive previews/apply available while the board changes.
+- Validation:
+  - Focused Vitest passed: 4 files / 55 tests.
+  - Application and AI Worker TypeScript passed.
+  - Scoped ESLint and `git diff --check` passed.
+- Risks/Notes:
+  - Concurrent edits remain enabled throughout model generation; Fabric agent never reads saves newer than its captured request scene for that run.
+  - A proposal that updates, moves, resizes, deletes, or references an existing object is still rejected after any concurrent revision advance.
+  - No database migration, rate limit, dependency, realtime Worker, tldraw version, patch, internals, shape behavior, or watermark change was introduced.
+- Next Steps:
+  - Publish through GitHub main and verify a workflow can finish while another collaborator continues editing the same board.

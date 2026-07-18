@@ -106,6 +106,8 @@ describe("Fabric agent canvas sidebar", () => {
     onRetrySync = vi.fn(),
     onRefreshCheckpoint = vi.fn(async () => null),
     durableSequence = 1,
+    documentGenerationId = "generation:test",
+    readChangeVersion = () => 0,
   }: {
     editor: Editor;
     applyProposal?: FabricWhiteboardAiAdapter["applyProposal"];
@@ -118,6 +120,8 @@ describe("Fabric agent canvas sidebar", () => {
       documentGenerationId: string;
     } | null>;
     durableSequence?: number;
+    documentGenerationId?: string;
+    readChangeVersion?: () => number;
   }) {
     act(() => {
       root.render(
@@ -125,12 +129,12 @@ describe("Fabric agent canvas sidebar", () => {
           editor={editor}
           boardId="board:test"
           workspaceId="workspace:test"
-          documentGenerationId="generation:test"
+          documentGenerationId={documentGenerationId}
           durableSequence={durableSequence}
           adapter={{ applyProposal }}
           open
           boardReadiness={boardReadiness}
-          readChangeVersion={() => 0}
+          readChangeVersion={readChangeVersion}
           onFinalizingChange={onFinalizingChange}
           onRetrySync={onRetrySync}
           onRefreshCheckpoint={onRefreshCheckpoint}
@@ -498,6 +502,151 @@ describe("Fabric agent canvas sidebar", () => {
 
     expect(aiClient.streamAiProposal).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain("Request canceled.");
+  });
+
+  it("keeps an additive preview usable while the board continues changing", async () => {
+    const { editor } = createEditorHarness();
+    const applyProposal = vi.fn(async () => undefined);
+    const onFinalizingChange = vi.fn();
+    let changeVersion = 0;
+    let resolvePreview!: (value: typeof canvasPreview) => void;
+    const previewPromise = new Promise<typeof canvasPreview>((resolve) => {
+      resolvePreview = resolve;
+    });
+    aiClient.streamAiProposal.mockImplementation(
+      ({ onRunId }: { onRunId?: (runId: string) => void }) => {
+        onRunId?.("run:additive-rebase");
+        return previewPromise;
+      },
+    );
+    const readChangeVersion = () => changeVersion;
+    renderPanel({
+      editor,
+      applyProposal,
+      readChangeVersion,
+      onFinalizingChange,
+      durableSequence: 1,
+    });
+
+    writePrompt("Create a workflow beside the current board.");
+    await sendPrompt();
+    changeVersion = 1;
+    await act(async () => {
+      resolvePreview(canvasPreview);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain("Review Changes");
+    expect(container.textContent).not.toContain("Request Needs Attention");
+    expect(aiClient.streamAiProposal).toHaveBeenCalledTimes(1);
+
+    renderPanel({
+      editor,
+      applyProposal,
+      readChangeVersion,
+      onFinalizingChange,
+      durableSequence: 2,
+    });
+    const apply = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === "Apply Changes",
+    );
+    await act(async () => {
+      apply?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(applyProposal).toHaveBeenCalledTimes(1);
+    expect(applyProposal).toHaveBeenCalledWith(canvasPreview, editor);
+    expect(aiClient.finalizeAiProposal).toHaveBeenCalledWith({
+      runId: "run:additive-rebase",
+      patchHash: "a".repeat(64),
+      documentGenerationId: "generation:test",
+      baseDurableSequence: 1,
+      observedDurableSequence: 2,
+    });
+  });
+
+  it("keeps a mutating preview blocked after the board changes", async () => {
+    const { editor } = createEditorHarness();
+    const applyProposal = vi.fn(async () => undefined);
+    let changeVersion = 0;
+    const mutatingPreview = {
+      ...canvasPreview,
+      patch: {
+        ...canvasPreview.patch,
+        operations: [{
+          type: "updateNode" as const,
+          nodeId: "existing:note",
+          content: { title: "Changed title" },
+        }],
+      },
+      affectedNodeIds: ["existing:note"],
+    };
+    aiClient.streamAiProposal.mockImplementation(
+      ({ onRunId }: { onRunId?: (runId: string) => void }) => {
+        onRunId?.("run:mutating-stale");
+        return Promise.resolve(mutatingPreview);
+      },
+    );
+    const readChangeVersion = () => changeVersion;
+    renderPanel({ editor, applyProposal, readChangeVersion });
+
+    writePrompt("Rename the existing note.");
+    await sendPrompt();
+    expect(container.textContent).toContain("Review Changes");
+
+    changeVersion = 1;
+    const apply = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === "Apply Changes",
+    );
+    await act(async () => {
+      apply?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(applyProposal).not.toHaveBeenCalled();
+    expect(container.textContent).toContain(
+      "The board changed after this preview was created.",
+    );
+  });
+
+  it("never rebases an additive preview across a document generation change", async () => {
+    const { editor } = createEditorHarness();
+    const applyProposal = vi.fn(async () => undefined);
+    const onFinalizingChange = vi.fn();
+    aiClient.streamAiProposal.mockImplementation(
+      ({ onRunId }: { onRunId?: (runId: string) => void }) => {
+        onRunId?.("run:replaced-generation");
+        return Promise.resolve(canvasPreview);
+      },
+    );
+    renderPanel({ editor, applyProposal, onFinalizingChange });
+
+    writePrompt("Create a workflow beside the current board.");
+    await sendPrompt();
+    expect(container.textContent).toContain("Review Changes");
+
+    renderPanel({
+      editor,
+      applyProposal,
+      onFinalizingChange,
+      durableSequence: 2,
+      documentGenerationId: "generation:replacement",
+    });
+    const apply = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === "Apply Changes",
+    );
+    await act(async () => {
+      apply?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(applyProposal).not.toHaveBeenCalled();
+    expect(container.textContent).toContain(
+      "This preview targets an older board version.",
+    );
   });
 
   it("shows a model clarification as chat without an empty change preview", async () => {

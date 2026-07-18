@@ -4,6 +4,7 @@ import type { WorkerSql } from "./database";
 import {
   claimAiJobByRunId,
   claimNextAiJob,
+  readBaseSnapshotStatus,
   recordClarificationReady,
 } from "./repository";
 
@@ -45,6 +46,67 @@ function claimedRow(overrides: Record<string, unknown> = {}) {
 }
 
 describe("serverless AI job claiming", () => {
+  it.each([
+    ["current", {
+      workspaceId: "44444444-4444-4444-8444-444444444444",
+      generationId: "66666666-6666-4666-8666-666666666666",
+      durableSequence: "9",
+    }, "current"],
+    ["advanced", {
+      workspaceId: "44444444-4444-4444-8444-444444444444",
+      generationId: "66666666-6666-4666-8666-666666666666",
+      durableSequence: "10",
+    }, "advanced"],
+    ["rewound", {
+      workspaceId: "44444444-4444-4444-8444-444444444444",
+      generationId: "66666666-6666-4666-8666-666666666666",
+      durableSequence: "8",
+    }, "stale"],
+    ["replaced", {
+      workspaceId: "44444444-4444-4444-8444-444444444444",
+      generationId: "77777777-7777-4777-8777-777777777777",
+      durableSequence: "10",
+    }, "stale"],
+    ["moved", {
+      workspaceId: "88888888-8888-4888-8888-888888888888",
+      generationId: "66666666-6666-4666-8666-666666666666",
+      durableSequence: "10",
+    }, "stale"],
+  ])("classifies a %s board snapshot", async (_case, row, expected) => {
+    const query = vi.fn().mockResolvedValue([row]);
+    const claimed = {
+      ...claimedRow(),
+      providerKeyOrdinal: 1,
+      attempt: 1,
+      maxAttempts: 1,
+      baseDurableSequence: 9,
+    };
+
+    await expect(readBaseSnapshotStatus(
+      query as unknown as WorkerSql,
+      claimed,
+    )).resolves.toBe(expected);
+
+    const [strings] = query.mock.calls[0] as [TemplateStringsArray];
+    expect(strings.join("?")).toContain("b.archived_at is null");
+  });
+
+  it("classifies a missing active board as stale", async () => {
+    const query = vi.fn().mockResolvedValue([]);
+    const claimed = {
+      ...claimedRow(),
+      providerKeyOrdinal: 1,
+      attempt: 1,
+      maxAttempts: 1,
+      baseDurableSequence: 9,
+    };
+
+    await expect(readBaseSnapshotStatus(
+      query as unknown as WorkerSql,
+      claimed,
+    )).resolves.toBe("stale");
+  });
+
   it("claims only the requested run and normalizes bigint counters", async () => {
     const query = vi.fn().mockResolvedValue([claimedRow()]);
 

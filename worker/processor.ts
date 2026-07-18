@@ -13,6 +13,7 @@ import {
   compileBoardProposal,
 } from "../lib/ai/engine/compiler";
 import { hashCanonicalJson } from "../lib/ai/hash";
+import { isSelfContainedAdditivePatch } from "../lib/ai/patch-concurrency";
 import { AiProposalRequestSchema } from "../lib/ai/proposal-request";
 import { retryDelayMs } from "../lib/ai/run-state";
 import { validateCanvasPatchSemantics } from "../lib/ai/semantic-validator";
@@ -27,8 +28,8 @@ import {
   type AiMediaConfiguration,
 } from "./media-context";
 import {
-  baseSnapshotIsCurrent,
   type ClaimedAiJob,
+  readBaseSnapshotStatus,
   readAiRunControl,
   recordClarificationReady,
   recordProposalReady,
@@ -159,7 +160,12 @@ export async function processClaimedAiJob(input: {
     });
     return;
   }
-  if (!(await baseSnapshotIsCurrent(sql, job))) {
+  // The web boundary already authorized and durably captured this exact
+  // snapshot before the run was queued. Same-generation saves after Send must
+  // not prevent the Worker from using that immutable context; generation or
+  // scope changes still fail closed here, and concurrent mutations are gated
+  // again after compilation.
+  if ((await readBaseSnapshotStatus(sql, job)) === "stale") {
     await recordRunFailure(sql, {
       job,
       status: "stale_generation",
@@ -381,25 +387,25 @@ export async function processClaimedAiJob(input: {
       phase: "validating_proposal",
       message: "Checking board scope, geometry, and operation limits…",
     });
-    if (!(await baseSnapshotIsCurrent(sql, job))) {
-      await recordRunFailure(sql, {
-        job,
-        status: "stale_generation",
-        responseHash,
-        usage: measuredUsage({
-          planActionCount: planResult.data.kind === "proposal" ? planResult.data.actions.length : 0,
-          compiledOperationCount: 0,
-          compileMs: 0,
-        }),
-        error: {
-          code: "stale_generation",
-          message: "The board changed while the proposal was being generated.",
-          retryable: false,
-        },
-      });
-      return;
-    }
     if (planResult.data.kind === "clarification") {
+      if ((await readBaseSnapshotStatus(sql, job)) === "stale") {
+        await recordRunFailure(sql, {
+          job,
+          status: "stale_generation",
+          responseHash,
+          usage: measuredUsage({
+            planActionCount: 0,
+            compiledOperationCount: 0,
+            compileMs: 0,
+          }),
+          error: {
+            code: "stale_generation",
+            message: "The board changed while the proposal was being generated.",
+            retryable: false,
+          },
+        });
+        return;
+      }
       await recordClarificationReady(sql, {
         job,
         clarification: {
@@ -491,6 +497,29 @@ export async function processClaimedAiJob(input: {
           message: "AI returned a proposal that is not safe for this board snapshot.",
           retryable: false,
           issueCodes: [...new Set(semanticResult.issues.map((issue) => issue.code))],
+        },
+      });
+      return;
+    }
+
+    const snapshotStatus = await readBaseSnapshotStatus(sql, job);
+    if (
+      snapshotStatus === "stale" ||
+      (snapshotStatus === "advanced" && !isSelfContainedAdditivePatch(patch))
+    ) {
+      await recordRunFailure(sql, {
+        job,
+        status: "stale_generation",
+        responseHash,
+        usage: measuredUsage({
+          planActionCount: planResult.data.actions.length,
+          compiledOperationCount: patch.operations.length,
+          compileMs,
+        }),
+        error: {
+          code: "stale_generation",
+          message: "The board changed while the proposal was being generated.",
+          retryable: false,
         },
       });
       return;

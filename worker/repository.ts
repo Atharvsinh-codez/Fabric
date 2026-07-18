@@ -283,7 +283,12 @@ export async function readAiRunControl(
   return rows[0] ?? null;
 }
 
-export async function baseSnapshotIsCurrent(sql: WorkerSql, job: ClaimedAiJob): Promise<boolean> {
+export type BaseSnapshotStatus = "current" | "advanced" | "stale";
+
+export async function readBaseSnapshotStatus(
+  sql: WorkerSql,
+  job: ClaimedAiJob,
+): Promise<BaseSnapshotStatus> {
   const rows = await sql<
     { workspaceId: string; generationId: string; durableSequence: number | string }[]
   >`
@@ -296,12 +301,19 @@ export async function baseSnapshotIsCurrent(sql: WorkerSql, job: ClaimedAiJob): 
     limit 1
   `;
   const current = rows[0];
-  return Boolean(
-    current &&
-      current.workspaceId === job.workspaceId &&
-      current.generationId === job.documentGenerationId &&
-      Number(current.durableSequence) === job.baseDurableSequence,
-  );
+  if (
+    !current ||
+    current.workspaceId !== job.workspaceId ||
+    current.generationId !== job.documentGenerationId
+  ) {
+    return "stale";
+  }
+
+  const durableSequence = Number(current.durableSequence);
+  if (!Number.isSafeInteger(durableSequence) || durableSequence < job.baseDurableSequence) {
+    return "stale";
+  }
+  return durableSequence === job.baseDurableSequence ? "current" : "advanced";
 }
 
 export async function recordRunProgress(
