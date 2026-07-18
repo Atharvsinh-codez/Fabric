@@ -832,3 +832,30 @@ Rules:
   - No database schema/data, Worker, API rate limit, dependency, tldraw source/version/patch/internals, shape behavior, or watermark handling changed.
 - Next Steps:
   - Publish through GitHub main and verify a fresh paragraph-rich Fabric agent workflow confirms automatically after its checkpoint saves.
+
+### [2026-07-18 13:45 IST] - Accept safe full-plan provider responses
+- Request: Fix Fabric agent rejecting a completed `Make me a full plan for this` response as not matching the agent contract.
+- Plan: Reproduce the production provider drift, repair only semantically neutral JSON-schema deviations, keep the strict BoardPlan/compiler/authorization gates, and verify the exact prompt against the configured provider.
+- Actions:
+  - Confirmed the failed production run returned 1,823 output tokens and valid JSON before strict BoardPlan validation rejected it; it was not a timeout, rate limit, sync failure, or empty response.
+  - Reproduced empty optional connector labels and oversized full-plan batches from the configured OpenAI-compatible gateway.
+  - Added a versioned compatibility normalizer that removes only supported empty optional fields, supplies presentation-only defaults, and losslessly splits oversized text/card/shape batches while preserving content and order.
+  - Kept unknown fields, aliases, explicit invalid values, unsafe patches, authorization, semantic validation, compilation, and human approval fail-closed.
+  - Updated the v6 prompt with explicit per-action limits and empty-optional-field guidance.
+  - Recorded the compatibility mode in durable usage telemetry for future diagnosis without storing raw model output.
+- Files Changed:
+  - `lib/ai/engine/board-plan-normalizer.ts` and test - Safe provider compatibility and strict rejection regressions.
+  - `lib/ai/skills/board-assistance.v1.ts` and test - Explicit limits and prompt v6 provenance.
+  - `lib/ai/contracts.ts` - Compatibility telemetry field.
+  - `worker/processor.ts` and test - Normalize before the unchanged strict schema and compile path.
+  - `worker/repository.test.ts` - Updated prompt provenance fixture.
+- Validation:
+  - Focused Vitest passed: 3 files / 24 tests.
+  - Application and AI Worker TypeScript passed.
+  - Scoped ESLint and `git diff --check` passed.
+  - A real configured-provider smoke for the same full-plan request returned strict canonical JSON under prompt v6 (`compatibilityMode: none`).
+- Risks/Notes:
+  - The normalizer never drops semantic content or unknown fields and never repairs low-level patch operations; the canonical Zod schema remains authoritative.
+  - No database, realtime Worker, rate limit, dependency, tldraw version, patch, internals, shape behavior, or watermark change was introduced.
+- Next Steps:
+  - Publish through GitHub main and retry the full-plan request after deployment.

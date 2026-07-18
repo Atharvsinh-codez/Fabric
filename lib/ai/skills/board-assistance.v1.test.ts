@@ -38,7 +38,7 @@ describe("canvas-agent skill", () => {
     expect(getBoardAssistanceSkill()).toBe(CANVAS_AGENT_SKILL);
     expect(CANVAS_AGENT_SKILL.manifest.id).toBe("canvas-agent");
     expect(CANVAS_AGENT_SKILL.manifest.version).toBe("2.0.0");
-    expect(CANVAS_AGENT_SKILL.manifest.promptVersion).toBe("canvas-agent.plan.v5");
+    expect(CANVAS_AGENT_SKILL.manifest.promptVersion).toBe("canvas-agent.plan.v6");
     expect(CANVAS_AGENT_SKILL.manifest.allowedOperations).toEqual(
       expect.arrayContaining(["createNode", "createConnector", "updateNode", "moveNode"]),
     );

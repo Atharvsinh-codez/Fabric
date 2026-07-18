@@ -30,7 +30,7 @@ const job = {
   maxAttempts: 1,
   runStatus: "queued" as const,
   skillVersion: "2.0.0",
-  promptVersion: "canvas-agent.plan.v5",
+  promptVersion: "canvas-agent.plan.v6",
   provider: "openai-compatible",
   model: "gcli/grok-4.5-medium",
   principalId: "33333333-3333-4333-8333-333333333333",
@@ -181,6 +181,56 @@ describe("durable AI processor v2", () => {
         detail: "high",
       }),
     ]);
+    expect(repository.recordRunFailure).not.toHaveBeenCalled();
+  });
+
+  it("repairs harmless provider schema drift without losing plan content", async () => {
+    const blocks = Array.from({ length: 13 }, (_, index) => ({
+      role: "body",
+      text: `Plan step ${index + 1}`,
+    }));
+    const candidate = {
+      schemaVersion: 1,
+      kind: "proposal",
+      summary: "Create the complete product plan.",
+      placement: "viewport-center",
+      flow: "vertical",
+      actions: [
+        {
+          kind: "composeText",
+          key: "product_plan",
+          blocks,
+        },
+        {
+          kind: "addDiagram",
+          key: "delivery_flow",
+          layout: "flow-horizontal",
+          nodes: [
+            { key: "discover", label: "Discover" },
+            { key: "launch", shape: "rectangle", label: "Launch" },
+          ],
+          connections: [{ from: "discover", to: "launch", label: "" }],
+        },
+      ],
+    };
+
+    await processClaimedAiJob({
+      sql: {} as never,
+      job,
+      provider: providerOutput(candidate),
+      leaseMs: 60_000,
+    });
+
+    expect(repository.recordProposalReady).toHaveBeenCalledOnce();
+    const stored = repository.recordProposalReady.mock.calls[0]?.[1];
+    expect(stored?.usage).toMatchObject({
+      fabric: { planCompatibilityMode: "safe_defaults_and_batches_v1" },
+    });
+    const operations = stored?.proposal.patch.operations as Array<Record<string, unknown>>;
+    const createdText = operations.filter(
+      (operation) => operation.type === "createNode" && operation.nodeType === "summary",
+    );
+    expect(createdText).toHaveLength(13);
     expect(repository.recordRunFailure).not.toHaveBeenCalled();
   });
 

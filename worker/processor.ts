@@ -6,6 +6,7 @@ import {
   type ModelUsage,
 } from "../lib/ai/contracts";
 import { BoardPlanSchema, BOARD_PLAN_JSON_SCHEMA } from "../lib/ai/engine/board-plan";
+import { normalizeBoardPlanCandidate } from "../lib/ai/engine/board-plan-normalizer";
 import {
   BoardPlanCompileError,
   CANVAS_COMPILER_VERSION,
@@ -292,6 +293,7 @@ export async function processClaimedAiJob(input: {
     // Compile against the exact write scope exposed to this provider turn.
     // Omitted model-context handles remain read-only collision context.
     const scene = modelInput.scene;
+    let planCompatibilityMode: "none" | "safe_defaults_and_batches_v1" = "none";
     const measuredUsage = (input: {
       planActionCount: number;
       compiledOperationCount: number;
@@ -320,6 +322,7 @@ export async function processClaimedAiJob(input: {
           : { timeToFirstContentMs: Math.max(0, firstContentAt - modelStartedAt) }),
         compileMs: input.compileMs,
         outputBytes,
+        planCompatibilityMode,
       },
     });
     await recordRunProgress(sql, {
@@ -350,7 +353,9 @@ export async function processClaimedAiJob(input: {
       });
       return;
     }
-    const planResult = BoardPlanSchema.safeParse(parsedOutput);
+    const normalizedPlan = normalizeBoardPlanCandidate(parsedOutput);
+    planCompatibilityMode = normalizedPlan.compatibilityMode;
+    const planResult = BoardPlanSchema.safeParse(normalizedPlan.value);
     if (!planResult.success) {
       await recordRunFailure(sql, {
         job,

@@ -155,6 +155,8 @@ Planning rules:
 - Use arrangeSelection only when the user asks to reorganize writable visible objects. Use editSelection or styleSelection only for explicit changes to writable visible objects. The schema field remains selectionRefs, but it accepts any handle in writableHandles, including v* handles.
 - Choose a semantic placement and flow. Fabric—not you—assigns coordinates, dimensions, native IDs, collision-free layout, frame containment, and connector ordering.
 - Keep plans concise. Do not repeat the same answer in multiple actions and do not create decorative filler.
+- Full plans: <=12 composeText blocks/action; <=16 cards or shapes/batch; <=11 nodes and <=40 connections/diagram; <=16 actions and <=40 elements total; never overflow.
+- Omit empty optional card body, shape detail, diagram title/node detail, and connection label fields; never use "".
 - Ask a clarification only when a correct action truly requires missing scope or intent. Never ask the user to select objects; use matching writable visible handles, or explain that no matching object is visible. If the request is answerable from the scene or visual evidence, return a proposal.
 - Return a short, honest summary describing the proposed result.
 
@@ -175,7 +177,7 @@ export const CANVAS_AGENT_SKILL: CanvasAgentSkill = Object.freeze({
   manifest: Object.freeze({
     id: "canvas-agent",
     version: "2.0.0",
-    promptVersion: "canvas-agent.plan.v5",
+    promptVersion: "canvas-agent.plan.v6",
     description: "Plan correct native canvas changes for Fabric's deterministic compiler.",
     requiredCapabilities: ["board:read", "board:propose-ai-patch"],
     allowedTools: [],

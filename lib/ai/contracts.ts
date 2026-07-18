@@ -42,6 +42,7 @@ export type ModelUsage = Readonly<{
     timeToFirstContentMs?: number;
     compileMs: number;
     outputBytes: number;
+    planCompatibilityMode: "none" | "safe_defaults_and_batches_v1";
   }>;
 }>;
 
