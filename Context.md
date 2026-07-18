@@ -859,3 +859,22 @@ Rules:
   - No database, realtime Worker, rate limit, dependency, tldraw version, patch, internals, shape behavior, or watermark change was introduced.
 - Next Steps:
   - Publish through GitHub main and retry the full-plan request after deployment.
+
+### [2026-07-18 14:00 IST] - Retry AI after an in-flight board checkpoint
+- Request: Fix Fabric agent showing `The board changed while the proposal was being generated` even though the user still wants the workflow generated.
+- Plan: Trace the exact production run and extend the existing checkpoint-verified retry without weakening the Worker stale-snapshot guard.
+- Actions:
+  - Confirmed the run started from revision 66, returned a valid two-action plan, and was safely rejected only because a delayed document save advanced the same board generation to revision 67 during the model call.
+  - Reused the existing exact-checkpoint refresh path for both pre-run `stale_sequence` and in-flight `stale_generation` responses.
+  - Kept the retry bounded to one fresh run and required an advanced revision, the same document generation, an exact mounted-editor/Neon document match, and no pending save, conflict, access loss, or cancellation.
+- Files Changed:
+  - `components/fabric-whiteboard/ai-panel.tsx` - Silent checkpoint-verified retry for an in-flight stale proposal.
+  - `components/fabric-whiteboard/ai-panel.test.tsx` - Regression coverage for both stale response phases with no duplicate chat message.
+- Validation:
+  - Focused Fabric agent panel tests passed: 1 file / 17 tests.
+  - Application TypeScript, scoped ESLint, and `git diff --check` passed.
+- Risks/Notes:
+  - The stale proposal is never applied. A replaced generation, unavailable/mismatched checkpoint, non-advancing revision, second race, or cancellation still stops safely.
+  - No Worker guard, database, API rate limit, dependency, tldraw version, patch, internals, shape behavior, or watermark change was introduced.
+- Next Steps:
+  - Publish through GitHub main and retry the workflow after deployment.

@@ -335,51 +335,57 @@ describe("Fabric agent canvas sidebar", () => {
     expect(container.textContent).not.toMatch(/No Selection|Objects? Selected/i);
   });
 
-  it("silently retries one stale sequence with the latest checkpoint and no duplicate message", async () => {
-    const { editor } = createEditorHarness();
-    const onRefreshCheckpoint = vi.fn(async () => ({
-      revision: 2,
-      documentGenerationId: "generation:test",
-    }));
-    aiClient.streamAiProposal
-      .mockRejectedValueOnce(new AiProposalClientError(
-        "stale_sequence",
-        "The board changed before the AI run was created.",
-      ))
-      .mockImplementationOnce(
-        ({ onRunId }: { onRunId?: (runId: string) => void }) => {
-          onRunId?.("run:stale-retry");
-          return Promise.resolve(canvasPreview);
-        },
-      );
-    renderPanel({ editor, durableSequence: 1, onRefreshCheckpoint });
+  it.each([
+    ["stale_sequence", "The board changed before the AI run was created."],
+    ["stale_generation", "The board changed while the proposal was being generated."],
+  ])(
+    "silently retries one %s with the latest checkpoint and no duplicate message",
+    async (errorCode, errorMessage) => {
+      const { editor } = createEditorHarness();
+      const onRefreshCheckpoint = vi.fn(async () => ({
+        revision: 2,
+        documentGenerationId: "generation:test",
+      }));
+      aiClient.streamAiProposal
+        .mockRejectedValueOnce(new AiProposalClientError(
+          errorCode,
+          errorMessage,
+        ))
+        .mockImplementationOnce(
+          ({ onRunId }: { onRunId?: (runId: string) => void }) => {
+            onRunId?.("run:stale-retry");
+            return Promise.resolve(canvasPreview);
+          },
+        );
+      renderPanel({ editor, durableSequence: 1, onRefreshCheckpoint });
 
-    const instruction = "Create a launch plan from everything visible.";
-    writePrompt(instruction);
-    await sendPrompt();
+      const instruction = "Create a launch plan from everything visible.";
+      writePrompt(instruction);
+      await sendPrompt();
 
-    expect(aiClient.streamAiProposal).toHaveBeenCalledTimes(2);
-    expect(onRefreshCheckpoint).toHaveBeenCalledOnce();
-    const firstCall = aiClient.streamAiProposal.mock.calls[0]?.[0];
-    const retryCall = aiClient.streamAiProposal.mock.calls[1]?.[0];
-    expect(firstCall?.request).toEqual(expect.objectContaining({
-      durableSequence: 1,
-      instruction,
-      selection: [],
-      viewport: { x: 100, y: 200, width: 960, height: 640 },
-      conversation: [],
-    }));
-    expect(retryCall?.request).toEqual({
-      ...firstCall?.request,
-      durableSequence: 2,
-    });
-    expect(retryCall?.signal).toBe(firstCall?.signal);
-    const visibleInstructionMessages = [...container.querySelectorAll("li p")]
-      .filter((node) => node.textContent === instruction);
-    expect(visibleInstructionMessages).toHaveLength(1);
-    expect(container.textContent).toContain("Review Changes");
-    expect(container.textContent).not.toContain("Request Needs Attention");
-  });
+      expect(aiClient.streamAiProposal).toHaveBeenCalledTimes(2);
+      expect(onRefreshCheckpoint).toHaveBeenCalledOnce();
+      const firstCall = aiClient.streamAiProposal.mock.calls[0]?.[0];
+      const retryCall = aiClient.streamAiProposal.mock.calls[1]?.[0];
+      expect(firstCall?.request).toEqual(expect.objectContaining({
+        durableSequence: 1,
+        instruction,
+        selection: [],
+        viewport: { x: 100, y: 200, width: 960, height: 640 },
+        conversation: [],
+      }));
+      expect(retryCall?.request).toEqual({
+        ...firstCall?.request,
+        durableSequence: 2,
+      });
+      expect(retryCall?.signal).toBe(firstCall?.signal);
+      const visibleInstructionMessages = [...container.querySelectorAll("li p")]
+        .filter((node) => node.textContent === instruction);
+      expect(visibleInstructionMessages).toHaveLength(1);
+      expect(container.textContent).toContain("Review Changes");
+      expect(container.textContent).not.toContain("Request Needs Attention");
+    },
+  );
 
   it("never retries a non-stale typed failure", async () => {
     const { editor } = createEditorHarness();

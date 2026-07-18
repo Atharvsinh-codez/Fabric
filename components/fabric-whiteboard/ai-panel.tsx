@@ -340,7 +340,7 @@ export function FabricAiPanel({
         if (
           controller.signal.aborted ||
           !(caught instanceof AiProposalClientError) ||
-          caught.code !== "stale_sequence"
+          (caught.code !== "stale_sequence" && caught.code !== "stale_generation")
         ) {
           throw caught;
         }
