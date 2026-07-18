@@ -17,6 +17,7 @@ import {
   BOARD_LIST_MAX_PAGE_SIZE,
   PAGINATION_CURSOR_MAX_CHARS,
 } from "./pagination-contract";
+import { BOARD_THEMES } from "./board-theme";
 
 const MAX_JSON_DEPTH = 48;
 const MAX_JSON_ENTRIES = 25_000;
@@ -31,6 +32,7 @@ export const WorkspaceRoleSchema = z.enum(WORKSPACE_ROLES);
 export const BoardAccessRoleSchema = z.enum(BOARD_ACCESS_ROLES);
 export const BoardStatusSchema = z.enum(BOARD_STATUSES);
 export const BoardSharingPolicySchema = z.enum(BOARD_SHARING_POLICIES);
+export const BoardThemeSchema = z.enum(BOARD_THEMES);
 export const ProjectIconSchema = z.enum(PROJECT_ICONS);
 export const ShareLinkPermissionSchema = z.enum(SHARE_LINK_PERMISSIONS);
 
@@ -117,6 +119,7 @@ export const CreateBoardSchema = z.object({
   workspaceId: UuidSchema,
   projectId: UuidSchema.optional(),
   title: z.string().trim().min(1).max(160),
+  theme: BoardThemeSchema.optional(),
   sharingPolicy: BoardSharingPolicySchema.optional(),
   cover: BoardCoverPresetSchema.nullable().optional(),
   document: BoardDocumentSchema.optional(),

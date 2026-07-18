@@ -21,6 +21,13 @@ vi.mock("@/components/fabric-whiteboard/ai-panel", () => ({
 vi.mock("@/components/fabric-whiteboard/board-tools-panel", () => ({
   FabricBoardToolsPanel: () => null,
 }));
+vi.mock("@/components/fabric-whiteboard/board-theme-picker", () => ({
+  FabricBoardThemePicker: () => (
+    <button type="button" aria-label="Board Theme">
+      Theme
+    </button>
+  ),
+}));
 vi.mock("@/components/fabric-whiteboard/canvas-chrome", () => ({
   fabricCanvasComponents: {},
 }));
@@ -181,5 +188,19 @@ describe("FabricWhiteboard sync recovery visibility", () => {
 
     expect(onOpenWorkspace).toHaveBeenCalledOnce();
     expect(container.querySelector("[role=\"dialog\"]")).toBeNull();
+  });
+
+  it("places the editor-only theme control immediately after Fabric agent", () => {
+    render(whiteboardProps());
+
+    const agent = container.querySelector('[aria-label="Open Fabric agent"]');
+    const theme = container.querySelector('[aria-label="Board Theme"]');
+    expect(agent).not.toBeNull();
+    expect(theme).not.toBeNull();
+    expect(agent?.nextElementSibling).toBe(theme);
+
+    render(whiteboardProps({ role: "viewer", editingAuthorized: false }));
+    expect(container.querySelector('[aria-label="Open Fabric agent"]')).toBeNull();
+    expect(container.querySelector('[aria-label="Board Theme"]')).toBeNull();
   });
 });

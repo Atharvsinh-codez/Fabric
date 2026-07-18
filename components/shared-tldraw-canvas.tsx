@@ -8,6 +8,7 @@ import {
   type TLStoreSnapshot,
 } from "tldraw";
 
+import { FabricCanvasBackground } from "@/components/fabric-whiteboard/canvas-chrome";
 import type { PublicBoardShare } from "@/lib/boards/public-share";
 import {
   BOARD_ASSET_MAX_BYTES,
@@ -16,8 +17,10 @@ import {
 } from "@/lib/boards/assets/contracts";
 import { createFabricTldrawAssetStore } from "@/lib/boards/tldraw-asset-store";
 import { importLegacyCanvasIntoTldrawEditor } from "@/lib/boards/tldraw-store-adapter";
+import { mergeBoardThemeMeta } from "@/lib/boards/board-theme";
 
 const sharedComponents: TLComponents = {
+  Background: FabricCanvasBackground,
   ActionsMenu: null,
   ContextMenu: null,
   DebugMenu: null,
@@ -76,6 +79,9 @@ export function SharedTldrawCanvas({ share }: { share: PublicBoardShare }) {
               edges: share.edges,
             });
           }
+          editor.updateDocumentSettings({
+            meta: mergeBoardThemeMeta(editor.getDocumentSettings().meta, share.theme),
+          });
           editor.selectNone();
           editor.updateInstanceState({ isReadonly: true });
           const frame = window.requestAnimationFrame(() => editor.zoomToFit());

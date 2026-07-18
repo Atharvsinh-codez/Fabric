@@ -8,9 +8,24 @@ const tldrawMocks = vi.hoisted(() => {
   const colorStyle = { id: "color" };
   return {
     colorStyle,
+    documentMeta: {} as Record<string, unknown>,
+    camera: { x: 2, y: 3, z: 2 },
     relevantStyles: new Map<unknown, unknown>([
       [colorStyle, { type: "shared", value: "blue" }],
     ]),
+    editor: {
+      getDocumentSettings: () => ({
+        gridSize: 10,
+        meta: tldrawMocks.documentMeta,
+      }),
+      getCamera: () => tldrawMocks.camera,
+      options: {
+        gridSteps: [
+          { min: -1, mid: 0.15, step: 4 },
+          { min: 0.7, mid: 2.5, step: 1 },
+        ],
+      },
+    },
   };
 });
 
@@ -74,12 +89,17 @@ vi.mock("tldraw", async () => {
       { "data-tool": tool },
       tool,
     ),
+    suffixSafeId: (id: string, suffix: string) => `${id}_${suffix}`,
+    useEditor: () => tldrawMocks.editor,
     useRelevantStyles: () => tldrawMocks.relevantStyles,
+    useUniqueSafeId: () => "fabric-theme",
+    useValue: (_name: string, read: () => unknown) => read(),
   };
 });
 
 import {
   FABRIC_CANVAS_TOOL_ORDER,
+  FabricCanvasBackground,
   FabricCanvasToolbar,
   FabricColorStylePanel,
   fabricCanvasComponents,
@@ -125,6 +145,8 @@ describe("Fabric canvas chrome", () => {
     tldrawMocks.relevantStyles = new Map([
       [tldrawMocks.colorStyle, { type: "shared", value: "blue" }],
     ]);
+    tldrawMocks.documentMeta = {};
+    tldrawMocks.camera = { x: 2, y: 3, z: 2 };
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -195,5 +217,38 @@ describe("Fabric canvas chrome", () => {
     tldrawMocks.relevantStyles = new Map();
     act(() => root.render(<FabricColorStylePanel />));
     expect(container.innerHTML).toBe("");
+  });
+
+  it("keeps the current white canvas as the default background", () => {
+    act(() => root.render(<FabricCanvasBackground />));
+
+    const background = container.querySelector<HTMLElement>(".tl-background");
+    expect(background?.dataset).toMatchObject({
+      boardTheme: "canvas",
+      boardThemePattern: "none",
+    });
+    expect(background?.style.backgroundColor).toBe("#ffffff");
+    expect(container.querySelector(".tl-grid")).toBeNull();
+    expect(fabricCanvasComponents.Background).toBe(FabricCanvasBackground);
+    expect(fabricCanvasComponents.Grid).toBeNull();
+  });
+
+  it("renders shared grid and dot themes against the live camera without enabling tldraw grid mode", () => {
+    tldrawMocks.documentMeta = { fabricBoardTheme: "grid" };
+    act(() => root.render(<FabricCanvasBackground />));
+
+    const background = container.querySelector<HTMLElement>(".tl-background");
+    expect(background?.dataset.boardTheme).toBe("grid");
+    expect(container.querySelectorAll("pattern")).toHaveLength(2);
+    expect(container.querySelectorAll("pattern path")).toHaveLength(2);
+    expect(container.querySelector('pattern[width="20"]')).not.toBeNull();
+
+    tldrawMocks.documentMeta = { fabricBoardTheme: "sage" };
+    act(() => root.render(<FabricCanvasBackground />));
+    expect(
+      container.querySelector<HTMLElement>(".tl-background")?.dataset.boardTheme,
+    ).toBe("sage");
+    expect(container.querySelectorAll("pattern circle")).toHaveLength(2);
+    expect(container.querySelectorAll("pattern path")).toHaveLength(0);
   });
 });

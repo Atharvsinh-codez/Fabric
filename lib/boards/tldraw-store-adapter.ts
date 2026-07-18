@@ -9,6 +9,12 @@ import {
 
 import type { CanvasDocumentSnapshot } from "@/lib/boards/canvas-document";
 import {
+  DEFAULT_BOARD_THEME,
+  mergeBoardThemeMeta,
+  readBoardThemeFromMeta,
+  type BoardTheme,
+} from "@/lib/boards/board-theme";
+import {
   createFabricTldrawDocument,
   legacyCanvasToTldrawShapeInputs,
   projectTldrawDocument,
@@ -36,7 +42,27 @@ export function captureTldrawDocument(store: TLStore): FabricTldrawDocument {
 
 export function captureTldrawCheckpoint(store: TLStore): TldrawCheckpoint {
   const tldraw = captureTldrawDocument(store);
-  return { ...projectTldrawDocument(tldraw), tldraw };
+  const theme = readBoardThemeFromMeta(
+    tldraw.snapshot.store["document:document"]?.meta,
+  ) ?? DEFAULT_BOARD_THEME;
+  return { ...projectTldrawDocument(tldraw), theme, tldraw };
+}
+
+function seedBoardTheme(editor: Editor, theme?: BoardTheme): void {
+  const documentSettings = editor.getDocumentSettings();
+  const storedTheme = readBoardThemeFromMeta(documentSettings.meta);
+  const resolvedTheme = theme ?? storedTheme ?? DEFAULT_BOARD_THEME;
+  if (storedTheme === resolvedTheme) return;
+
+  const wasReadonly = editor.getInstanceState().isReadonly;
+  if (wasReadonly) editor.updateInstanceState({ isReadonly: false });
+  try {
+    editor.updateDocumentSettings({
+      meta: mergeBoardThemeMeta(documentSettings.meta, resolvedTheme),
+    });
+  } finally {
+    if (wasReadonly) editor.updateInstanceState({ isReadonly: true });
+  }
 }
 
 export function importLegacyCanvasIntoTldrawEditor(
@@ -61,7 +87,7 @@ export function importLegacyCanvasIntoTldrawEditor(
 export function hydrateTldrawEditor(input: {
   editor: Editor;
   tldraw: FabricTldrawDocument | null | undefined;
-  legacyCanvas: Pick<CanvasDocumentSnapshot, "nodes" | "edges">;
+  legacyCanvas: Pick<CanvasDocumentSnapshot, "nodes" | "edges" | "theme">;
 }): TldrawHydrationResult {
   const { editor, tldraw, legacyCanvas } = input;
   if (tldraw) {
@@ -69,6 +95,7 @@ export function hydrateTldrawEditor(input: {
     try {
       // loadSnapshot performs tldraw's schema migrations before the records are accepted.
       loadSnapshot(editor.store, tldraw.snapshot as unknown as TLStoreSnapshot);
+      seedBoardTheme(editor, legacyCanvas.theme);
       return {
         source: "stored-tldraw",
         migratedFromLegacy: false,
@@ -78,6 +105,7 @@ export function hydrateTldrawEditor(input: {
       // Never leave a partially migrated document in the editor.
       editor.store.loadStoreSnapshot(previous);
       const importedShapeCount = importLegacyCanvasIntoTldrawEditor(editor, legacyCanvas);
+      seedBoardTheme(editor, legacyCanvas.theme);
       return {
         source: importedShapeCount > 0 ? "legacy-canvas" : "empty",
         migratedFromLegacy: importedShapeCount > 0,
@@ -88,6 +116,7 @@ export function hydrateTldrawEditor(input: {
   }
 
   const importedShapeCount = importLegacyCanvasIntoTldrawEditor(editor, legacyCanvas);
+  seedBoardTheme(editor, legacyCanvas.theme);
   return {
     source: importedShapeCount > 0 ? "legacy-canvas" : "empty",
     migratedFromLegacy: importedShapeCount > 0,

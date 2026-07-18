@@ -54,12 +54,47 @@ describe("canvas document persistence", () => {
 
     expect(snapshot.nodes.map((node) => node.id)).toEqual(["note-1"]);
     expect(snapshot.edges.map((edge) => edge.id)).toEqual(["edge-1"]);
+    expect(snapshot.theme).toBe("canvas");
+  });
+
+  it("loads a validated theme and prefers lossless tldraw document metadata", () => {
+    expect(
+      readCanvasDocument({ version: 1, nodes: [], edges: [], theme: "sage" }).theme,
+    ).toBe("sage");
+    expect(
+      readCanvasDocument({ version: 1, nodes: [], edges: [], theme: "unsupported" }).theme,
+    ).toBe("canvas");
+
+    const fromTldraw = readCanvasDocument({
+      version: 1,
+      nodes: [],
+      edges: [],
+      theme: "sand",
+      tldraw: {
+        version: 1,
+        snapshot: {
+          store: {
+            "document:document": {
+              id: "document:document",
+              typeName: "document",
+              gridSize: 10,
+              name: "",
+              meta: { fabricBoardTheme: "grid" },
+            },
+          },
+          schema: { schemaVersion: 2, sequences: {} },
+        },
+      },
+    });
+
+    expect(fromTldraw.theme).toBe("grid");
   });
 
   it("preserves document metadata when writing canvas changes", () => {
     const document = writeCanvasDocument(
       { version: 1, settings: { grid: true }, nodes: [], edges: [] },
       {
+        theme: "sky",
         nodes: [
           {
             id: "note-1",
@@ -77,6 +112,7 @@ describe("canvas document persistence", () => {
     );
 
     expect(document.settings).toEqual({ grid: true });
+    expect(document.theme).toBe("sky");
     expect(document.nodes).toHaveLength(1);
   });
 
@@ -99,7 +135,11 @@ describe("canvas document persistence", () => {
         },
       },
     };
-    const next = writeCanvasDocument(current, { nodes: [], edges: [] });
+    const next = writeCanvasDocument(current, {
+      nodes: [],
+      edges: [],
+      theme: "canvas",
+    });
 
     expect(next.tldraw).toEqual(current.tldraw);
     expect(readCanvasDocument(next).tldraw?.version).toBe(1);

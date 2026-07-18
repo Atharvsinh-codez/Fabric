@@ -30,6 +30,7 @@ import {
   FabricAiPanel,
   type FabricWhiteboardAiAdapter,
 } from "@/components/fabric-whiteboard/ai-panel";
+import { FabricBoardThemePicker } from "@/components/fabric-whiteboard/board-theme-picker";
 import { FabricBoardToolsPanel } from "@/components/fabric-whiteboard/board-tools-panel";
 import { fabricCanvasComponents } from "@/components/fabric-whiteboard/canvas-chrome";
 import { FabricCheckpointDialog } from "@/components/fabric-whiteboard/checkpoint-dialog";
@@ -349,12 +350,15 @@ export function FabricWhiteboard({
               </p>
             </div>
             {canEdit ? (
-              <FabricAiTrigger
-                panelOpen={visiblePanel === "ai"}
-                busy={aiFinalizing}
-                disabled={!editor}
-                onClick={() => setPanel((current) => current === "ai" ? null : "ai")}
-              />
+              <>
+                <FabricAiTrigger
+                  panelOpen={visiblePanel === "ai"}
+                  busy={aiFinalizing}
+                  disabled={!editor}
+                  onClick={() => setPanel((current) => current === "ai" ? null : "ai")}
+                />
+                <FabricBoardThemePicker editor={editor} disabled={!editor} />
+              </>
             ) : null}
           </div>
         </div>

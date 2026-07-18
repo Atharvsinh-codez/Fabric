@@ -4,6 +4,7 @@ import {
   AddWorkspaceMemberSchema,
   BoardDocumentSchema,
   CreateCommentSchema,
+  CreateBoardSchema,
   CreateProjectSchema,
   ListBoardsQuerySchema,
   UpdateBoardMetadataSchema,
@@ -67,6 +68,15 @@ describe("board API contracts", () => {
         role: "editor",
       }).success,
     ).toBe(false);
+  });
+
+  it("accepts only supported themes when creating a board", () => {
+    const base = {
+      workspaceId: "ef5a8b0c-72f1-42b2-b82c-65784d1a2f7f",
+      title: "Planning board",
+    };
+    expect(CreateBoardSchema.safeParse({ ...base, theme: "grid" }).success).toBe(true);
+    expect(CreateBoardSchema.safeParse({ ...base, theme: "neon" }).success).toBe(false);
   });
 
   it("requires every board list to be scoped to a workspace", () => {

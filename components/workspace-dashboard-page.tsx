@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type FormEvent,
 } from "react";
 import AddIcon from "reicon-react/icons/Add2";
@@ -16,8 +17,9 @@ import RefreshIcon from "reicon-react/icons/Refresh";
 
 import { BoardPreview } from "@/components/board-preview";
 import { BoardCoverPicker } from "@/components/board-cover-picker";
+import { FabricDialog } from "@/components/fabric-whiteboard/fabric-dialog";
 import { WorkspaceShell } from "@/components/workspace-shell";
-import { Button } from "@/components/ui";
+import { Button, cx } from "@/components/ui";
 import {
   APP_ROUTES,
   boardPath,
@@ -39,6 +41,13 @@ import {
   type WorkspaceSummary,
 } from "@/lib/boards/client";
 import {
+  BOARD_THEMES,
+  BOARD_THEME_PRESETS,
+  DEFAULT_BOARD_THEME,
+  type BoardTheme,
+  type BoardThemePattern,
+} from "@/lib/boards/board-theme";
+import {
   DASHBOARD_BOARD_PAGE_SIZE,
   DASHBOARD_BOARD_STATUSES,
   DASHBOARD_BOARD_VIEWS,
@@ -49,6 +58,109 @@ import {
 const BOARD_VIEWS = DASHBOARD_BOARD_VIEWS;
 type BoardView = DashboardBoardView;
 const BOARD_STATUSES = DASHBOARD_BOARD_STATUSES;
+
+type ThemePreviewStyle = CSSProperties & {
+  "--theme-background": string;
+  "--theme-pattern": string;
+};
+
+function themePatternClass(pattern: BoardThemePattern): string {
+  if (pattern === "grid") {
+    return "[background-image:linear-gradient(var(--theme-pattern)_1px,transparent_1px),linear-gradient(90deg,var(--theme-pattern)_1px,transparent_1px)] [background-size:14px_14px]";
+  }
+  if (pattern === "dots") {
+    return "[background-image:radial-gradient(circle,var(--theme-pattern)_1px,transparent_1.25px)] [background-size:12px_12px]";
+  }
+  return "";
+}
+
+function CreateBoardThemeDialog({
+  open,
+  creating,
+  selectedTheme,
+  onThemeChange,
+  onClose,
+  onCreate,
+}: {
+  open: boolean;
+  creating: boolean;
+  selectedTheme: BoardTheme;
+  onThemeChange: (theme: BoardTheme) => void;
+  onClose: () => void;
+  onCreate: () => void;
+}) {
+  return (
+    <FabricDialog
+      open={open}
+      title="Create board"
+      description="Choose a canvas style. You can change it later from the board."
+      onClose={() => {
+        if (!creating) onClose();
+      }}
+    >
+      <form
+        className="flex flex-col gap-5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onCreate();
+        }}
+      >
+        <fieldset disabled={creating}>
+          <legend className="sr-only">Canvas theme</legend>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {BOARD_THEMES.map((theme) => {
+              const preset = BOARD_THEME_PRESETS[theme];
+              const previewStyle: ThemePreviewStyle = {
+                "--theme-background": preset.background,
+                "--theme-pattern": preset.patternColor,
+              };
+
+              return (
+                <label
+                  key={theme}
+                  className="flex min-w-0 cursor-pointer flex-col gap-2 rounded-radius-lg bg-surface-white p-2 ring-1 ring-near-black-primary-text/8 outline-none hover:bg-light-surface-tint has-checked:bg-sky-blue-accent/7 has-checked:ring-2 has-checked:ring-sky-blue-accent has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-sky-blue-accent"
+                >
+                  <input
+                    type="radio"
+                    name="board-theme"
+                    value={theme}
+                    checked={selectedTheme === theme}
+                    onChange={() => onThemeChange(theme)}
+                    className="sr-only"
+                  />
+                  <span
+                    aria-hidden="true"
+                    className="relative aspect-[8/5] w-full overflow-hidden rounded-radius-md bg-(--theme-background) ring-1 ring-inset ring-near-black-primary-text/7"
+                    style={previewStyle}
+                  >
+                    <span
+                      className={cx(
+                        "absolute inset-0",
+                        themePatternClass(preset.pattern),
+                      )}
+                    />
+                  </span>
+                  <p className="truncate px-0.5 text-base font-medium sm:text-sm">
+                    {preset.label}
+                  </p>
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
+
+        <div className="flex items-center justify-end gap-2 border-t border-near-black-primary-text/8 pt-4">
+          <Button type="button" tone="ghost" onClick={onClose} disabled={creating}>
+            Cancel
+          </Button>
+          <Button type="submit" tone="primary" disabled={creating}>
+            {creating ? "Creating…" : "Create board"}
+          </Button>
+        </div>
+      </form>
+    </FabricDialog>
+  );
+}
 const dashboardDateFormatter = new Intl.DateTimeFormat("en", {
   month: "short",
   day: "numeric",
@@ -137,6 +249,9 @@ export function WorkspaceDashboardPage({
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">(
     initialLoadError ? "error" : "ready",
   );
+  const [createBoardOpen, setCreateBoardOpen] = useState(false);
+  const [selectedTheme, setSelectedTheme] =
+    useState<BoardTheme>(DEFAULT_BOARD_THEME);
   const [creating, setCreating] = useState(false);
   const [creatingProject, setCreatingProject] = useState(false);
   const [mutatingBoardId, setMutatingBoardId] = useState<string | null>(null);
@@ -364,7 +479,7 @@ export function WorkspaceDashboardPage({
     }
   };
 
-  const handleCreateBoard = async () => {
+  const openCreateBoard = () => {
     if (loadState !== "ready") return;
 
     if (!activeWorkspace) {
@@ -372,15 +487,22 @@ export function WorkspaceDashboardPage({
       return;
     }
 
+    setSelectedTheme(DEFAULT_BOARD_THEME);
+    setCreateBoardOpen(true);
+  };
+
+  const handleCreateBoard = async () => {
+    if (loadState !== "ready" || !activeWorkspace) return;
     setCreating(true);
     try {
       const board = await createBoardRequest({
         workspaceId: activeWorkspace.id,
         projectId: organizationEnabled ? activeProjectId : undefined,
         title: "Untitled board",
-        document: { version: 1, nodes: [], edges: [] },
+        theme: selectedTheme,
       });
       setBoards((current) => [board, ...current]);
+      setCreateBoardOpen(false);
       router.push(boardPath(board.id));
     } catch (error) {
       showToast(
@@ -555,7 +677,7 @@ export function WorkspaceDashboardPage({
                 focusable="false"
               />
             }
-            onClick={handleCreateBoard}
+            onClick={openCreateBoard}
             disabled={creating || loadState !== "ready"}
           >
             {creating ? "Creating…" : "Create board"}
@@ -864,7 +986,7 @@ export function WorkspaceDashboardPage({
                 {!normalizedQuery && canCreateBoards && (
                   <Button
                     tone="secondary"
-                    onClick={handleCreateBoard}
+                    onClick={openCreateBoard}
                     disabled={creating}
                   >
                     Create the first board
@@ -1050,6 +1172,14 @@ export function WorkspaceDashboardPage({
         </div>
       </div>
 
+      <CreateBoardThemeDialog
+        open={createBoardOpen}
+        creating={creating}
+        selectedTheme={selectedTheme}
+        onThemeChange={setSelectedTheme}
+        onClose={() => setCreateBoardOpen(false)}
+        onCreate={() => void handleCreateBoard()}
+      />
       <DashboardToast message={toastMessage} />
     </WorkspaceShell>
   );

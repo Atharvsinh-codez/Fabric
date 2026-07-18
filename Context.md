@@ -903,3 +903,32 @@ Rules:
   - No database migration, rate limit, dependency, realtime Worker, tldraw version, patch, internals, shape behavior, or watermark change was introduced.
 - Next Steps:
   - Publish through GitHub main and verify a workflow can finish while another collaborator continues editing the same board.
+
+### [2026-07-18 19:03 IST] - Add shared customizable board themes
+- Request: Keep the current white canvas as the default, add Miro-inspired grid and colored board themes, place the appearance control beside Fabric agent, and let people choose a theme while creating a board.
+- Plan: Use Fabric's existing product UI and tldraw public APIs, persist one validated theme in the collaborative document, and avoid changing snapping, realtime infrastructure, the database schema, or tldraw internals.
+- Actions:
+  - Added Canvas, Dots, Grid, Sage, Sky, and Sand presets with safe fallback and metadata helpers.
+  - Added a compact responsive theme picker immediately after Fabric agent; editor changes are stored in global tldraw document metadata and synchronize through the existing Yjs room.
+  - Added camera-aligned visual dot/grid backgrounds without enabling tldraw grid mode or changing shape behavior.
+  - Added a six-swatch board-creation dialog with Canvas selected by default and validated the selected theme through the API/repository path.
+  - Mirrored themes into durable checkpoints and top-level board documents, preserved unrelated metadata, restored legacy/offline boards safely, and rendered the same appearance on read-only share links.
+- Files Changed:
+  - `components/fabric-whiteboard.tsx`, `components/fabric-whiteboard/board-theme-picker.tsx`, `components/fabric-whiteboard/canvas-chrome.tsx` and tests - In-board control, backgrounds, placement, and interaction coverage.
+  - `components/workspace-dashboard-page.tsx` and test - New-board appearance chooser.
+  - `components/shared-tldraw-canvas.tsx`, `lib/boards/public-share.ts` - Shared-link theme rendering.
+  - `lib/boards/board-theme.ts`, `lib/boards/canvas-document.ts`, `lib/boards/tldraw-store-adapter.ts` and tests - Typed theme contract and realtime/offline/checkpoint persistence.
+  - `lib/boards/contracts.ts`, `lib/boards/client.ts`, `lib/boards/repository.ts`, and route/contract tests - Validated board-creation theme support.
+- Diff Summary:
+  - Fixed white-only canvas -> six restrained shared appearances with white Canvas remaining the default.
+  - Appearance stored only in transient UI -> global collaborative metadata mirrored into existing durable board storage and checkpoints.
+  - Immediate blank-board creation -> accessible appearance selection before creation, with themes still changeable later.
+- Validation:
+  - Focused Vitest passed: 9 files / 39 tests.
+  - Application TypeScript, scoped ESLint, `git diff --check`, and the optimized production build passed.
+  - `npm run verify:tldraw` confirmed tldraw remains pinned at `4.2.0` with the reviewed patch intact.
+- Risks/Notes:
+  - Decorative dots and grid do not enable snap-to-grid; existing canvas editing and realtime behavior are unchanged.
+  - No database migration, Cloudflare Worker, dependency, rate limit, tldraw internal, shape, or watermark change was introduced.
+- Next Steps:
+  - Publish the verified theme feature to GitHub `main` and validate collaborative theme switching after deployment.

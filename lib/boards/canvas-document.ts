@@ -1,5 +1,10 @@
 import type { BoardDocument, JsonValue } from "@/db/schema/product";
 import {
+  parseBoardTheme,
+  readBoardThemeFromMeta,
+  type BoardTheme,
+} from "./board-theme";
+import {
   asStoredTldrawDocument,
   projectTldrawDocument,
   readTldrawDocument,
@@ -26,6 +31,7 @@ const EDGE_ROUTES = new Set<CanvasEdge["route"]>(["straight", "elbow"]);
 export type CanvasDocumentSnapshot = Readonly<{
   nodes: CanvasNode[];
   edges: CanvasEdge[];
+  theme?: BoardTheme;
   /**
    * The lossless tldraw document checkpoint. `nodes` and `edges` remain the
    * bounded semantic projection used by AI and public sharing.
@@ -86,6 +92,7 @@ function isCanvasEdge(value: unknown): value is CanvasEdge {
 }
 
 export function readCanvasDocument(document: BoardDocument): CanvasDocumentSnapshot {
+  const tldraw = readTldrawDocument(document);
   const seenNodeIds = new Set<string>();
   const nodes = Array.isArray(document.nodes)
     ? document.nodes.filter((node): node is CanvasNode => {
@@ -104,7 +111,16 @@ export function readCanvasDocument(document: BoardDocument): CanvasDocumentSnaps
       )
     : [];
 
-  return { nodes, edges, tldraw: readTldrawDocument(document) };
+  const tldrawTheme = readBoardThemeFromMeta(
+    tldraw?.snapshot.store["document:document"]?.meta,
+  );
+
+  return {
+    nodes,
+    edges,
+    theme: tldrawTheme ?? parseBoardTheme(document.theme),
+    tldraw,
+  };
 }
 
 /**
@@ -119,6 +135,7 @@ export function readAuthoritativeCanvasDocument(
   if (!stored.tldraw) return stored;
   return {
     ...projectTldrawDocument(stored.tldraw),
+    theme: stored.theme,
     tldraw: stored.tldraw,
   };
 }
@@ -136,6 +153,7 @@ export function writeCanvasDocument(
     version: 1,
     nodes: asJsonValue(snapshot.nodes),
     edges: asJsonValue(snapshot.edges),
+    theme: parseBoardTheme(snapshot.theme ?? current.theme),
   };
   if (snapshot.tldraw !== undefined) {
     delete next.tldrawSnapshot;

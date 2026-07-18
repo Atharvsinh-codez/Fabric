@@ -8,6 +8,11 @@ import { z } from "zod";
 import { db } from "@/db/clients/web";
 import { boardShareLinks, boards, workspaces } from "@/db/schema/product";
 import {
+  parseBoardTheme,
+  readBoardThemeFromMeta,
+  type BoardTheme,
+} from "@/lib/boards/board-theme";
+import {
   readTldrawDocument,
   type FabricTldrawDocument,
 } from "@/lib/boards/tldraw-document";
@@ -54,6 +59,7 @@ export type PublicBoardShare = Readonly<{
   revision: number;
   nodes: PublicSharedNode[];
   edges: PublicSharedEdge[];
+  theme: BoardTheme;
   tldraw: FabricTldrawDocument | null;
 }>;
 
@@ -111,6 +117,11 @@ export async function resolvePublicBoardShare(token: string): Promise<PublicBoar
       );
   }
 
+  const tldraw = readTldrawDocument(result.document);
+  const theme = readBoardThemeFromMeta(
+    tldraw?.snapshot.store["document:document"]?.meta,
+  ) ?? parseBoardTheme(result.document.theme);
+
   return {
     token: parsedToken.data,
     boardId: result.boardId,
@@ -121,6 +132,7 @@ export async function resolvePublicBoardShare(token: string): Promise<PublicBoar
     revision: result.revision,
     nodes: document.data.nodes,
     edges: document.data.edges,
-    tldraw: readTldrawDocument(result.document),
+    theme,
+    tldraw,
   };
 }

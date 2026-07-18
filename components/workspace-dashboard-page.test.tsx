@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   push: vi.fn(),
+  createBoard: vi.fn(),
   listBoardsPage: vi.fn(),
 }));
 
@@ -20,11 +21,36 @@ vi.mock("next/link", () => ({
   ),
 }));
 vi.mock("@/components/workspace-shell", () => ({
-  WorkspaceShell: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  WorkspaceShell: ({
+    action,
+    children,
+  }: {
+    action?: ReactNode;
+    children: ReactNode;
+  }) => <div>{action}{children}</div>,
+}));
+vi.mock("@/components/fabric-whiteboard/fabric-dialog", () => ({
+  FabricDialog: ({
+    open,
+    title,
+    description,
+    children,
+  }: {
+    open: boolean;
+    title: string;
+    description?: string;
+    children: ReactNode;
+  }) => open ? (
+    <section role="dialog" aria-label={title}>
+      <h2>{title}</h2>
+      {description ? <p>{description}</p> : null}
+      {children}
+    </section>
+  ) : null,
 }));
 vi.mock("@/lib/boards/client", () => ({
   archiveBoard: vi.fn(),
-  createBoard: vi.fn(),
+  createBoard: mocks.createBoard,
   createProject: vi.fn(),
   listBoardsPage: mocks.listBoardsPage,
   listProjects: vi.fn().mockResolvedValue([]),
@@ -94,6 +120,7 @@ describe("WorkspaceDashboardPage board preview refresh", () => {
       boards: [board(1)],
       nextCursor: null,
     });
+    mocks.createBoard.mockResolvedValue(board(1));
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -216,5 +243,60 @@ describe("WorkspaceDashboardPage board preview refresh", () => {
       `${GENERATION_ID}.2`,
     );
     expect(container.textContent).toContain("Load more boards");
+  });
+
+  it("creates a board with the canvas theme chosen in the creation dialog", async () => {
+    const initialBoardQueryKey = dashboardBoardQueryKey(WORKSPACE_ID, {
+      q: "",
+      view: "recent",
+    });
+    await act(async () => {
+      root.render(
+        <WorkspaceDashboardPage
+          workspaceId={WORKSPACE_ID}
+          initialBoards={[board(1)]}
+          initialBoardQueryKey={initialBoardQueryKey}
+          initialNextBoardCursor={null}
+          organizationEnabled={false}
+          initialProjects={[]}
+          initialWorkspaces={[workspace]}
+        />,
+      );
+    });
+
+    const openButton = [...container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.trim() === "Create board");
+    await act(async () => {
+      openButton?.click();
+    });
+
+    const dialog = container.querySelector<HTMLElement>(
+      '[role="dialog"][aria-label="Create board"]',
+    );
+    expect(dialog).not.toBeNull();
+    expect(
+      dialog?.querySelector<HTMLInputElement>('input[value="canvas"]')?.checked,
+    ).toBe(true);
+
+    await act(async () => {
+      dialog?.querySelector<HTMLInputElement>('input[value="sage"]')?.click();
+    });
+    const createButton = [...(dialog?.querySelectorAll<HTMLButtonElement>("button") ?? [])]
+      .find((button) => button.textContent?.trim() === "Create board");
+    await act(async () => {
+      createButton?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mocks.createBoard).toHaveBeenCalledWith({
+      workspaceId: WORKSPACE_ID,
+      projectId: undefined,
+      title: "Untitled board",
+      theme: "sage",
+    });
+    expect(mocks.push).toHaveBeenCalledWith(
+      `/app/boards/${board(1).id}`,
+    );
   });
 });

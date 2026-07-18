@@ -57,6 +57,11 @@ import {
 } from "@/lib/boards/authorization";
 import { BoardApiError } from "@/lib/boards/http";
 import {
+  DEFAULT_BOARD_THEME,
+  parseBoardTheme,
+  type BoardTheme,
+} from "@/lib/boards/board-theme";
+import {
   InvalidPaginationCursorError,
   decodeBoardListCursor,
   encodeBoardListCursor,
@@ -74,7 +79,12 @@ import {
   workspaceMemberRoleChangedRevocation,
 } from "@/lib/realtime/revocation-events";
 
-const defaultDocument: BoardDocument = { version: 1, nodes: [], edges: [] };
+const defaultDocument: BoardDocument = {
+  version: 1,
+  nodes: [],
+  edges: [],
+  theme: DEFAULT_BOARD_THEME,
+};
 
 export async function createWorkspace(userId: string, name: string) {
   return db.transaction(async (transaction) => {
@@ -131,6 +141,7 @@ export async function createBoard(input: {
   workspaceId: string;
   projectId?: string;
   title: string;
+  theme?: BoardTheme;
   sharingPolicy?: BoardSharingPolicy;
   cover?: Extract<BoardCoverMetadata, { kind: "preset" }> | null;
   document?: BoardDocument;
@@ -162,7 +173,10 @@ export async function createBoard(input: {
       title: input.title,
       sharingPolicy: input.sharingPolicy ?? project.defaultSharingPolicy,
       cover: input.cover ?? null,
-      document: input.document ?? defaultDocument,
+      document: {
+        ...(input.document ?? defaultDocument),
+        theme: input.theme ?? parseBoardTheme(input.document?.theme),
+      },
       createdBy: input.userId,
     })
     .returning();

@@ -10,6 +10,7 @@ import type {
   WorkspaceRole,
 } from "@/db/schema/product";
 import type { BoardImageAssetSummary } from "@/lib/boards/assets/contracts";
+import type { BoardTheme } from "@/lib/boards/board-theme";
 import type { WorkspaceActivityPage } from "@/lib/boards/activity-contracts";
 
 export type WorkspaceSummary = Readonly<{
@@ -314,6 +315,7 @@ export async function createBoard(input: {
   workspaceId: string;
   projectId?: string;
   title: string;
+  theme?: BoardTheme;
   sharingPolicy?: BoardSharingPolicy;
   cover?: Extract<BoardCoverMetadata, { kind: "preset" }> | null;
   document?: BoardDocument;
