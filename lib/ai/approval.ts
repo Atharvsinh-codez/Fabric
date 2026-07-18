@@ -91,6 +91,16 @@ function normalizeOptionalText(value: string | undefined | null): string | undef
   return value === undefined || value === null || value === "" ? undefined : value;
 }
 
+function normalizeProjectedBody(value: string | undefined | null): string | undefined {
+  const normalized = normalizeOptionalText(value);
+  if (normalized === undefined) return undefined;
+  // tldraw rich text canonicalizes consecutive paragraph separators when a
+  // string is converted to editable content and projected back to the board.
+  // Blank-line count is presentation-only; every visible character must still
+  // match the approved proposal exactly.
+  return normalized.replace(/\r\n?/g, "\n").replace(/\n+/g, "\n");
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -233,7 +243,7 @@ export function verifyApprovedPatchProjection(
       const matches =
         node.type === operation.nodeType &&
         node.title === operation.content.title &&
-        normalizeOptionalText(node.body) === normalizeOptionalText(operation.content.body) &&
+        normalizeProjectedBody(node.body) === normalizeProjectedBody(operation.content.body) &&
         (node.tag ?? undefined) === (operation.content.tag ?? undefined) &&
         (operation.content.meta === undefined || node.meta === operation.content.meta) &&
         sameNumber(node.x, operation.position.x) &&
@@ -323,7 +333,7 @@ export function verifyApprovedPatchProjection(
       const matches =
         (!content?.title || node.title === content.title) &&
         (content?.body === undefined ||
-          normalizeOptionalText(node.body) === normalizeOptionalText(content.body)) &&
+          normalizeProjectedBody(node.body) === normalizeProjectedBody(content.body)) &&
         (content?.tag === undefined || (node.tag ?? undefined) === content.tag) &&
         (content?.meta === undefined || (node.meta ?? undefined) === content.meta) &&
         appearanceMatches(node, operation.appearance);

@@ -240,6 +240,24 @@ describe("Fabric agent canvas sidebar", () => {
     expect(aiClient.cancelAiProposal).toHaveBeenCalledWith("run:canvas");
   });
 
+  it("keeps higher-impact previews calm without an alarm banner", async () => {
+    const { editor } = createEditorHarness();
+    aiClient.streamAiProposal.mockResolvedValue({
+      ...canvasPreview,
+      riskClass: "high",
+    });
+    renderPanel({ editor });
+
+    writePrompt("Build a complete workflow from the visible board.");
+    await sendPrompt();
+
+    expect(container.textContent).toContain("Review Changes");
+    expect(container.textContent).toContain("Apply Changes");
+    expect(container.textContent).not.toContain(
+      "This proposal includes a higher-impact board edit.",
+    );
+  });
+
   it("shows ordinary board sync as a calm, compact status", () => {
     const { editor } = createEditorHarness();
     renderPanel({ editor, boardReadiness: "syncing" });

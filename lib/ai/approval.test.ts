@@ -153,6 +153,46 @@ describe("AI approval binding", () => {
     expect(verifyApprovedPatchProjection(clearBodyPatch, clearedDocument)).toEqual({ ok: true });
   });
 
+  it("accepts tldraw paragraph canonicalization without accepting changed text", () => {
+    const paragraphPatch: CanvasPatch = {
+      ...patch,
+      operations: [{
+        type: "createNode",
+        tempId: "tmp_steps",
+        nodeType: "note",
+        position: { x: 40, y: 40 },
+        size: { width: 320, height: 220 },
+        content: {
+          title: "Steps",
+          body: "1. Receive\n\n2. Route\n\n3. Reply",
+        },
+      }],
+    };
+    const canonicalDocument: CanvasDocumentSnapshot = {
+      nodes: [{
+        id: "tmp_steps",
+        type: "note",
+        title: "Steps",
+        body: "1. Receive\n2. Route\n3. Reply",
+        x: 40,
+        y: 40,
+        width: 320,
+        height: 220,
+        fill: "#ffffff",
+      }],
+      edges: [],
+    };
+
+    expect(verifyApprovedPatchProjection(paragraphPatch, canonicalDocument)).toEqual({ ok: true });
+
+    const changedDocument = structuredClone(canonicalDocument);
+    changedDocument.nodes[0]!.body = "1. Receive\n2. Delete\n3. Reply";
+    expect(verifyApprovedPatchProjection(paragraphPatch, changedDocument)).toEqual({
+      ok: false,
+      issueCodes: ["created_node_mismatch"],
+    });
+  });
+
   it("verifies the exact native draw record for deterministic pen writing", () => {
     const drawing = renderPenText({ text: "7 + 3 = 10", fontSize: 28, maxWidth: 360 });
     const penPatch: CanvasPatch = {

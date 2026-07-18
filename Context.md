@@ -792,3 +792,43 @@ Rules:
   - No board content, AI run, database schema/data, Worker, dependency, rate limit, tldraw version, patch, internals, shape, or watermark was changed.
 - Next Steps:
   - Publish through GitHub main, then use Retry Confirmation on an existing pending proposal or apply a fresh proposal after deployment.
+
+### [2026-07-18 00:38 IST] - Remove the higher-impact preview alarm
+- Request: Remove the Fabric agent sentence `This proposal includes a higher-impact board edit. Review each change carefully.` from proposal previews.
+- Plan: Remove only the warning presentation while retaining the review, apply, discard, and server-side proposal safety behavior.
+- Actions:
+  - Removed the conditional warning banner from the AI change preview.
+  - Added focused coverage for a high-risk proposal to ensure the normal review controls remain visible without the alarm copy.
+- Files Changed:
+  - `components/fabric-whiteboard/ai-panel.tsx` and test - Calm preview presentation for every proposal risk class.
+  - `Context.md` - Recorded the focused UI change and verification.
+- Diff Summary:
+  - Higher-impact proposals showed a prominent warning sentence -> every proposal uses the same concise review surface.
+- Validation:
+  - Focused Fabric agent tests passed: 1 file / 16 tests.
+  - Scoped ESLint passed.
+- Risks/Notes:
+  - Proposal validation, risk classification, explicit Apply/Discard controls, and approval authorization remain unchanged.
+  - No tldraw dependency, patch, internals, shape behavior, or watermark handling changed.
+- Next Steps:
+  - Publish with the accompanying save-confirmation correction.
+
+### [2026-07-18 12:08 IST] - Confirm paragraph-rich AI board changes
+- Request: Explain and remove the save-confirmation warning that remained after the Fabric agent visibly completed a workflow on the board.
+- Plan: Inspect the latest durable run and board checkpoint read-only, reproduce the exact proposal through a real isolated editor, and correct only the canonicalization mismatch without weakening content verification.
+- Actions:
+  - Confirmed the latest board revision advanced beyond the proposal base while the run remained `waiting_for_approval` with `created_node_mismatch`.
+  - Replayed that exact proposal in an isolated real editor and reproduced the mismatch before making any production change.
+  - Identified that tldraw canonicalizes consecutive rich-text paragraph separators into single line breaks; all visible characters, node identities, hierarchy, sizes, and initial geometry otherwise matched.
+  - Normalized only repeated line-break presentation during create/update body verification while continuing to reject any changed visible text.
+- Files Changed:
+  - `lib/ai/approval.ts` and test - Paragraph-canonical approval comparison plus changed-text rejection coverage.
+  - `components/fabric-whiteboard/ai-panel.tsx` and test - Removed the requested higher-impact preview sentence while retaining Review, Apply, and Discard.
+- Validation:
+  - The exact latest production proposal failed before the normalization and passed afterward in an isolated real tldraw editor; the database was queried read-only and no board or run was mutated.
+  - Focused approval, repository, route, and panel tests passed: 4 files / 26 tests.
+- Risks/Notes:
+  - Node identity, title, visible body characters, type, hierarchy, geometry, appearance, connectors, native drawings, generation, revision, access, and proposal binding remain verified.
+  - No database schema/data, Worker, API rate limit, dependency, tldraw source/version/patch/internals, shape behavior, or watermark handling changed.
+- Next Steps:
+  - Publish through GitHub main and verify a fresh paragraph-rich Fabric agent workflow confirms automatically after its checkpoint saves.

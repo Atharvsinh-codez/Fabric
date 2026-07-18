@@ -667,11 +667,6 @@ export function FabricAiPanel({
                     {proposal.patch.operations.length} {proposal.patch.operations.length === 1 ? "change" : "changes"}
                   </p>
                 </div>
-                {proposal.riskClass !== "low" ? (
-                  <p className="border-t border-near-black-primary-text/8 px-3.5 py-2.5 text-pretty text-base text-(--warning) sm:text-sm">
-                    This proposal includes a higher-impact board edit. Review each change carefully.
-                  </p>
-                ) : null}
                 <ol
                   className="max-h-52 list-decimal divide-y divide-near-black-primary-text/8 overflow-y-auto border-t border-near-black-primary-text/8 pl-9 pr-3.5"
                   role="list"
