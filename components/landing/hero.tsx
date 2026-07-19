@@ -11,7 +11,7 @@ export function LandingHero() {
   return (
     <section
       data-landing-hero
-      className="relative isolate flex min-h-[43rem] overflow-hidden bg-[#d8effb] sm:min-h-[47rem]"
+      className="relative isolate flex min-h-svh overflow-hidden bg-[#d8effb]"
       aria-labelledby="landing-hero-title"
     >
       <span id="landing-header-threshold" className="pointer-events-none absolute top-6 left-0 size-px" aria-hidden="true" />
@@ -23,7 +23,7 @@ export function LandingHero() {
         sizes="100vw"
         className="-z-20 object-cover object-center"
       />
-      <div className="mx-auto flex w-full max-w-7xl flex-col items-center px-5 pt-32 pb-16 text-center sm:px-8 sm:pt-36 lg:px-10 lg:pt-40">
+      <div className="mx-auto flex w-full max-w-7xl flex-col items-center justify-center px-5 pt-28 pb-14 text-center sm:px-8 sm:pt-32 sm:pb-16 lg:px-10 lg:pt-36 lg:pb-20">
         <div className="hero-copy-enter flex max-w-5xl flex-col items-center">
           <p className="mb-6 rounded-full bg-white/72 px-4 py-2 text-sm font-medium text-[#35414b] ring-1 ring-white/80 backdrop-blur-md sm:mb-7">
             For teams who want clear decisions, without the guesswork

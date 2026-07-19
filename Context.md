@@ -1119,3 +1119,29 @@ Rules:
   - UI-design Build mode with general, interactivity, and button guidance shaped the automatic handoff and fallback behavior.
 - Next Steps:
   - Publish the verified workspace handoff to GitHub `main` when requested.
+
+### [2026-07-19 16:29 IST] - Make the landing hero fill fullscreen viewports
+- Request: Remove the white strip beneath the landing hero on fullscreen displays and improve the hero's responsive composition.
+- Plan: Replace fixed desktop hero heights with a viewport-aware minimum, preserve natural growth on short screens, and verify the result at desktop, laptop, and mobile sizes.
+- Actions:
+  - Replaced the fixed `43rem`/`47rem` hero minimums with `min-h-svh`, so the background always covers the visible viewport without clipping content on short screens.
+  - Centered the hero copy within the available height and rebalanced responsive top/bottom padding around the fixed header.
+  - Added a focused regression test that protects the viewport-height contract and prevents the old fixed-height classes from returning.
+- Files Changed:
+  - `components/landing/hero.tsx` - Viewport-aware height, centered composition, and responsive spacing.
+  - `components/landing/hero.test.tsx` - Fullscreen sizing and layout regression coverage.
+- Diff Summary:
+  - Fixed-height hero exposing the next white section on tall/fullscreen displays -> viewport-filling hero with natural content growth.
+  - Top-weighted copy placement -> balanced centered composition across responsive breakpoints.
+- Validation:
+  - Focused landing verification passed: 2 files / 3 tests.
+  - Application TypeScript and scoped ESLint passed.
+  - In-app browser checks passed at 1518x862, 1280x720, and 390x844 with no white gap, horizontal overflow, warnings, or errors.
+  - The optimized Next.js/server production build compiled successfully.
+  - `npm run verify:tldraw` confirmed tldraw `4.2.0` and the reviewed patch remain intact; `git diff --check` passed.
+- Risks/Notes:
+  - The hero copy, image asset, navigation, actions, and interaction behavior remain unchanged.
+  - No dependency, API, database, Cloudflare Worker, realtime, tldraw internals, patch, shape, or watermark behavior changed.
+  - UI-design Responsive mode (`make-responsive.md`) shaped the viewport-unit choice, natural overflow behavior, and breakpoint verification.
+- Next Steps:
+  - Publish the verified landing hero improvement to GitHub `main` when requested.
