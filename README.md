@@ -41,7 +41,7 @@
 
 <p align="center">
   <a href="https://fabric.athrix.me">
-    <img src="public/images/fabric-evidence-sky-v4.webp" alt="Fabric connects scattered evidence into one shared direction" width="100%" />
+    <img src="public/images/fabric-og.png" alt="Fabric turns scattered thinking into shared direction" width="100%" />
   </a>
 </p>
 

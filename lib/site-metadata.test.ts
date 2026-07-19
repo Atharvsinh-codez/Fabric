@@ -61,11 +61,17 @@ describe("public site metadata", () => {
       url: "/pricing",
       title: "Pricing",
       description: "Open-source Fabric access.",
-      images: [expect.objectContaining({ url: "/opengraph-image" })],
+      images: [
+        expect.objectContaining({
+          url: "/images/fabric-og.png",
+          width: 1901,
+          height: 1077,
+        }),
+      ],
     });
     expect(metadata.twitter).toMatchObject({
       card: "summary_large_image",
-      images: ["/twitter-image"],
+      images: [expect.objectContaining({ url: "/images/fabric-og.png" })],
     });
   });
 });

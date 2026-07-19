@@ -9,6 +9,13 @@ type PublicPageMetadata = {
   absoluteTitle?: boolean;
 };
 
+const SOCIAL_IMAGE = {
+  url: "/images/fabric-og.png",
+  width: 1901,
+  height: 1077,
+  alt: "Fabric turns scattered thinking into shared direction",
+} as const;
+
 export function createPublicPageMetadata({
   title,
   description = SITE_DESCRIPTION,
@@ -28,20 +35,13 @@ export function createPublicPageMetadata({
       siteName: SITE_NAME,
       title,
       description,
-      images: [
-        {
-          url: "/opengraph-image",
-          width: 1200,
-          height: 630,
-          alt: "Fabric — open-source multiplayer canvas",
-        },
-      ],
+      images: [SOCIAL_IMAGE],
     },
     twitter: {
       card: "summary_large_image",
       title,
       description,
-      images: ["/twitter-image"],
+      images: [{ url: SOCIAL_IMAGE.url, alt: SOCIAL_IMAGE.alt }],
     },
   };
 }
