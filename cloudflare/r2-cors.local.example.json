@@ -1,0 +1,21 @@
+{
+  "rules": [
+    {
+      "allowed": {
+        "origins": ["http://localhost:3000"],
+        "methods": ["PUT"],
+        "headers": [
+          "Content-Type",
+          "If-None-Match",
+          "x-amz-meta-fabric-content-sha256",
+          "x-amz-meta-fabric-byte-size",
+          "x-amz-meta-fabric-media-type",
+          "x-amz-meta-fabric-upload-kind",
+          "x-amz-meta-fabric-owner-id",
+          "x-amz-meta-fabric-expires-at"
+        ]
+      },
+      "maxAgeSeconds": 3600
+    }
+  ]
+}

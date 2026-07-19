@@ -1,0 +1,4 @@
+# Copy this file to .dev.vars.dev before running Wrangler with --env dev.
+# Generate a different random value for each secret. Never commit the copy.
+REALTIME_TICKET_SIGNING_KEY=replace-with-the-same-32-character-secret-used-by-the-web-app
+REALTIME_COORDINATOR_SECRET=replace-with-a-different-32-character-secret-used-by-the-web-app

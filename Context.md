@@ -932,3 +932,53 @@ Rules:
   - No database migration, Cloudflare Worker, dependency, rate limit, tldraw internal, shape, or watermark change was introduced.
 - Next Steps:
   - Publish the verified theme feature to GitHub `main` and validate collaborative theme switching after deployment.
+
+### [2026-07-19 12:46 IST] - Publish professional open-source setup documentation
+- Request: Replace the operator-style project introduction with a professional public README and a complete, easy-to-follow setup guide covering local development, Neon, OAuth, private R2, Fabric agent, and Cloudflare realtime.
+- Plan: Audit the actual runtime and environment contracts, separate the quick local path from production deployment, correct setup blockers and documentation drift, and publish only secret-free examples.
+- Actions:
+  - Rebuilt the README as the public project landing page with Fabric branding, feature highlights, architecture, quick start, commands, project structure, and a documentation index.
+  - Added an end-to-end setup guide for forks, Neon roles/migrations, OAuth callbacks, purpose-separated secrets, local and Cloudflare realtime, private R2/CORS, optional AI, deployment, schedulers, verification, troubleshooting, and rollback.
+  - Added contribution and private security-reporting guides plus tracked local templates for Wrangler secrets and R2 CORS.
+  - Made `.env.local` and `.env.worker.local` optional during development and replaced the provider-specific public AI example with a validated inert, disabled-by-default configuration.
+  - Linked the Cloudflare operations guide to the main setup flow, aligned it with the installed Wrangler CLI, removed stale ticket-throttle wording, and corrected the production migration references through `0013`.
+- Files Changed:
+  - `README.md` - Professional public project overview and onboarding entry point.
+  - `docs/setup.md` - Complete local, Cloudflare, R2, AI, and production setup guide.
+  - `CONTRIBUTING.md`, `SECURITY.md` - Contribution workflow and private vulnerability reporting.
+  - `.dev.vars.example`, `cloudflare/r2-cors.local.example.json`, `.gitignore` - Safe tracked local configuration templates.
+  - `.env.example`, `package.json` - Provider-neutral disabled AI defaults and optional local override files.
+  - `cloudflare/realtime/README.md`, `docs/production-runbook.md` - Cross-links and corrected operational guidance.
+- Diff Summary:
+  - Dense operator summary with an incomplete fresh-clone path -> branded README plus one comprehensive setup path from clone through production.
+  - Missing local override files blocked `npm run dev` -> ignored override files are optional.
+  - Public example referenced one private provider deployment -> inert provider-neutral AI defaults that validate without sending a request.
+- Validation:
+  - Markdown local-link and balanced-code-fence checks passed across all new and updated public guides.
+  - The example environment passed the real AI worker config parser with AI disabled, and optional missing env-file behavior was executed successfully.
+  - `npm run typecheck`, `npm run realtime:worker:typecheck`, `npm run db:check`, `npm run verify:tldraw`, and `git diff --check` passed.
+- Risks/Notes:
+  - No application feature, database data, Cloudflare deployment, R2 bucket, secret, dependency, tldraw package, patch, shape behavior, or watermark handling changed.
+  - The repository still has no license file; maintainers must choose and publish an OSI-approved license before the legal reuse terms can be described as open source.
+- Next Steps:
+  - Select MIT, Apache-2.0, or another appropriate license, then publish the documentation update when requested.
+
+### [2026-07-19 12:58 IST] - License Fabric under Apache-2.0
+- Request: Identify Fabric as made by Atharvsinh Jadav, publish the live site and creator profiles, and add an Apache-2.0 license.
+- Plan: Add the canonical Apache License 2.0 text, make the creator attribution visible from the public README, and align package metadata with the project website and repository.
+- Actions:
+  - Added the canonical Apache License 2.0 text at the repository root.
+  - Added the live website, creator attribution, portfolio, X, LinkedIn, and license badge to the README.
+  - Declared the project description, author, license, homepage, and source repository in `package.json` while keeping the package private from accidental npm publication.
+- Files Changed:
+  - `LICENSE` - Canonical Apache License 2.0 terms.
+  - `README.md` - Live website, creator links, copyright, and license section.
+  - `package.json` - Public project and licensing metadata.
+- Validation:
+  - Verified the license heading, all nine terms, appendix, and canonical license URL against the Apache Software Foundation text.
+  - Parsed `package.json`, checked README local links, ran the tldraw invariant guard, and ran `git diff --check`.
+- Risks/Notes:
+  - This change grants Apache-2.0 permissions for the repository; third-party dependencies and assets retain their own licenses.
+  - No application behavior, dependency, database, Cloudflare resource, secret, tldraw package, patch, shape behavior, or watermark handling changed.
+- Next Steps:
+  - Publish the documentation and license update to GitHub `main` when requested.

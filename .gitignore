@@ -11,6 +11,7 @@ worker-startup.cpuprofile
 /.wrangler
 /_wrangler-pid.tmp
 /.dev.vars*
+!/.dev.vars.example
 .DS_Store
 /nul
 /work

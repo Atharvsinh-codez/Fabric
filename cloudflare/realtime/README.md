@@ -1,5 +1,9 @@
 # Fabric realtime on Cloudflare
 
+For a clean-clone walkthrough covering Neon, OAuth, local development, R2, and
+the web deployment that issues realtime tickets, start with the
+[complete Fabric setup guide](../../docs/setup.md).
+
 Production realtime is split from the Vercel application runtime:
 
 ```text
@@ -35,7 +39,7 @@ and preview must not share Durable Objects, signing keys, or origin allowlists.
 | Revocation delivery URL | `REALTIME_REVOCATION_ENDPOINT` | n/a | Exact Worker HTTPS URL ending in `/internal/revocations`; server-only. |
 | Revocation dispatch credential | `REALTIME_REVOCATION_DISPATCH_SECRET` | n/a | Distinct 32+ character bearer secret protecting the bounded Vercel cron route. |
 | Coordinator credential | `REALTIME_COORDINATOR_SECRET` | `REALTIME_COORDINATOR_SECRET` secret | Same 32+ character value on these two server runtimes; it must differ from signing and dispatch secrets. |
-| Web database | `DATABASE_URL` | n/a | Vercel uses it for membership checks and ticket-mint rate limits. |
+| Web database | `DATABASE_URL` | n/a | The web runtime uses it for authentication, board access checks, and ticket issuance. |
 | Durable Object binding | n/a | `FABRIC_BOARD_ROOMS` | Keep the class name `FabricBoardRoom` and the committed migration tag. |
 | Access coordinator binding | n/a | `FABRIC_ACCESS_COORDINATORS` | Keep `WorkspaceAccessCoordinator` and additive migration tag `v2`; never delete its storage during rollback. |
 | Deployment mode | n/a | `FABRIC_ENV=production` | Production health rejects insecure localhost origins. |
@@ -53,7 +57,7 @@ ignored `.dev.vars.dev` file as `REALTIME_TICKET_SIGNING_KEY=<value>` and a
 different `REALTIME_COORDINATOR_SECRET=<value>`, then run:
 
 ```powershell
-npx --yes wrangler@4.110.0 dev --config wrangler.toml --env dev
+npx wrangler dev --config wrangler.toml --env dev
 ```
 
 Before every Worker dry-run or deployment, run the generated-binding check and
@@ -98,21 +102,21 @@ npm run realtime:worker:types
 
 ## First deployment
 
-The commands below are PowerShell commands run from the repository root. They
-pin the CLI version used to validate this runbook. Authentication is interactive
-so no token is placed in shell history.
+The commands below run from the repository root and use the Wrangler version
+installed by `npm ci`. Authentication is interactive so no token is placed in
+shell history.
 
 1. Authenticate and verify the intended Cloudflare account:
 
    ```powershell
-   npx --yes wrangler@4.110.0 login
-   npx --yes wrangler@4.110.0 whoami
+   npx wrangler login
+   npx wrangler whoami
    ```
 
 2. Review `wrangler.toml`, then compile without changing remote state:
 
    ```powershell
-   npx --yes wrangler@4.110.0 deploy --config wrangler.toml --env="" --dry-run
+   npx wrangler deploy --config wrangler.toml --env="" --dry-run
    ```
 
 3. Deploy the unreferenced Worker and its initial `new_sqlite_classes`
@@ -120,7 +124,7 @@ so no token is placed in shell history.
    authentication fails closed because the signing secret is not present:
 
    ```powershell
-   npx --yes wrangler@4.110.0 deploy --config wrangler.toml --env=""
+   npx wrangler deploy --config wrangler.toml --env=""
    ```
 
 4. Create one random signing key and a different random coordinator key in the
@@ -130,9 +134,9 @@ so no token is placed in shell history.
    Worker URL until this succeeds:
 
    ```powershell
-   npx --yes wrangler@4.110.0 secret put REALTIME_TICKET_SIGNING_KEY --config wrangler.toml --env=""
-   npx --yes wrangler@4.110.0 secret put REALTIME_COORDINATOR_SECRET --config wrangler.toml --env=""
-   npx --yes wrangler@4.110.0 deployments list --config wrangler.toml --env=""
+   npx wrangler secret put REALTIME_TICKET_SIGNING_KEY --config wrangler.toml --env=""
+   npx wrangler secret put REALTIME_COORDINATOR_SECRET --config wrangler.toml --env=""
+   npx wrangler deployments list --config wrangler.toml --env=""
    ```
 
    Record the deployment/version ID and Worker hostname in the release record.
@@ -228,13 +232,13 @@ must preserve the SQLite-backed rooms and access coordinators.
 1. List deployments and select the last known-good Worker version:
 
    ```powershell
-   npx --yes wrangler@4.110.0 deployments list --config wrangler.toml --env=""
+   npx wrangler deployments list --config wrangler.toml --env=""
    ```
 
 2. Roll back Worker code in place. The command prompts for confirmation:
 
    ```powershell
-   npx --yes wrangler@4.110.0 rollback <known-good-worker-version-id> --config wrangler.toml --env=""
+   npx wrangler rollback <known-good-worker-version-id> --config wrangler.toml --env=""
    ```
 
 3. Recheck Worker health and repeat the two-browser smoke test:

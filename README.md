@@ -1,92 +1,182 @@
-# Fabric
+<div align="center">
+  <a href="https://fabric.athrix.me">
+    <img src="public/brand/fabric-logo.svg" alt="Fabric" width="180" />
+  </a>
 
-Fabric is a persistent multiplayer design canvas built with Next.js 16, React 19, Tailwind CSS v4, tldraw, Yjs, Auth.js, Neon/PostgreSQL, Cloudflare Durable Objects and R2, and streamed OpenAI-compatible canvas proposals.
+  <h3>A local-first multiplayer canvas for ideas, research, and shared decisions.</h3>
 
-Production uses a Next.js App Router deployment for pages and authenticated APIs, a Cloudflare Worker with one SQLite Durable Object per board generation for realtime collaboration, private R2 buckets for uploaded media, and Neon for identity, tenant metadata, recovery checkpoints, and durable product state. `server.ts` remains the attached local-development runtime and is not the Vercel production entrypoint.
+  <p>
+    <a href="https://fabric.athrix.me"><strong>Live web</strong></a>
+    ·
+    <a href="docs/setup.md"><strong>Setup guide</strong></a>
+    ·
+    <a href="https://fabric.athrix.me/features"><strong>Features</strong></a>
+    ·
+    <a href="CONTRIBUTING.md"><strong>Contributing</strong></a>
+  </p>
 
-The implemented product path includes Google and GitHub sign-in, database sessions, onboarding, tenant-scoped workspaces and projects, effective board permissions, favorites and pins, board lifecycle status, archive/restore, persistent boards, a Fabric-blue tldraw editor, multiplayer presence and document sync, offline recovery, comments, scoped share links, checkpoints, private image/video assets, custom avatars, and review-before-apply AI proposals.
+  <p>
+    Made by <a href="https://athrix.me"><strong>Atharvsinh Jadav</strong></a>
+  </p>
 
-## Runtime and database boundaries
+  <p>
+    <a href="https://github.com/Atharvsinh-codez/Fabric/actions/workflows/ci.yml"><img src="https://github.com/Atharvsinh-codez/Fabric/actions/workflows/ci.yml/badge.svg" alt="CI status" /></a>
+    <img src="https://img.shields.io/badge/Node.js-22-339933?logo=nodedotjs&logoColor=white" alt="Node.js 22" />
+    <img src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" alt="Strict TypeScript" />
+    <img src="https://img.shields.io/badge/Cloudflare-Durable_Objects-F38020?logo=cloudflare&logoColor=white" alt="Cloudflare Durable Objects" />
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-blue.svg" alt="Apache License 2.0" /></a>
+  </p>
+</div>
 
-Production separates runtime credentials and responsibilities:
+---
 
-| Runtime | Responsibility | Credential/storage boundary |
-| --- | --- | --- |
-| Next.js web | UI, Auth.js, tenant-aware APIs, AI SSE delivery, ticket issuance, media authorization, and proposal approval | `DATABASE_URL` as `fabric_web` plus a dedicated R2 S3 credential |
-| Cloudflare realtime Worker | Scoped WebSockets, ordered Yjs persistence, awareness, and ticket redemption | Durable Object SQLite; no Neon or R2 credential |
-| AI worker/dispatcher | Durable leases, OpenAI-compatible streaming, validation, retries, cancellation, and retention | `WORKER_DATABASE_URL` as `fabric_worker` when separately attached |
-| R2 | Private board media and custom avatar bytes | Dedicated private buckets; metadata and authorization remain in Neon |
+Fabric is a self-hostable visual workspace built for teams, classrooms, and anyone who thinks better on a canvas. It combines an editable tldraw board with durable multiplayer sync, offline recovery, workspaces and projects, private media, study tools, and a human-reviewed canvas agent.
 
-`DATABASE_URL_DIRECT` uses the DDL-capable `fabric_migrator` identity only for ordered migrations. The browser never receives OAuth secrets, database URLs, AI provider credentials, health credentials, or realtime keys. `NEXT_PUBLIC_*` values are intentionally browser-visible build inputs.
+The browser stays responsive and local-first. In production, authenticated APIs run in Next.js, board rooms run in Cloudflare Durable Objects, tenant and checkpoint data lives in Neon PostgreSQL, and private uploads live in Cloudflare R2.
 
-## Local development
+## Why Fabric
 
-Prerequisites: Node.js 22, npm, a PostgreSQL/Neon database, Google and GitHub OAuth applications, and a server-only key for an OpenAI-compatible streaming endpoint.
+- **Realtime collaboration** — shared boards, named presence, multiplayer cursors, Yjs convergence, reconnect recovery, and a durable local outbox.
+- **Organized work** — workspaces, projects, board roles, favorites, pins, statuses, archive/restore, comments, checkpoints, and scoped share links.
+- **A serious whiteboard** — editable diagrams, drawings, canvas themes, templates, object navigation, bookmarks, minimap, and presentation-friendly layouts.
+- **Built for learning** — calculators, graphing, equations, unit conversion, rulers, protractors, coordinate planes, focus tools, and education templates.
+- **Private media** — board images, videos, and custom avatars stored in private R2 buckets behind Fabric authorization.
+- **Reviewable AI** — an OpenAI-compatible streaming agent proposes native canvas changes that a person reviews before applying.
+- **Tenant-aware by design** — board, project, workspace, asset, comment, AI, share, and realtime access resolve through server-owned authorization.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  Browser["Browser\nNext.js UI + tldraw + Yjs"]
+  Web["Next.js web runtime\nAuth, APIs, tickets, AI SSE"]
+  Realtime["Cloudflare Worker\nRealtime gateway"]
+  Room["Durable Object\nOne room per board generation"]
+  Neon["Neon PostgreSQL\nIdentity, tenants, checkpoints"]
+  R2["Private Cloudflare R2\nImages, video, avatars"]
+  AI["OpenAI-compatible provider\nStreaming canvas plans"]
+
+  Browser -->|HTTPS| Web
+  Browser -->|WSS| Realtime
+  Realtime --> Room
+  Web --> Neon
+  Web --> R2
+  Web --> AI
+```
+
+| Runtime | Owns |
+| --- | --- |
+| Browser | Canvas interaction, Yjs state, IndexedDB recovery, durable outgoing edits |
+| Next.js | Auth.js, tenant-aware APIs, board tickets, media authorization, AI request delivery |
+| Cloudflare | WebSocket admission, ordered Yjs updates, presence, Durable Object room storage |
+| Neon | Users, workspaces, projects, permissions, boards, checkpoints, comments, AI state |
+| R2 | Private uploaded bytes; metadata and access decisions remain in Neon |
+
+For the complete trust boundaries and deployment order, read the [production runbook](docs/production-runbook.md).
+
+## Quick start
+
+Fabric requires Node.js 22, npm, a PostgreSQL/Neon database, and Google plus GitHub OAuth applications.
+
+```bash
+git clone https://github.com/Atharvsinh-codez/Fabric.git
+cd Fabric
+npm ci
+cp .env.example .env
+```
+
+PowerShell equivalent:
 
 ```powershell
+git clone https://github.com/Atharvsinh-codez/Fabric.git
+Set-Location Fabric
 npm ci
 Copy-Item .env.example .env
 ```
 
-Replace every placeholder in `.env` or an ignored `.env.local` override. Never copy real values back into `.env.example`. Use pooled Neon hostnames for runtime URLs and a direct hostname for `DATABASE_URL_DIRECT`. Use a dedicated, least-privilege R2 S3 key, keep both buckets private with public URLs disabled, and configure exact-origin browser PUT CORS as documented in the production runbook.
+After filling the environment values and preparing the database:
 
-The Vercel serverless deployment may omit `WORKER_DATABASE_URL`; its bounded on-demand AI dispatcher then uses the existing `DATABASE_URL` role, which already has the AI table grants. Attached/local worker runtimes continue to require the distinct worker credential.
-
-Apply the committed schema:
-
-```powershell
+```bash
 npm run db:check
 npm run db:migrate
-```
-
-Start the complete local application with one command:
-
-```powershell
 npm run dev
 ```
 
-Open `http://localhost:3000`. The browser, OAuth callbacks, API requests, and `ws://localhost:3000/realtime` all use this origin. `npm run dev` is for local development only.
+Open [http://localhost:3000](http://localhost:3000).
 
-## Production validation
+The environment has several deliberate trust boundaries, so do not guess the database roles or realtime secrets. Follow the **[complete setup guide](docs/setup.md)** for a working local stack, OAuth callbacks, private R2, and Cloudflare Durable Objects.
 
-Run the repository gate before release:
+## Local and production runtimes
 
-```powershell
-npm run verify
-npm run db:check
-npm audit --omit=dev
-git diff --check
+`npm run dev` starts the complete attached development runtime on one origin:
+
+- Next.js pages and APIs
+- the PostgreSQL-backed local WebSocket server
+- the durable AI worker
+
+Production is intentionally split. The Next.js deployment does not use `server.ts`; browsers connect directly to the deployed Cloudflare Worker at `wss://.../realtime`, and each board generation maps to one SQLite-backed Durable Object.
+
+## Project structure
+
+```text
+app/                    Next.js pages, route handlers, and authenticated APIs
+components/             Product UI, workspace UI, and whiteboard chrome
+lib/                    Domain logic, authorization, clients, and contracts
+db/                     Drizzle schema and ordered PostgreSQL migrations
+cloudflare/realtime/    Production Worker and Durable Object implementation
+realtime/               Attached local/custom-Node realtime runtime
+worker/                 Durable AI dispatcher and processor
+public/                 Fabric brand and product assets
+docs/                   Setup and production operations documentation
+server.ts               All-in-one local/custom-Node entrypoint
+wrangler.toml           Cloudflare Worker bindings and migrations
 ```
 
-`npm run verify` checks the pinned tldraw invariant, application and Cloudflare runtime tests, application/realtime/AI TypeScript, ESLint, and the production build.
+## Common commands
 
-## Build and start
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start the complete local Fabric runtime |
+| `npm test` | Run the Vitest suite |
+| `npm run typecheck` | Type-check the Next.js application |
+| `npm run lint` | Run ESLint |
+| `npm run build` | Build Next.js and the attached Node server |
+| `npm run db:check` | Validate the committed Drizzle schema and migrations |
+| `npm run db:migrate` | Apply committed migrations using the direct migrator URL |
+| `npm run realtime:worker:test` | Run Worker tests in Cloudflare's Vitest pool |
+| `npm run realtime:worker:types` | Verify generated Worker binding types |
+| `npm run verify` | Run the main application, realtime, lint, test, and build gates |
 
-Set final public build inputs before building, then compile the web application:
+## Documentation
 
-```powershell
-npm ci
-npm run build
-npm run start
-```
+- **[Setup guide](docs/setup.md)** — local development, OAuth, Neon, AI, R2, Cloudflare realtime, and self-hosting.
+- **[Cloudflare realtime guide](cloudflare/realtime/README.md)** — Durable Object deployment, cutover, smoke testing, and rollback.
+- **[Production runbook](docs/production-runbook.md)** — grants, rollout gates, health, retention, monitoring, and incidents.
+- **[Contributing guide](CONTRIBUTING.md)** — development workflow, quality gates, and tldraw constraints.
+- **[Security policy](SECURITY.md)** — private vulnerability reporting and security expectations.
 
-The application has one canonical public HTTPS origin. `NEXT_PUBLIC_REALTIME_URL` points to the deployed Cloudflare Worker `/realtime` base, not to Vercel.
+## Contributing
 
-Read [the production runbook](docs/production-runbook.md) before deployment. It covers Neon migrations and grants, OAuth callbacks, environment boundaries, the unified startup lifecycle, health checks, rollback, monitoring, and retention.
+Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), keep changes focused, add tests for behavior changes, and run `npm run verify` before opening a pull request.
 
-Do not commit `.env`, `.env.local`, provider keys, database URLs, or generated backup files.
+The tldraw dependency is intentionally pinned to `4.2.0`. Do not change its version, patch, internals, shape behavior, or watermark handling without explicit maintainer approval and a licensing review.
 
-## Current operational limits
+## Security
 
-- Realtime room state is Durable Object SQLite; preserve the existing class, binding, and room storage during deployments and rollback.
-- Authenticated update traffic is observed in shadow mode. Fabric does not impose low per-user/IP edit-rate limits; malformed, corrupt, impossible, or unsafe slow-consumer traffic can still be rejected.
-- Private R2 uploads support PNG, JPEG, GIF, and WebP images up to 5 MiB and MP4/WebM videos up to 50 MiB, with a 1 GiB/1,000-asset technical board quota.
-- Media deletion and abandoned-upload cleanup require the protected cleanup endpoint to be scheduled and monitored. Do not apply a broad R2 expiration rule to `boards/` or `avatars/`; final objects share those prefixes with staging objects.
-- AI proposals require `AI_RUNS_ENABLED=true`; provider quota or availability can still prevent completion.
-- OAuth applications, canonical HTTPS configuration, Neon protection, secret rotation, alerting, staging, selecting/observing the server-enforced canary workspace, and restore drills remain operator responsibilities.
+Please do not report vulnerabilities in a public issue. Follow [SECURITY.md](SECURITY.md) and use GitHub private vulnerability reporting when available. Never commit `.env*`, OAuth credentials, database URLs, AI keys, R2 credentials, realtime secrets, tickets, or presigned URLs.
 
-## Visual assets
+## Creator
 
-- `public/images/fabric-meadow-hero-v3.webp`
-- `public/images/fabric-evidence-sky-v4.webp`
-- `public/images/fabric-hills-reference-v3.webp`
+Fabric is made by [Atharvsinh Jadav](https://athrix.me).
+
+[Portfolio](https://athrix.me) · [X](https://x.com/athrix_codes) · [LinkedIn](https://www.linkedin.com/in/atharvsinh-jadav)
+
+## License
+
+Copyright 2026 Atharvsinh Jadav.
+
+Fabric is licensed under the [Apache License 2.0](LICENSE).
+
+## Built with
+
+[Next.js](https://nextjs.org/) · [React](https://react.dev/) · [tldraw](https://tldraw.dev/) · [Yjs](https://yjs.dev/) · [Auth.js](https://authjs.dev/) · [Drizzle ORM](https://orm.drizzle.team/) · [Neon](https://neon.com/) · [Cloudflare Workers and Durable Objects](https://developers.cloudflare.com/durable-objects/) · [Cloudflare R2](https://developers.cloudflare.com/r2/)

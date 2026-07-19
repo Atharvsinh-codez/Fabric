@@ -1,9 +1,20 @@
 {
   "name": "fabric",
   "version": "0.1.0",
+  "description": "A local-first multiplayer canvas for ideas, research, and shared decisions.",
   "private": true,
+  "author": {
+    "name": "Atharvsinh Jadav",
+    "url": "https://athrix.me"
+  },
+  "license": "Apache-2.0",
+  "homepage": "https://fabric.athrix.me",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Atharvsinh-codez/Fabric.git"
+  },
   "scripts": {
-    "dev": "tsx --env-file=.env --env-file=.env.local --env-file=.env.worker.local server.ts",
+    "dev": "tsx --env-file=.env --env-file-if-exists=.env.local --env-file-if-exists=.env.worker.local server.ts",
     "build": "next build && esbuild server.ts --bundle --platform=node --format=esm --target=node22 --packages=external --sourcemap --outfile=dist/server.mjs",
     "brand:icons": "node scripts/generate-brand-icons.mjs",
     "start": "node dist/server.mjs",
