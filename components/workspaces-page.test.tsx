@@ -32,14 +32,20 @@ vi.mock("@/components/workspace-shell", () => ({
     action,
     availableWorkspaces,
     children,
+    modalOpen = false,
   }: {
     action?: ReactNode;
     availableWorkspaces?: readonly unknown[];
     children: ReactNode;
+    modalOpen?: boolean;
   }) => {
-    workspaceClient.shellProps({ availableWorkspaces });
+    workspaceClient.shellProps({ availableWorkspaces, modalOpen });
     return (
-      <main>
+      <main
+        data-workspace-shell=""
+        aria-hidden={modalOpen || undefined}
+        inert={modalOpen}
+      >
         {action}
         {children}
       </main>
@@ -114,7 +120,7 @@ describe("all workspaces control center", () => {
   }
 
   function enterWorkspaceName(name: string) {
-    const input = container.querySelector<HTMLInputElement>("#new-workspace-name");
+    const input = document.querySelector<HTMLInputElement>("#new-workspace-name");
     const valueSetter = Object.getOwnPropertyDescriptor(
       HTMLInputElement.prototype,
       "value",
@@ -130,6 +136,7 @@ describe("all workspaces control center", () => {
 
     expect(workspaceClient.shellProps).toHaveBeenLastCalledWith({
       availableWorkspaces: [existingWorkspace],
+      modalOpen: false,
     });
 
     const links = [...container.querySelectorAll<HTMLAnchorElement>("a")].map(
@@ -152,6 +159,45 @@ describe("all workspaces control center", () => {
     expect(container.textContent).not.toContain("Durable PostgreSQL persistence");
   });
 
+  it("isolates the workspace dialog from shell controls and restores focus on cancel", () => {
+    renderPage();
+    const trigger = [...container.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent?.trim() === "New Workspace",
+    );
+    trigger?.focus();
+
+    openDialog();
+
+    const shell = container.querySelector<HTMLElement>("[data-workspace-shell]");
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
+    const closeButton = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Close new workspace dialog"]:not(.modal-backdrop)',
+    );
+    expect(dialog).not.toBeNull();
+    expect(shell?.contains(dialog)).toBe(false);
+    expect(shell?.hasAttribute("inert")).toBe(true);
+    expect(shell?.getAttribute("aria-hidden")).toBe("true");
+    expect(workspaceClient.shellProps).toHaveBeenLastCalledWith({
+      availableWorkspaces: [existingWorkspace],
+      modalOpen: true,
+    });
+    expect(closeButton?.hasAttribute("data-tooltip")).toBe(false);
+
+    const cancelButton = [...document.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent?.trim() === "Cancel",
+    );
+    act(() => cancelButton?.click());
+
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(shell?.hasAttribute("inert")).toBe(false);
+    expect(shell?.hasAttribute("aria-hidden")).toBe(false);
+    expect(workspaceClient.shellProps).toHaveBeenLastCalledWith({
+      availableWorkspaces: [existingWorkspace],
+      modalOpen: false,
+    });
+    expect(document.activeElement).toBe(trigger);
+  });
+
   it("creates one workspace for repeated submits and opens its dashboard", async () => {
     const creation = deferred<typeof createdWorkspace>();
     workspaceClient.createWorkspace.mockReturnValue(creation.promise);
@@ -159,7 +205,7 @@ describe("all workspaces control center", () => {
     openDialog();
     enterWorkspaceName("  Research Lab  ");
 
-    const form = container.querySelector("form");
+    const form = document.querySelector("form");
     await act(async () => {
       form?.dispatchEvent(new SubmitEvent("submit", { bubbles: true, cancelable: true }));
       form?.dispatchEvent(new SubmitEvent("submit", { bubbles: true, cancelable: true }));
@@ -168,9 +214,9 @@ describe("all workspaces control center", () => {
 
     expect(workspaceClient.createWorkspace).toHaveBeenCalledOnce();
     expect(workspaceClient.createWorkspace).toHaveBeenCalledWith("Research Lab");
-    expect(container.querySelector("form")?.getAttribute("aria-busy")).toBe("true");
+    expect(document.querySelector("form")?.getAttribute("aria-busy")).toBe("true");
     expect(
-      [...container.querySelectorAll("button")].find(
+      [...document.querySelectorAll("button")].find(
         (button) => button.textContent?.trim() === "Creating...",
       )?.disabled,
     ).toBe(true);
@@ -184,10 +230,11 @@ describe("all workspaces control center", () => {
     expect(workspaceClient.push).toHaveBeenCalledWith(
       `/app/dashboard?workspaceId=${createdWorkspace.id}`,
     );
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
     expect(container.textContent).toContain("Research Lab");
     expect(workspaceClient.shellProps).toHaveBeenLastCalledWith({
       availableWorkspaces: [createdWorkspace, existingWorkspace],
+      modalOpen: false,
     });
   });
 
@@ -200,19 +247,19 @@ describe("all workspaces control center", () => {
     enterWorkspaceName("Research Lab");
 
     await act(async () => {
-      container
+      document
         .querySelector("form")
         ?.dispatchEvent(new SubmitEvent("submit", { bubbles: true, cancelable: true }));
       await Promise.resolve();
       await Promise.resolve();
     });
 
-    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain(
       "Workspace creation is temporarily unavailable. Try again.",
     );
     expect(
-      [...container.querySelectorAll("button")].find(
+      [...document.querySelectorAll("button")].find(
         (button) => button.textContent?.trim() === "Create Workspace",
       )?.disabled,
     ).toBe(false);

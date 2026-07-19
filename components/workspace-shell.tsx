@@ -501,6 +501,7 @@ export function WorkspaceShell({
   title,
   description,
   action,
+  modalOpen = false,
   workspaceId,
   workspaceName,
   recentBoards,
@@ -511,6 +512,7 @@ export function WorkspaceShell({
   title: string;
   description: string;
   action?: ReactNode;
+  modalOpen?: boolean;
   workspaceId?: string;
   workspaceName?: string;
   recentBoards?: BoardSummary[];
@@ -573,6 +575,7 @@ export function WorkspaceShell({
 
   useEffect(() => {
     const openQuickNavigation = (event: KeyboardEvent) => {
+      if (modalOpen) return;
       if (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         setMobileNav(false);
@@ -582,7 +585,7 @@ export function WorkspaceShell({
     };
     window.addEventListener("keydown", openQuickNavigation);
     return () => window.removeEventListener("keydown", openQuickNavigation);
-  }, []);
+  }, [modalOpen]);
 
   const searchWorkspace = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -602,6 +605,7 @@ export function WorkspaceShell({
   };
 
   const toggleDesktopSidebar = () => {
+    if (modalOpen) return;
     const nextCollapsed = !desktopSidebarCollapsed;
     setDesktopSidebarCollapsed(nextCollapsed);
     try {
@@ -640,7 +644,13 @@ export function WorkspaceShell({
   );
 
   return (
-    <main className="isolate flex h-dvh overflow-hidden bg-[#f7fafc] font-sans text-near-black-primary-text">
+    <main
+      data-workspace-shell=""
+      data-modal-open={modalOpen ? "" : undefined}
+      aria-hidden={modalOpen || undefined}
+      inert={modalOpen}
+      className="isolate flex h-dvh overflow-hidden bg-[#f7fafc] font-sans text-near-black-primary-text"
+    >
       <div
         data-state={desktopSidebarCollapsed ? "collapsed" : "expanded"}
         className={cx(
@@ -672,6 +682,7 @@ export function WorkspaceShell({
             }
             aria-controls="workspace-desktop-sidebar"
             aria-expanded={!desktopSidebarCollapsed}
+            disabled={modalOpen}
             tooltipSide="right"
             className="bg-surface-white shadow-[0_6px_18px_rgb(37_43_49/0.12)] ring-1 ring-near-black-primary-text/8"
             onClick={toggleDesktopSidebar}

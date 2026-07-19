@@ -1145,3 +1145,65 @@ Rules:
   - UI-design Responsive mode (`make-responsive.md`) shaped the viewport-unit choice, natural overflow behavior, and breakpoint verification.
 - Next Steps:
   - Publish the verified landing hero improvement to GitHub `main` when requested.
+
+### [2026-07-19 16:48 IST] - Refine the animated login and signup experience
+- Request: Improve the authentication page, animate both sign-in and account creation, retain the scenic image and copy, and remove the visible white gutter to the left of the image.
+- Plan: Keep the focused two-column auth direction, remove the centered desktop width cap, add transform/opacity-only motion with reduced-motion fallbacks, and preserve stable OAuth button geometry during provider handoff.
+- Actions:
+  - Replaced the centered `max-w-7xl` auth shell with a full-width responsive split, making the scenic panel flush with the viewport's left edge.
+  - Kept the existing scenic image and editorial copy treatment, loaded the above-fold WebP eagerly, and removed its unnecessary full-bleed outline.
+  - Added one-shot image, content, copy, and provider entrance animations using existing Fabric timing/easing tokens and reduced-motion-safe fallbacks.
+  - Added a stable provider progress state with a pulsing provider mark, spinning micro icon, live connecting label, and double-submit prevention.
+  - Applied the shared treatment to both `/login` and `/signup` through the existing `AuthPage` component.
+- Files Changed:
+  - `components/auth-pages.tsx` - Full-width responsive split, image priority, semantic test hooks, and staggered auth entrances.
+  - `components/oauth-provider-buttons.tsx` - Staggered provider rows and stable pending feedback.
+  - `app/globals.css` - Auth motion utilities and transform/opacity keyframes.
+  - `components/auth-pages.test.tsx` and `components/oauth-provider-buttons.test.tsx` - Layout, shared-mode, stable-motion, and pending-state regression coverage.
+- Diff Summary:
+  - Centered capped shell with a visible left gutter -> full-width split with a flush scenic edge.
+  - Static auth surfaces and text-only loading -> restrained page entrances and explicit, dimension-stable provider progress.
+- Validation:
+  - Focused auth verification passed: 2 files / 4 tests.
+  - Application TypeScript and scoped ESLint passed.
+  - In-app browser checks passed for login and signup at 1536x864 and 390x844 with no horizontal overflow, warnings, or errors.
+  - The optimized Next.js/server production build compiled successfully.
+  - `npm run verify:tldraw` confirmed tldraw `4.2.0` and the reviewed patch remain intact; `git diff --check` passed.
+- Risks/Notes:
+  - OAuth destinations, return-path handling, account-linking policy, and server actions remain unchanged.
+  - The separate auth error page remains outside this visual request and was not changed.
+  - No dependency, API, database, Cloudflare Worker, realtime, tldraw internals, patch, shape, or watermark behavior changed.
+  - UI-design Build mode with login, responsive, form, button, image, interactivity, typography, color, surface, shadow, radius, icon, and general guidance shaped the implementation.
+- Next Steps:
+  - Publish the verified auth-page improvement to GitHub `main` when requested.
+
+### [2026-07-19 17:12 IST] - Isolate workspace creation and enforce app entry routing
+- Request: Fix the clipped dialog-close hover text and sidebar control leaking above the Create Workspace modal, route authenticated login/signup visitors to `/app`, make landing Get Started actions enter through `/app`, and prevent anonymous access to `/app` and `/app/dashboard`.
+- Plan: Move the dialog outside the animated shell stacking context, make the underlying shell inert, centralize the authenticated auth-page redirect, and protect the routing and modal contracts with focused tests.
+- Actions:
+  - Rendered the Create Workspace dialog as a sibling of the shared shell so its viewport backdrop reliably covers the desktop sidebar control.
+  - Made the shared shell inert and hidden from assistive technology while the dialog is open, disabled the desktop collapse control, and ignored the quick-navigation shortcut until the modal closes.
+  - Added an opt-out for icon-button tooltips and removed the redundant long tooltip from the dialog close control while retaining its accessible label.
+  - Added one server-side auth-page redirect helper: active accounts go directly to `/app`, anonymous visitors may continue to login/signup, and suspended/unavailable sessions retain the existing safe error destinations.
+  - Confirmed the shared `/app` layout already protects `/app` and every descendant, including `/app/dashboard`, and added landing CTA regressions for the existing `/app` destinations.
+- Files Changed:
+  - `components/workspaces-page.tsx`, `components/workspace-shell.tsx`, and `components/ui.tsx` - Modal stacking, inert interaction isolation, shortcut/collapse guards, and tooltip suppression.
+  - `app/login/page.tsx`, `app/signup/page.tsx`, and `lib/auth/page-principal.ts` - Server-side authenticated-user redirect into `/app`.
+  - `components/workspaces-page.test.tsx`, `components/workspace-shell.test.tsx`, `lib/auth/page-principal.test.ts`, `app/auth-page-routing.test.tsx`, and `components/landing/get-started-links.test.tsx` - Modal, focus, routing, error-state, and CTA regression coverage.
+- Diff Summary:
+  - Modal trapped below a sibling sidebar stacking context -> viewport modal above the shell with the background fully inert.
+  - Clipped long close tooltip -> accessible close icon without redundant hover text.
+  - Authenticated users could revisit login/signup -> authenticated users are redirected server-side to `/app` before auth UI renders.
+  - Anonymous app access relies on the shared protected layout -> explicit tests and live checks confirm `/app` and `/app/dashboard` redirect to sign-in.
+- Validation:
+  - Focused verification passed: 7 files / 24 tests; scoped ESLint and application TypeScript passed.
+  - Optimized Next.js/server production build passed, and `npm run verify:tldraw` confirmed tldraw `4.2.0` plus the reviewed patch remain unchanged.
+  - Realtime/application worker typechecks, Cloudflare runtime tests (16/16), generated binding checks, database schema check, production dependency audit (0 vulnerabilities), and Wrangler production/development dry-runs passed.
+  - Local browser verification confirmed all landing Get Started links target `/app`; anonymous `/app` and `/app/dashboard` requests both redirect to `/login?returnTo=%2Fapp`.
+  - The complete application test run passed 829/830 tests but reproduced one unchanged `lib/boards/use-board-document.test.tsx` checkpoint-fingerprint failure in isolation. Full-repository ESLint also remains blocked by two pre-existing missing-key errors in unchanged `components/public-open-source.test.tsx`; scoped lint for every changed file passed.
+  - `git diff --check` passed.
+- Risks/Notes:
+  - No database, API contract, dependency, Cloudflare Worker, realtime behavior, tldraw package, patch, shape, or watermark behavior changed.
+  - UI-design guidance shaped the modal surface, stable interaction states, tooltip removal, focus restoration, and background isolation.
+- Next Steps:
+  - Publish the accumulated login and modal/routing changes to GitHub `main` when requested.

@@ -15,25 +15,32 @@ export function AuthPage({ mode, returnTo }: { mode: AuthMode; returnTo: string 
 
   return (
     <main className="isolate min-h-dvh bg-surface-white font-sans text-near-black-primary-text">
-      <div className="mx-auto grid min-h-dvh max-w-7xl lg:grid-cols-[5fr_7fr]">
-        <aside className="relative hidden overflow-hidden bg-slate-button-dark px-10 py-9 lg:flex lg:flex-col lg:justify-between xl:px-14 xl:py-12">
+      <div
+        data-auth-shell
+        className="grid min-h-dvh w-full lg:grid-cols-[minmax(26rem,5fr)_minmax(0,7fr)]"
+      >
+        <aside
+          data-auth-visual
+          className="relative hidden overflow-hidden bg-slate-button-dark px-10 py-9 lg:flex lg:flex-col lg:justify-between xl:px-14 xl:py-12"
+        >
           <Image
             src="/images/fabric-hills-reference-v3.webp"
             alt=""
             fill
+            priority
             sizes="(min-width: 1024px) 42vw, 0px"
-            className="object-cover outline-1 -outline-offset-1 outline-black/10"
+            className="auth-visual-enter object-cover motion-reduce:animate-none"
           />
-          <div className="absolute inset-0 bg-linear-to-b from-black/5 via-black/15 to-black/60" aria-hidden="true" />
+          <div className="absolute inset-0 bg-linear-to-b from-black/5 via-black/15 to-black/65" aria-hidden="true" />
           <Link
             href="/"
             aria-label="Fabric home"
-            className="relative w-fit rounded-radius-pill bg-surface-white/90 px-4 py-2 shadow-sm backdrop-blur-md outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-white"
+            className="auth-item-enter relative w-fit rounded-radius-pill bg-surface-white/90 px-4 py-2 shadow-sm backdrop-blur-md outline-none [--auth-enter-delay:100ms] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-white motion-reduce:animate-none"
           >
             <FabricLogo />
           </Link>
 
-          <div className="relative grid max-w-[36ch] gap-5">
+          <div className="auth-item-enter relative grid max-w-[36ch] gap-5 [--auth-enter-delay:180ms] motion-reduce:animate-none">
             <p className="font-mono text-sm font-medium tracking-wide text-surface-white/80">
               SHARED THINKING, IN CONTEXT
             </p>
@@ -45,11 +52,16 @@ export function AuthPage({ mode, returnTo }: { mode: AuthMode; returnTo: string 
             </p>
           </div>
 
-          <p className="relative text-sm text-surface-white/70">Local-first by design. Human-approved by default.</p>
+          <p className="auth-item-enter relative text-sm text-surface-white/70 [--auth-enter-delay:260ms] motion-reduce:animate-none">
+            Local-first by design. Human-approved by default.
+          </p>
         </aside>
 
-        <section className="flex min-w-0 flex-col px-5 py-6 sm:px-8 sm:py-8 lg:px-16 lg:py-9 xl:px-24 xl:py-12">
-          <div className="grid gap-5 sm:grid-cols-[auto_1fr] sm:items-center lg:flex lg:justify-end">
+        <section
+          data-auth-content
+          className="auth-content-enter flex min-w-0 flex-col px-5 py-6 sm:px-8 sm:py-8 lg:px-16 lg:py-9 xl:px-24 xl:py-12 motion-reduce:animate-none"
+        >
+          <div className="auth-item-enter grid gap-5 [--auth-enter-delay:100ms] sm:grid-cols-[auto_1fr] sm:items-center lg:flex lg:justify-end motion-reduce:animate-none">
             <Link
               href="/"
               aria-label="Fabric home"
@@ -72,7 +84,7 @@ export function AuthPage({ mode, returnTo }: { mode: AuthMode; returnTo: string 
           </div>
 
           <div className="flex flex-1 items-center justify-center py-12 sm:py-16">
-            <div className="grid w-full max-w-xs gap-8">
+            <div className="auth-item-enter grid w-full max-w-xs gap-8 [--auth-enter-delay:180ms] motion-reduce:animate-none">
               <div className="grid gap-3">
                 <h1 className="max-w-[35ch] text-3xl font-semibold tracking-tight text-balance text-near-black-primary-text">
                   {title}

@@ -208,6 +208,7 @@ function NewWorkspaceDialog({
           </div>
           <IconButton
             label="Close new workspace dialog"
+            tooltip={false}
             disabled={creating}
             onClick={onClose}
           >
@@ -308,20 +309,22 @@ export function WorkspacesPage({
   };
 
   return (
-    <WorkspaceShell
-      availableWorkspaces={workspaces}
-      eyebrow="Fabric"
-      title="All Workspaces"
-      description="Open a shared space, manage access, or create a new workspace."
-      action={
-        loadState === "ready" && workspaces.length > 0 ? (
-          <NewWorkspaceButton
-            buttonRef={createTriggerRef}
-            onClick={openCreateDialog}
-          />
-        ) : undefined
-      }
-    >
+    <>
+      <WorkspaceShell
+        availableWorkspaces={workspaces}
+        eyebrow="Fabric"
+        title="All Workspaces"
+        description="Open a shared space, manage access, or create a new workspace."
+        modalOpen={createOpen}
+        action={
+          loadState === "ready" && workspaces.length > 0 ? (
+            <NewWorkspaceButton
+              buttonRef={createTriggerRef}
+              onClick={openCreateDialog}
+            />
+          ) : undefined
+        }
+      >
       <section
         aria-labelledby="workspace-list-heading"
         aria-busy={loadState === "loading"}
@@ -498,6 +501,8 @@ export function WorkspacesPage({
         </div>
       </section>
 
+      </WorkspaceShell>
+
       {createOpen && (
         <NewWorkspaceDialog
           open
@@ -505,6 +510,6 @@ export function WorkspacesPage({
           onCreated={handleWorkspaceCreated}
         />
       )}
-    </WorkspaceShell>
+    </>
   );
 }

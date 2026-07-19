@@ -1,14 +1,15 @@
 "use client";
 
 import { useRef, useState, type FormEvent } from "react";
+import { ArrowPathIcon } from "@heroicons/react/16/solid";
 import { SiGithub, SiGoogle } from "react-icons/si";
 
 import { beginOAuthSignIn } from "@/app/actions/auth";
 import { cx } from "@/components/ui";
 
 const providers = [
-  { id: "google", label: "Google", Icon: SiGoogle },
-  { id: "github", label: "GitHub", Icon: SiGithub },
+  { id: "google", label: "Google", Icon: SiGoogle, enterDelay: "[--auth-enter-delay:260ms]" },
+  { id: "github", label: "GitHub", Icon: SiGithub, enterDelay: "[--auth-enter-delay:320ms]" },
 ] as const;
 
 type OAuthProvider = (typeof providers)[number]["id"];
@@ -32,7 +33,7 @@ export function OAuthProviderButtons({ returnTo }: { returnTo: string }) {
 
   return (
     <div className="grid gap-3">
-      {providers.map(({ id, label, Icon }) => {
+      {providers.map(({ id, label, Icon, enterDelay }) => {
         const isPending = pendingProvider === id;
         const isDisabled = pendingProvider !== null;
 
@@ -41,6 +42,7 @@ export function OAuthProviderButtons({ returnTo }: { returnTo: string }) {
             key={id}
             action={beginOAuthSignIn}
             onSubmit={(event) => startProviderSignIn(event, id)}
+            className={cx("auth-item-enter motion-reduce:animate-none", enterDelay)}
           >
             <input type="hidden" name="provider" value={id} />
             <input type="hidden" name="returnTo" value={returnTo} />
@@ -55,12 +57,20 @@ export function OAuthProviderButtons({ returnTo }: { returnTo: string }) {
                 className={cx(
                   "size-4 shrink-0 place-self-center",
                   isDisabled ? "fill-muted-gray" : "fill-near-black-primary-text",
+                  isPending && "animate-pulse motion-reduce:animate-none",
                 )}
               />
               <span className="min-w-0 truncate text-center" aria-live="polite">
                 {isPending ? `Connecting to ${label}...` : `Continue with ${label}`}
               </span>
-              <span aria-hidden="true" />
+              {isPending ? (
+                <ArrowPathIcon
+                  aria-hidden="true"
+                  className="size-4 h-lh shrink-0 place-self-center animate-spin fill-sky-blue-accent motion-reduce:animate-none"
+                />
+              ) : (
+                <span aria-hidden="true" />
+              )}
             </button>
           </form>
         );

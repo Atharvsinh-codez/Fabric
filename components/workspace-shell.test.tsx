@@ -211,6 +211,70 @@ describe("workspace shell navigation modes", () => {
     expect(desktopSidebar?.parentElement?.getAttribute("data-state")).toBe("expanded");
   });
 
+  it("makes shell navigation inert while an external modal is open", () => {
+    const renderShell = (modalOpen: boolean) => {
+      act(() => {
+        root.render(
+          <WorkspaceShell
+            availableWorkspaces={availableWorkspaces}
+            title="All Workspaces"
+            description="Manage workspaces."
+            modalOpen={modalOpen}
+          >
+            <p>Workspace list</p>
+          </WorkspaceShell>,
+        );
+      });
+    };
+
+    renderShell(true);
+
+    const shell = container.querySelector<HTMLElement>("[data-workspace-shell]");
+    const collapseButton = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Collapse workspace sidebar"]',
+    );
+    expect(shell?.getAttribute("data-modal-open")).toBe("");
+    expect(shell?.getAttribute("aria-hidden")).toBe("true");
+    expect(shell?.hasAttribute("inert")).toBe(true);
+    expect(collapseButton?.disabled).toBe(true);
+
+    act(() => {
+      collapseButton?.click();
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "k",
+          ctrlKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+
+    expect(
+      container.querySelector('button[aria-label="Expand workspace sidebar"]'),
+    ).toBeNull();
+    expect(container.querySelector("#workspace-quick-navigation-title")).toBeNull();
+    expect(window.localStorage.getItem("fabric:workspace-sidebar-collapsed:v1")).toBeNull();
+
+    renderShell(false);
+    expect(shell?.hasAttribute("data-modal-open")).toBe(false);
+    expect(shell?.hasAttribute("aria-hidden")).toBe(false);
+    expect(shell?.hasAttribute("inert")).toBe(false);
+    expect(collapseButton?.disabled).toBe(false);
+
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "k",
+          metaKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    expect(container.querySelector("#workspace-quick-navigation-title")).not.toBeNull();
+  });
+
   it("opens and closes the animated mobile navigation disclosure", () => {
     act(() => {
       root.render(
