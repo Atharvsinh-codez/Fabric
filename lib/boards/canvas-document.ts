@@ -1,5 +1,8 @@
 import type { BoardDocument, JsonValue } from "@/db/schema/product";
 import {
+  DEFAULT_NEW_BOARD_THEME,
+  isBoardTheme,
+  mergeBoardThemeMeta,
   parseBoardTheme,
   readBoardThemeFromMeta,
   type BoardTheme,
@@ -121,6 +124,53 @@ export function readCanvasDocument(document: BoardDocument): CanvasDocumentSnaps
     theme: tldrawTheme ?? parseBoardTheme(document.theme),
     tldraw,
   };
+}
+
+/**
+ * Normalize a board at creation time so the selected visual theme cannot be
+ * shadowed by a bundled tldraw checkpoint. Existing checkpoint metadata is
+ * preserved when no explicit selection was supplied.
+ */
+export function prepareNewBoardDocument(
+  document: BoardDocument | undefined,
+  selectedTheme?: BoardTheme,
+): BoardDocument {
+  const source: BoardDocument = document ?? {
+    version: 1,
+    nodes: [],
+    edges: [],
+  };
+  const tldraw = readTldrawDocument(source);
+  const tldrawDocumentRecord = tldraw?.snapshot.store["document:document"];
+  const storedTldrawTheme = readBoardThemeFromMeta(tldrawDocumentRecord?.meta);
+  const theme =
+    selectedTheme ??
+    storedTldrawTheme ??
+    (isBoardTheme(source.theme) ? source.theme : DEFAULT_NEW_BOARD_THEME);
+  const next: BoardDocument = { ...source, theme };
+
+  if (!tldraw || !tldrawDocumentRecord || !isRecord(tldrawDocumentRecord.meta)) {
+    return next;
+  }
+
+  const themedTldraw: FabricTldrawDocument = {
+    ...tldraw,
+    snapshot: {
+      ...tldraw.snapshot,
+      store: {
+        ...tldraw.snapshot.store,
+        "document:document": {
+          ...tldrawDocumentRecord,
+          meta: asJsonValue(
+            mergeBoardThemeMeta(tldrawDocumentRecord.meta, theme),
+          ),
+        },
+      },
+    },
+  };
+  delete next.tldrawSnapshot;
+  next.tldraw = asStoredTldrawDocument(themedTldraw);
+  return next;
 }
 
 /**

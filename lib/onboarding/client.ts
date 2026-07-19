@@ -1,4 +1,5 @@
 import type { BoardDocument } from "@/db/schema/product";
+import type { BoardTheme } from "@/lib/boards/board-theme";
 
 type OnboardingResult = Readonly<{
   workspace: { id: string; name: string; role: "owner" };
@@ -16,6 +17,7 @@ export async function submitOnboarding(input: {
   displayName: string;
   workspaceName: string;
   boardTitle: string;
+  theme?: BoardTheme;
   document: BoardDocument;
 }): Promise<OnboardingResult> {
   const response = await fetch("/api/onboarding", {

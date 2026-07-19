@@ -57,10 +57,9 @@ import {
 } from "@/lib/boards/authorization";
 import { BoardApiError } from "@/lib/boards/http";
 import {
-  DEFAULT_BOARD_THEME,
-  parseBoardTheme,
   type BoardTheme,
 } from "@/lib/boards/board-theme";
+import { prepareNewBoardDocument } from "@/lib/boards/canvas-document";
 import {
   InvalidPaginationCursorError,
   decodeBoardListCursor,
@@ -78,13 +77,6 @@ import {
   workspaceMemberRemovedRevocation,
   workspaceMemberRoleChangedRevocation,
 } from "@/lib/realtime/revocation-events";
-
-const defaultDocument: BoardDocument = {
-  version: 1,
-  nodes: [],
-  edges: [],
-  theme: DEFAULT_BOARD_THEME,
-};
 
 export async function createWorkspace(userId: string, name: string) {
   return db.transaction(async (transaction) => {
@@ -173,10 +165,7 @@ export async function createBoard(input: {
       title: input.title,
       sharingPolicy: input.sharingPolicy ?? project.defaultSharingPolicy,
       cover: input.cover ?? null,
-      document: {
-        ...(input.document ?? defaultDocument),
-        theme: input.theme ?? parseBoardTheme(input.document?.theme),
-      },
+      document: prepareNewBoardDocument(input.document, input.theme),
       createdBy: input.userId,
     })
     .returning();

@@ -5,8 +5,10 @@ import {
   BOARD_THEME_PRESETS,
   BOARD_THEMES,
   DEFAULT_BOARD_THEME,
+  DEFAULT_NEW_BOARD_THEME,
   mergeBoardThemeMeta,
   parseBoardTheme,
+  parseNewBoardTheme,
   readBoardThemeFromMeta,
 } from "./board-theme";
 
@@ -30,6 +32,13 @@ describe("board theme contract", () => {
     expect(readBoardThemeFromMeta({ [BOARD_THEME_META_KEY]: "grid" })).toBe("grid");
     expect(readBoardThemeFromMeta({ [BOARD_THEME_META_KEY]: "unsafe" })).toBeNull();
     expect(readBoardThemeFromMeta([])).toBeNull();
+  });
+
+  it("uses Grid for new boards without changing the legacy Canvas fallback", () => {
+    expect(DEFAULT_NEW_BOARD_THEME).toBe("grid");
+    expect(parseNewBoardTheme(undefined)).toBe("grid");
+    expect(parseNewBoardTheme("canvas")).toBe("canvas");
+    expect(DEFAULT_BOARD_THEME).toBe("canvas");
   });
 
   it("merges the Fabric key without replacing unrelated document metadata", () => {

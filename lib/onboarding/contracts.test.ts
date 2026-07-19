@@ -12,6 +12,15 @@ const validInput = {
 describe("CompleteOnboardingSchema", () => {
   it("accepts a bounded starter board", () => {
     expect(CompleteOnboardingSchema.safeParse(validInput).success).toBe(true);
+    expect(
+      CompleteOnboardingSchema.safeParse({ ...validInput, theme: "grid" }).success,
+    ).toBe(true);
+  });
+
+  it("rejects unsupported starter board themes", () => {
+    expect(
+      CompleteOnboardingSchema.safeParse({ ...validInput, theme: "neon" }).success,
+    ).toBe(false);
   });
 
   it("rejects blank identity and workspace names", () => {

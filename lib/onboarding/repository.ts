@@ -11,6 +11,7 @@ import {
   workspaceMemberships,
   workspaces,
 } from "@/db/schema/product";
+import { prepareNewBoardDocument } from "@/lib/boards/canvas-document";
 import type { CompleteOnboardingInput } from "@/lib/onboarding/contracts";
 
 export async function completeOnboarding(
@@ -61,7 +62,7 @@ export async function completeOnboarding(
         projectId: defaultProject.id,
         ownerId: userId,
         title: input.boardTitle,
-        document: input.document,
+        document: prepareNewBoardDocument(input.document, input.theme),
         createdBy: userId,
       })
       .returning();

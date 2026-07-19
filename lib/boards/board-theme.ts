@@ -9,7 +9,10 @@ export const BOARD_THEMES = [
 
 export type BoardTheme = (typeof BOARD_THEMES)[number];
 
+/** Preserve the original white canvas for legacy documents with no theme. */
 export const DEFAULT_BOARD_THEME: BoardTheme = "canvas";
+/** Start every newly created board with Fabric's multi-scale grid canvas. */
+export const DEFAULT_NEW_BOARD_THEME: BoardTheme = "grid";
 export const BOARD_THEME_META_KEY = "fabricBoardTheme" as const;
 
 export type BoardThemePattern = "none" | "dots" | "grid";
@@ -72,6 +75,10 @@ export function isBoardTheme(value: unknown): value is BoardTheme {
 
 export function parseBoardTheme(value: unknown): BoardTheme {
   return isBoardTheme(value) ? value : DEFAULT_BOARD_THEME;
+}
+
+export function parseNewBoardTheme(value: unknown): BoardTheme {
+  return isBoardTheme(value) ? value : DEFAULT_NEW_BOARD_THEME;
 }
 
 export function readBoardThemeFromMeta(meta: unknown): BoardTheme | null {

@@ -1,11 +1,12 @@
 import { z } from "zod";
 
-import { BoardDocumentSchema } from "../boards/contracts";
+import { BoardDocumentSchema, BoardThemeSchema } from "../boards/contracts";
 
 export const CompleteOnboardingSchema = z.object({
   displayName: z.string().trim().min(1).max(80),
   workspaceName: z.string().trim().min(1).max(120),
   boardTitle: z.string().trim().min(1).max(160),
+  theme: BoardThemeSchema.optional(),
   document: BoardDocumentSchema,
 });
 

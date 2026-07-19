@@ -1061,3 +1061,36 @@ Rules:
   - UI-design Build and responsive guidance shaped the viewport collision bounds, compact surface hierarchy, focus handling, touch-safe controls, and reduced-motion-safe entry treatment.
 - Next Steps:
   - Publish the accumulated verified UI changes to GitHub `main` when requested.
+
+### [2026-07-19 15:16 IST] - Make Grid the selectable new-board default
+- Request: Use the multi-scale Grid canvas shown in the reference as the default and let people choose a theme whenever they create a whiteboard.
+- Plan: Keep legacy and explicitly themed boards visually stable, define a dedicated new-board default, reuse one accessible theme selector across active creation flows, and validate the chosen value at the server boundary before persistence.
+- Actions:
+  - Added `DEFAULT_NEW_BOARD_THEME` with Grid as the initial theme while retaining Canvas as the fallback for legacy documents that never stored a theme.
+  - Extracted the six visual presets into a reusable native-radio `BoardThemeSelector` with responsive two/three-column layout, selected check indicator, focus treatment, and disabled state.
+  - Reused the selector in the dashboard Create Board dialog and the onboarding First Board step; both now start on Grid and allow choosing any supported theme before creation.
+  - Extended the onboarding client/schema/repository path so the selected theme is validated and merged into the initial board document server-side.
+  - Made repository-created boards without an explicit choice persist the Grid new-board default rather than relying on a read-time fallback.
+  - Normalized new imported/checkpoint documents so an explicit creator choice also updates embedded tldraw metadata without dropping unrelated metadata.
+- Files Changed:
+  - `components/board-theme-selector.tsx` and test - Shared responsive previews, native radio semantics, visible selected state, and selection coverage.
+  - `components/workspace-dashboard-page.tsx` and test - Reused selector, Grid initial/reset state, and chosen-theme creation verification.
+  - `components/workspace-pages.tsx` - Added theme selection to onboarding's first-board step and forwarded the choice.
+  - `lib/boards/board-theme.ts`, `lib/boards/canvas-document.ts`, `lib/boards/repository.ts`, and tests - Dedicated new-board Grid default, safe checkpoint normalization, and persistence fallback.
+  - `lib/onboarding/client.ts`, `lib/onboarding/contracts.ts`, `lib/onboarding/repository.ts`, and tests - Validated onboarding theme transport and storage.
+- Diff Summary:
+  - New boards defaulted to blank Canvas -> new boards now persist and render Grid unless the creator chooses another preset.
+  - Dashboard-only theme choice -> the same selector now covers dashboard creation and first-board onboarding.
+  - Selection communicated mainly by ring color -> selected preset now also has a clear check indicator.
+- Validation:
+  - Focused theme, dashboard, onboarding, canvas, and tldraw-adapter verification passed: 9 files / 32 tests.
+  - Application TypeScript and scoped ESLint passed.
+  - The optimized Next.js/server production build compiled successfully.
+  - `npm run verify:tldraw` confirmed tldraw `4.2.0` and the reviewed patch remain intact; `git diff --check` passed.
+- Risks/Notes:
+  - Existing boards with a stored theme remain unchanged, and legacy theme-less boards retain the prior Canvas fallback; only newly created boards default to Grid.
+  - Theme patterns remain visual-only and do not enable snapping or modify editor shape behavior.
+  - No schema migration, dependency, Cloudflare Worker, realtime protocol, tldraw internals, patch, shape, or watermark behavior changed.
+  - UI-design Build mode and radius, button, color, flexbox, form, general, icon, interaction, responsive, shadow, surface, and typography guidance shaped the selector.
+- Next Steps:
+  - Publish the verified new-board theme update to GitHub `main` when requested.

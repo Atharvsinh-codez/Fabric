@@ -245,7 +245,7 @@ describe("WorkspaceDashboardPage board preview refresh", () => {
     expect(container.textContent).toContain("Load more boards");
   });
 
-  it("creates a board with the canvas theme chosen in the creation dialog", async () => {
+  it("starts with Grid and creates a board with the chosen theme", async () => {
     const initialBoardQueryKey = dashboardBoardQueryKey(WORKSPACE_ID, {
       q: "",
       view: "recent",
@@ -275,7 +275,7 @@ describe("WorkspaceDashboardPage board preview refresh", () => {
     );
     expect(dialog).not.toBeNull();
     expect(
-      dialog?.querySelector<HTMLInputElement>('input[value="canvas"]')?.checked,
+      dialog?.querySelector<HTMLInputElement>('input[value="grid"]')?.checked,
     ).toBe(true);
 
     await act(async () => {

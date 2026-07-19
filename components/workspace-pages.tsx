@@ -32,6 +32,7 @@ import {
 } from "react";
 import { updateCurrentProfile } from "@/app/actions/account";
 import { signOutCurrentSession } from "@/app/actions/auth";
+import { BoardThemeSelector } from "@/components/board-theme-selector";
 import { getUserInitials, useCurrentUser } from "@/components/current-user-provider";
 import { ProjectMembersPanel } from "@/components/project-members-panel";
 import { Button, FabricLogo, IconButton, UserAvatar, cx } from "@/components/ui";
@@ -64,6 +65,10 @@ import {
   type WorkspaceSummary,
 } from "@/lib/boards/client";
 import type { WorkspaceRole } from "@/db/schema/product";
+import {
+  DEFAULT_NEW_BOARD_THEME,
+  type BoardTheme,
+} from "@/lib/boards/board-theme";
 import { submitOnboarding } from "@/lib/onboarding/client";
 
 type HeroIcon = ComponentType<SVGProps<SVGSVGElement>>;
@@ -674,6 +679,8 @@ export function OnboardingPage() {
     user.name?.trim() ? `${user.name.trim()}'s workspace` : "",
   );
   const [useCase, setUseCase] = useState("planning");
+  const [boardTheme, setBoardTheme] =
+    useState<BoardTheme>(DEFAULT_NEW_BOARD_THEME);
   const selectedUseCase = useCases.find((option) => option.id === useCase)?.title;
 
   const submitStep = async (event: FormEvent<HTMLFormElement>) => {
@@ -691,6 +698,7 @@ export function OnboardingPage() {
         displayName: name,
         workspaceName: workspace,
         boardTitle: selectedUseCase ? `${selectedUseCase} board` : "First board",
+        theme: boardTheme,
         document: { version: 1, nodes: [], edges: [] },
       });
       const path = boardPath(result.board.id);
@@ -851,17 +859,33 @@ export function OnboardingPage() {
                       Fabric creates an empty, private board. Add a template later from the whiteboard when it supports the work you are doing.
                     </p>
                   </div>
-                  <div className="grid gap-6 md:grid-cols-[5fr_3fr]">
-                    <div className="overflow-hidden rounded-radius-xl bg-light-surface-tint ring-1 ring-border-subtle">
-                      <div className="relative aspect-[16/10]">
-                        <BoardPreviewPlaceholder label="Blank canvas" />
-                      </div>
-                      <div className="border-t border-border-subtle bg-surface-white p-4">
-                        <p className="text-base font-medium sm:text-sm">{selectedUseCase ? `${selectedUseCase} board` : "First board"}</p>
-                        <p className="text-base text-dark-text-alt sm:text-sm">No sample objects added</p>
-                      </div>
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-1">
+                      <p className="text-base font-medium sm:text-sm">
+                        Choose a board theme
+                      </p>
+                      <p className="text-pretty text-base text-dark-text-alt sm:text-sm">
+                        Grid is selected by default. You can change the shared theme from the board at any time.
+                      </p>
                     </div>
-                    <div className="flex flex-col gap-2 rounded-radius-xl bg-light-surface-tint p-4 ring-1 ring-border-subtle">
+                    <BoardThemeSelector
+                      value={boardTheme}
+                      onChange={setBoardTheme}
+                      name="onboarding-board-theme"
+                      legend="First board theme"
+                      disabled={creationState === "creating"}
+                    />
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="flex flex-col gap-1 rounded-radius-xl bg-light-surface-tint p-4 ring-1 ring-border-subtle">
+                      <p className="text-base font-medium sm:text-sm">
+                        {selectedUseCase ? `${selectedUseCase} board` : "First board"}
+                      </p>
+                      <p className="text-base text-dark-text-alt sm:text-sm">
+                        Empty board with no sample objects
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-1 rounded-radius-xl bg-light-surface-tint p-4 ring-1 ring-border-subtle">
                       <p className="text-base font-medium sm:text-sm">Private by default</p>
                       <p className="text-pretty text-base text-dark-text-alt sm:text-sm">
                         You will be the workspace owner. Add members only after the workspace is created.

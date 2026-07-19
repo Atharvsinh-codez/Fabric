@@ -4,12 +4,61 @@ import type { BoardDocument } from "@/db/schema/product";
 
 import {
   documentFingerprint,
+  prepareNewBoardDocument,
   readAuthoritativeCanvasDocument,
   readCanvasDocument,
   writeCanvasDocument,
 } from "./canvas-document";
 
 describe("canvas document persistence", () => {
+  it("prepares Grid for new boards while preserving or overriding imported themes safely", () => {
+    expect(prepareNewBoardDocument(undefined).theme).toBe("grid");
+    expect(
+      prepareNewBoardDocument({ version: 1, nodes: [], edges: [], theme: "sand" })
+        .theme,
+    ).toBe("sand");
+
+    const imported: BoardDocument = {
+      version: 1,
+      nodes: [],
+      edges: [],
+      tldraw: {
+        version: 1,
+        snapshot: {
+          store: {
+            "document:document": {
+              id: "document:document",
+              typeName: "document",
+              gridSize: 10,
+              name: "",
+              meta: { source: "template", fabricBoardTheme: "canvas" },
+            },
+          },
+          schema: { schemaVersion: 2, sequences: {} },
+        },
+      },
+    };
+
+    const preserved = prepareNewBoardDocument(imported);
+    expect(preserved.theme).toBe("canvas");
+    expect(
+      readCanvasDocument(preserved).theme,
+    ).toBe("canvas");
+
+    const overridden = prepareNewBoardDocument(imported, "grid");
+    expect(overridden.theme).toBe("grid");
+    expect(readCanvasDocument(overridden).theme).toBe("grid");
+    expect(
+      (
+        (
+          overridden.tldraw as {
+            snapshot: { store: Record<string, { meta?: Record<string, unknown> }> };
+          }
+        ).snapshot.store["document:document"]?.meta
+      )?.source,
+    ).toBe("template");
+  });
+
   it("loads valid nodes and only edges that connect loaded nodes", () => {
     const snapshot = readCanvasDocument({
       version: 1,
