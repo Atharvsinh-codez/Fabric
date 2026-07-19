@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 115.25 32.00" fill="none">
+  <style>svg &gt; path { fill: #000000; }</style>
   <g transform="translate(2.00, 2.00)">
     <g transform="scale(1)">
       <path d="M8 0H16L8 20H0L8 0Z" fill="oklch(70.7% 0.165 254.624)"/>

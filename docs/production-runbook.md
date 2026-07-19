@@ -171,7 +171,7 @@ Use one Neon project/database per environment. Create these identities:
 
 Only `fabric_web` and `fabric_worker` are active runtime connections in the Vercel + Cloudflare production topology. Keeping the purpose-limited `fabric_realtime` role and legacy collaboration tables during the observation window makes rollback evidence and existing-room reconciliation possible without granting Cloudflare database access.
 
-The committed migration sequence is ordered and forward-only. Release migrations `0006` through `0008` add runtime structures; `0009` is the reviewed status-constraint/data compatibility correction described below; `0010` adds bounded avatar upload reservations; `0011` and `0012` preserve the earlier Gemini rollout and credential-rotation provenance; and `0013` moves all new work to an env-selected OpenAI-compatible provider while keeping historical run rows readable. None deletes tenant or board rows:
+The committed migration sequence is ordered and forward-only. Release migrations `0006` through `0008` add runtime structures; `0009` is the reviewed status-constraint/data compatibility correction described below; `0010` adds bounded avatar upload reservations; `0011` and `0012` preserve the earlier Gemini rollout and credential-rotation provenance; `0013` moves all new work to an env-selected OpenAI-compatible provider while keeping historical run rows readable; and `0014` adds nullable deletion tombstones without physically removing tenant data. None deletes tenant or board rows:
 
 | Migration | Boundary |
 | --- | --- |
@@ -189,6 +189,7 @@ The committed migration sequence is ordered and forward-only. Release migrations
 | `0011_blushing_korvac.sql` | Allows explicitly versioned `gemini-2.5-flash` runs while retaining `gemini-3.5-flash` for historical and mixed-version rollout provenance |
 | `0012_chunky_vance_astro.sql` | Adds a standalone monotonic sequence used to choose the next Gemini credential across serverless and attached worker instances without rewriting AI job rows |
 | `0013_foamy_lionheart.sql` | Removes legacy AI defaults and allows explicit `openai-compatible` runs with a bounded env-selected model identifier while retaining historical Gemini provenance |
+| `0014_nappy_photon.sql` | Adds nullable board and workspace tombstones so owner-confirmed deletion can hide resources while preserving audit, realtime, and storage references |
 
 ### Pre-migration procedure
 
@@ -333,7 +334,7 @@ Use a scheduler that can attach the exact bearer value required by each route. T
 
 ## 6. Build, deploy, and rollout
 
-Use Node.js 22 and one repository checkout/commit. Set final `NEXT_PUBLIC_*` inputs in Vercel before its production build. Run the complete release gate locally or in CI:
+Use Node.js 22 and one repository checkout/commit. Set final `NEXT_PUBLIC_*` inputs in Vercel before its production build. Run the complete release gate locally before every production deployment:
 
 ```powershell
 npm ci
@@ -360,11 +361,11 @@ Exact Cloudflare setup, Vercel environment mapping, first-cutover precautions, d
 
 ### Staging, canary, and gradual activation
 
-Staging must have its own Neon database, private R2 buckets, OAuth applications, Worker/Durable Object namespaces, secrets, and canonical origin. Apply migrations through `0013`, reapply the grants, and complete the full permission, archive/restore, media, revocation, recovery, and 100-user zero-legitimate-throttle suites there before production data is touched.
+Staging must have its own Neon database, private R2 buckets, OAuth applications, Worker/Durable Object namespaces, secrets, and canonical origin. Apply migrations through `0014`, reapply the grants, and complete the full permission, archive/restore, deletion, media, revocation, recovery, and 100-user zero-legitimate-throttle suites there before production data is touched.
 
 Deploy backward-compatible database/API/Worker support with `FABRIC_WORKSPACE_ROLLOUT_MODE=off`. After staging passes, set `canary` plus one exact production workspace UUID, redeploy, and verify readiness reports `canary-ready` without exposing the allowlist. Compare the canary with the pre-release baseline for collaboration latency, reconnects, checkpoint age, revocation latency, R2 promotion/cleanup errors, cross-tenant denials, and shadow update telemetry. Add workspace UUIDs deliberately while the gates remain healthy, then use `all` only after the gradual observation window. Roll back feature activation by returning to `off`; baseline board editing and legacy image handling remain available, existing private media stays readable, and users can still clear an existing custom avatar.
 
-Keep the previous Vercel deployment and Cloudflare Worker version IDs through the observation window. Roll Worker code back in place so Durable Object storage survives; never delete either binding/class, a migration tag, coordinator state, or room storage during an incident. Do not send a room back to the legacy Neon transport after it has accepted Durable Object writes without a tested reverse migration. The committed migration sequence through `0013` is forward-only; `0009` preserves archive compatibility, `0010` adds reservation state, `0011` and `0012` preserve historical Gemini provenance and key rotation, and `0013` adds the OpenAI-compatible provider/model contract. Never invent a destructive down migration during an incident. Restore data into a separate Neon branch first, validate it, then cut traffic deliberately.
+Keep the previous Vercel deployment and Cloudflare Worker version IDs through the observation window. Roll Worker code back in place so Durable Object storage survives; never delete either binding/class, a migration tag, coordinator state, or room storage during an incident. Do not send a room back to the legacy Neon transport after it has accepted Durable Object writes without a tested reverse migration. The committed migration sequence through `0014` is forward-only; `0009` preserves archive compatibility, `0010` adds reservation state, `0011` and `0012` preserve historical Gemini provenance and key rotation, `0013` adds the OpenAI-compatible provider/model contract, and `0014` adds non-destructive board/workspace tombstones. Never invent a destructive down migration during an incident. Restore data into a separate Neon branch first, validate it, then cut traffic deliberately.
 
 ## 7. Health checks
 
@@ -394,7 +395,7 @@ The protected readiness check proves database and Worker reachability plus R2/re
 
 ## 8. Verification and smoke tests
 
-Run the same release gates as CI:
+Run the complete release gates locally:
 
 ```powershell
 npm ci
@@ -472,7 +473,7 @@ Do not call a deployment production-ready until all of the following are true:
 - the purpose-separated coordinator secret is present on Vercel and Cloudflare, the dispatch secret is Vercel-only, and the protected revocation schedule/backlog alert are active
 - `fabric_web` and `fabric_worker` are distinct pooled roles and their grants are verified; no Neon credential is exposed to Cloudflare
 - the direct migrator is isolated from the running application
-- migrations through `0013` are applied in order and the provider-rotation sequence grant is verified
+- migrations through `0014` are applied in order and the provider-rotation sequence grant is verified
 - Neon protection plus a cross-provider board-checkpoint recovery drill are complete
 - existing rooms pass the saved-board cutover gate or have a tested import; no legacy realtime tail is silently abandoned
 - provider billing/quota is adequate and a streamed OpenAI-compatible run succeeds in the target environment

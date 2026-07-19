@@ -1,9 +1,35 @@
-# Fabric setup guide
+# Fabric — complete setup guide
 
 This guide takes a clean clone to a working Fabric installation. It covers the all-in-one local runtime, production-like Cloudflare Durable Object development, Neon, OAuth, private R2 media, the optional canvas agent, and the recommended production topology.
 
+If you only need the shortest path to a local board, use the **[Quick start in the main README](../README.md#quick-start)**. Return here when you need exact environment ownership, Cloudflare realtime, R2, Fabric agent, production deployment, or troubleshooting.
+
 > [!IMPORTANT]
 > Never copy values from another installation. Generate your own OAuth credentials, database passwords, R2 keys, and signing secrets. Keep `.env`, `.env.local`, `.env.worker.local`, and `.dev.vars*` untracked.
+
+## Fast local checklist
+
+The first local boot does not require Cloudflare, R2, or a paid model provider. Fabric's attached Node runtime serves the web application, local Yjs WebSocket transport, and an idle AI worker from one origin.
+
+1. Install Git and Node.js 22.
+2. Clone the repository, run `npm ci`, and copy `.env.example` to `.env`.
+3. Create a PostgreSQL/Neon database and configure the four database variables.
+4. Create Google and GitHub OAuth applications with localhost callbacks.
+5. Generate independent auth and realtime secrets.
+6. Run `npm run db:check` and `npm run db:migrate`, then apply the least-privilege grants as the database owner.
+7. Run `npm run dev`, open `http://localhost:3000`, sign in, create a workspace, and open a board.
+
+Use this feature ladder to avoid configuring services before you need them:
+
+| Setup level | What works | Additional requirements |
+| --- | --- | --- |
+| **Core local** | Sign-in, workspaces, boards, local multiplayer, recovery, comments, templates, and study tools | Neon/PostgreSQL, Google OAuth, GitHub OAuth, local secrets |
+| **Private media** | Board images, video, and custom avatars | Private Cloudflare R2 bucket, bucket-scoped S3 credentials, exact-origin CORS |
+| **Fabric agent** | Streamed, reviewable native canvas proposals | HTTPS OpenAI-compatible provider and server-only API key |
+| **Production realtime** | Public WebSocket rooms backed by Durable Objects | Cloudflare Worker deployment and matching Worker secrets |
+| **Production web** | Public Fabric installation on a canonical domain | Next.js host, production OAuth callbacks, schedulers, staging/canary rollout |
+
+The sections below walk through each level in order.
 
 ## Contents
 
@@ -35,6 +61,8 @@ This guide takes a clean clone to a working Fabric installation. It covers the a
 | **Custom Node host** | Advanced self-hosting on one long-running server | Attached PostgreSQL-backed WebSocket server |
 
 Start with the all-in-one local path. It runs Next.js, the local realtime server, and the AI worker from `server.ts` under one origin. Cloudflare is not required for the first local boot.
+
+For a first local evaluation, keep `AI_RUNS_ENABLED=false` and do not test media uploads until R2 is configured. This keeps the initial path focused on authentication, workspaces, whiteboards, and local multiplayer.
 
 The documented production topology is intentionally split:
 
@@ -284,6 +312,13 @@ The command starts:
 - the AI worker, even when AI runs are disabled
 
 That last point is important: `WORKER_DATABASE_URL` and syntactically valid AI configuration are required for startup. The public `.env.example` provides an inert, disabled provider configuration; replace it only when enabling Fabric agent.
+
+You have completed the core setup when all four checks succeed:
+
+- `http://localhost:3000/api/health/live` returns `200`;
+- Google and GitHub sign-in return to the local Fabric origin;
+- onboarding creates a workspace and opens its dashboard;
+- the same board opened in two browser profiles shows live edits and presence.
 
 ### Local smoke test
 
