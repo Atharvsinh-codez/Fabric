@@ -671,7 +671,7 @@ export function OnboardingPage() {
   const router = useRouter();
   const user = useCurrentUser();
   const [step, setStep] = useState(1);
-  const [createdBoardPath, setCreatedBoardPath] = useState<string | null>(null);
+  const [createdWorkspacePath, setCreatedWorkspacePath] = useState<string | null>(null);
   const [creationState, setCreationState] = useState<"idle" | "creating" | "error">("idle");
   const [creationError, setCreationError] = useState("");
   const [name, setName] = useState(user.name || "");
@@ -701,10 +701,10 @@ export function OnboardingPage() {
         theme: boardTheme,
         document: { version: 1, nodes: [], edges: [] },
       });
-      const path = boardPath(result.board.id);
-      setCreatedBoardPath(path);
+      const path = dashboardPath({ workspaceId: result.workspace.id });
+      setCreatedWorkspacePath(path);
       setCreationState("idle");
-      router.prefetch(path);
+      router.replace(path);
     } catch (error) {
       setCreationError(
         error instanceof FabricApiError || error instanceof Error
@@ -740,7 +740,7 @@ export function OnboardingPage() {
           {["Workspace", "Use case", "First board"].map((label, index) => {
             const position = index + 1;
             const current = position === step;
-            const complete = position < step || createdBoardPath !== null;
+            const complete = position < step || createdWorkspacePath !== null;
             return (
               <li key={label} className="flex flex-col gap-2">
                 <span
@@ -759,7 +759,7 @@ export function OnboardingPage() {
         </ol>
 
         <div className="pt-10">
-          {createdBoardPath ? (
+          {createdWorkspacePath ? (
             <section aria-labelledby="ready-heading" className="flex flex-col items-start gap-5">
               <CheckCircleIcon className="size-4 shrink-0 fill-sky-blue-accent" aria-hidden="true" />
               <div className="flex flex-col gap-2">
@@ -767,11 +767,11 @@ export function OnboardingPage() {
                   Your workspace is ready
                 </h1>
                 <p className="max-w-[60ch] text-pretty text-base text-dark-text-alt sm:text-sm">
-                  {workspace} and its first board are saved. You can invite collaborators from workspace settings.
+                  Opening {workspace}. If navigation does not start, use the link below.
                 </p>
               </div>
-              <PrimaryLink href={createdBoardPath}>
-                Open Board
+              <PrimaryLink href={createdWorkspacePath}>
+                Open Workspace
               </PrimaryLink>
             </section>
           ) : (

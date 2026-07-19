@@ -1094,3 +1094,28 @@ Rules:
   - UI-design Build mode and radius, button, color, flexbox, form, general, icon, interaction, responsive, shadow, surface, and typography guidance shaped the selector.
 - Next Steps:
   - Publish the verified new-board theme update to GitHub `main` when requested.
+
+### [2026-07-19 15:50 IST] - Open newly created workspaces automatically
+- Request: Automatically open a workspace immediately after it is created.
+- Plan: Audit every active creation flow, keep the existing scoped dashboard navigation on `/app`, and close the remaining onboarding handoff without changing workspace persistence.
+- Actions:
+  - Confirmed the All Workspaces dialog already opens the exact newly created workspace dashboard.
+  - Replaced onboarding's manual post-creation board handoff with an automatic route replacement to the exact new workspace dashboard.
+  - Retained a transient `Open Workspace` fallback link in case client navigation is interrupted.
+- Files Changed:
+  - `components/workspace-pages.tsx` - Route completed onboarding directly into the new workspace.
+  - `components/workspace-pages.onboarding.test.tsx` - Protect the exact workspace-scoped redirect and fallback destination.
+- Diff Summary:
+  - Completed onboarding stopped on an `Open Board` success screen -> completed onboarding automatically opens `/app/dashboard?workspaceId=<new-workspace-id>`.
+  - Browser Back could return to completed onboarding -> route replacement keeps the finished setup out of navigation history.
+- Validation:
+  - Focused workspace creation verification passed: 2 files / 4 tests.
+  - Application TypeScript and scoped ESLint passed.
+  - The optimized Next.js/server production build compiled successfully.
+  - `npm run verify:tldraw` confirmed tldraw `4.2.0` and the reviewed patch remain intact; `git diff --check` passed.
+- Risks/Notes:
+  - The onboarding transaction still creates its first board and selected theme; only the post-success destination changed.
+  - No API, database, migration, dependency, Cloudflare Worker, realtime, tldraw internals, patch, shape, or watermark behavior changed.
+  - UI-design Build mode with general, interactivity, and button guidance shaped the automatic handoff and fallback behavior.
+- Next Steps:
+  - Publish the verified workspace handoff to GitHub `main` when requested.
