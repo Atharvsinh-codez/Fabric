@@ -336,7 +336,11 @@ export function FabricWhiteboard({
       <div className="pointer-events-none absolute inset-x-2 top-2 z-1000 flex items-start justify-between gap-2 sm:inset-x-3 sm:top-3">
         <div className="pointer-events-auto flex min-w-0 max-w-[calc(100%_-_6rem)] flex-col gap-2 sm:max-w-[calc(100%_-_14rem)] lg:flex-row lg:items-center">
           <div className="flex min-w-0 items-center gap-2 rounded-radius-lg bg-surface-white p-1 floating-shadow">
-            <IconButton label="Open Workspace" onClick={handleOpenWorkspace}>
+            <IconButton
+              label="Open Workspace"
+              tooltipAlign="start"
+              onClick={handleOpenWorkspace}
+            >
               <ArrowLeftIcon className="size-4 shrink-0 fill-current" aria-hidden="true" />
             </IconButton>
             <div className="hidden min-w-0 pr-2 sm:block">
@@ -363,7 +367,7 @@ export function FabricWhiteboard({
           </div>
         </div>
 
-        <div className="pointer-events-auto flex shrink-0 items-center gap-1 rounded-radius-lg bg-surface-white p-1 floating-shadow">
+        <div className="pointer-events-auto flex shrink-0 items-center gap-1 rounded-radius-lg bg-surface-white p-1 floating-shadow max-[419px]:absolute max-[419px]:top-11 max-[419px]:right-0">
           <PresenceSummary
             workspaceId={workspaceId}
             awarenessStates={awarenessStates}
@@ -371,6 +375,7 @@ export function FabricWhiteboard({
           />
           <IconButton
             label="Open Comments"
+            tooltipAlign="end"
             active={visiblePanel === "comments"}
             disabled={accessLost}
             onClick={() => setPanel((current) => current === "comments" ? null : "comments")}
@@ -380,10 +385,12 @@ export function FabricWhiteboard({
           {canEdit ? (
             <IconButton
               label="Open Board Tools"
+              tooltipAlign="end"
               active={visiblePanel === "tools"}
               disabled={!editor}
               aria-controls="fabric-board-tools-panel"
               aria-expanded={visiblePanel === "tools"}
+              data-suppress-tooltip-when-expanded="true"
               onClick={() => setPanel((current) => current === "tools" ? null : "tools")}
             >
               <RectangleStackIcon
@@ -392,14 +399,26 @@ export function FabricWhiteboard({
               />
             </IconButton>
           ) : null}
-          <IconButton label="Export Board" onClick={() => setExportOpen(true)}>
+          <IconButton
+            label="Export Board"
+            tooltipAlign="end"
+            onClick={() => setExportOpen(true)}
+          >
             <ArrowDownTrayIcon className="size-4 shrink-0 fill-current" aria-hidden="true" />
           </IconButton>
-          <IconButton label="Board Checkpoints" onClick={() => setCheckpointsOpen(true)}>
+          <IconButton
+            label="Board Checkpoints"
+            tooltipAlign="end"
+            onClick={() => setCheckpointsOpen(true)}
+          >
             <BookmarkSquareIcon className="size-4 shrink-0 fill-current" aria-hidden="true" />
           </IconButton>
           {canManageSharing ? (
-            <IconButton label="Share Board" onClick={() => setShareOpen(true)}>
+            <IconButton
+              label="Share Board"
+              tooltipAlign="end"
+              onClick={() => setShareOpen(true)}
+            >
               <ShareIcon className="size-4 shrink-0 fill-current" aria-hidden="true" />
             </IconButton>
           ) : null}
@@ -408,7 +427,7 @@ export function FabricWhiteboard({
 
       {isArchived && !accessLost ? (
         <p
-          className="pointer-events-none absolute inset-x-3 top-16 z-999 mx-auto w-fit max-w-[calc(100%_-_1.5rem)] rounded-radius-pill bg-surface-white px-3 py-1.5 text-center text-sm text-muted-gray floating-shadow"
+          className="pointer-events-none absolute inset-x-3 top-16 z-999 mx-auto w-fit max-w-[calc(100%_-_1.5rem)] rounded-radius-pill bg-surface-white px-3 py-1.5 text-center text-sm text-muted-gray floating-shadow max-[419px]:top-24"
           role="status"
         >
           Archived board - Restore it from the Archived view to edit again.
@@ -417,7 +436,7 @@ export function FabricWhiteboard({
 
       {accessLost ? (
         <p
-          className="pointer-events-none absolute inset-x-3 top-16 z-999 mx-auto w-fit max-w-[calc(100%_-_1.5rem)] rounded-radius-pill bg-(--danger-soft) px-3 py-1.5 text-center text-sm text-(--danger) ring-1 ring-(--danger-border) floating-shadow"
+          className="pointer-events-none absolute inset-x-3 top-16 z-999 mx-auto w-fit max-w-[calc(100%_-_1.5rem)] rounded-radius-pill bg-(--danger-soft) px-3 py-1.5 text-center text-sm text-(--danger) ring-1 ring-(--danger-border) floating-shadow max-[419px]:top-24"
           role="alert"
         >
           Board access changed. Editing is stopped, but your local recovery data was kept.

@@ -44,16 +44,24 @@ vi.mock("@/components/ui", () => ({
   IconButton: ({
     label,
     children,
+    tooltipAlign: _tooltipAlign,
+    tooltipSide: _tooltipSide,
     ...props
   }: {
     label: string;
     children: ReactNode;
     onClick?: () => void;
-  }) => (
-    <button type="button" aria-label={label} {...props}>
-      {children}
-    </button>
-  ),
+    tooltipAlign?: string;
+    tooltipSide?: string;
+  }) => {
+    void _tooltipAlign;
+    void _tooltipSide;
+    return (
+      <button type="button" aria-label={label} {...props}>
+        {children}
+      </button>
+    );
+  },
   UserAvatar: () => <div>User Avatar</div>,
 }));
 
@@ -84,6 +92,23 @@ const recentBoard = {
   updatedAt: "2026-07-17T10:00:00.000Z",
 };
 
+const availableWorkspaces = [
+  {
+    id: recentBoard.workspaceId,
+    name: "Product Studio",
+    role: "owner" as const,
+    createdAt: "2026-07-01T10:00:00.000Z",
+    updatedAt: "2026-07-17T10:00:00.000Z",
+  },
+  {
+    id: "44444444-4444-4444-8444-444444444444",
+    name: "Research Lab",
+    role: "editor" as const,
+    createdAt: "2026-07-02T10:00:00.000Z",
+    updatedAt: "2026-07-18T10:00:00.000Z",
+  },
+];
+
 describe("workspace shell navigation modes", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -96,6 +121,7 @@ describe("workspace shell navigation modes", () => {
     navigation.pathname = "/app";
     navigation.searchParams = new URLSearchParams();
     navigation.push.mockReset();
+    window.localStorage.clear();
   });
 
   afterEach(() => {
@@ -117,6 +143,108 @@ describe("workspace shell navigation modes", () => {
     expect(desktopSidebar?.textContent).not.toContain("Recent boards");
     expect(desktopSidebar?.textContent).not.toMatch(/Boards|Members|Activity|Settings/);
     expect(desktopSidebar?.querySelector('a[href="/app/account"]')).not.toBeNull();
+  });
+
+  it("lists every accessible workspace in global navigation", () => {
+    act(() => {
+      root.render(
+        <WorkspaceShell
+          availableWorkspaces={availableWorkspaces}
+          title="All Workspaces"
+          description="Manage workspaces."
+        >
+          <p>Workspace list</p>
+        </WorkspaceShell>,
+      );
+    });
+
+    const desktopSidebar = container.querySelector("#workspace-desktop-sidebar");
+    expect(desktopSidebar?.textContent).toContain("Product Studio");
+    expect(desktopSidebar?.textContent).toContain("Research Lab");
+    expect(
+      desktopSidebar?.querySelector(
+        `a[href="/app/dashboard?workspaceId=${availableWorkspaces[0]?.id}"]`,
+      ),
+    ).not.toBeNull();
+    expect(
+      desktopSidebar?.querySelector(
+        `a[href="/app/dashboard?workspaceId=${availableWorkspaces[1]?.id}"]`,
+      ),
+    ).not.toBeNull();
+  });
+
+  it("collapses and expands the shared desktop sidebar accessibly", () => {
+    act(() => {
+      root.render(
+        <WorkspaceShell
+          availableWorkspaces={availableWorkspaces}
+          title="All Workspaces"
+          description="Manage workspaces."
+        >
+          <p>Workspace list</p>
+        </WorkspaceShell>,
+      );
+    });
+
+    const desktopSidebar = container.querySelector("#workspace-desktop-sidebar");
+    const collapseButton = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Collapse workspace sidebar"]',
+    );
+    expect(collapseButton?.getAttribute("aria-expanded")).toBe("true");
+    expect(desktopSidebar?.parentElement?.getAttribute("data-state")).toBe("expanded");
+
+    act(() => collapseButton?.click());
+
+    const expandButton = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Expand workspace sidebar"]',
+    );
+    expect(expandButton?.getAttribute("aria-expanded")).toBe("false");
+    expect(desktopSidebar?.parentElement?.getAttribute("data-state")).toBe("collapsed");
+    expect(window.localStorage.getItem("fabric:workspace-sidebar-collapsed:v1")).toBe(
+      "true",
+    );
+
+    act(() => expandButton?.click());
+    expect(
+      container.querySelector('button[aria-label="Collapse workspace sidebar"]'),
+    ).not.toBeNull();
+    expect(desktopSidebar?.parentElement?.getAttribute("data-state")).toBe("expanded");
+  });
+
+  it("opens and closes the animated mobile navigation disclosure", () => {
+    act(() => {
+      root.render(
+        <WorkspaceShell
+          availableWorkspaces={availableWorkspaces}
+          title="All Workspaces"
+          description="Manage workspaces."
+        >
+          <p>Workspace list</p>
+        </WorkspaceShell>,
+      );
+    });
+
+    const trigger = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Open workspace navigation"]',
+    );
+    const drawer = container.querySelector("#workspace-mobile-sidebar");
+    const overlay = drawer?.parentElement;
+    expect(trigger?.getAttribute("aria-expanded")).toBe("false");
+    expect(overlay?.getAttribute("data-state")).toBe("closed");
+    expect(overlay?.getAttribute("aria-hidden")).toBe("true");
+
+    act(() => trigger?.click());
+    expect(trigger?.getAttribute("aria-expanded")).toBe("true");
+    expect(overlay?.getAttribute("data-state")).toBe("open");
+    expect(overlay?.getAttribute("aria-hidden")).toBe("false");
+
+    const closeButton = drawer?.querySelector<HTMLButtonElement>(
+      'button[aria-label="Close navigation"]',
+    );
+    act(() => closeButton?.click());
+    expect(trigger?.getAttribute("aria-expanded")).toBe("false");
+    expect(overlay?.getAttribute("data-state")).toBe("closed");
+    expect(overlay?.getAttribute("aria-hidden")).toBe("true");
   });
 
   it("scopes active navigation and recent boards to canonical routes", () => {

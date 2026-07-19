@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { SiGithub } from "react-icons/si";
 
+import { landingActionStyles } from "@/components/landing/action-styles";
 import { GITHUB_REPOSITORY_URL } from "@/lib/site";
 
 const navigation = [
@@ -102,14 +103,14 @@ export function LandingHeader() {
             target="_blank"
             rel="noreferrer"
             aria-label="View Fabric on GitHub"
-            className="relative hidden h-10 items-center justify-center gap-2 rounded-full bg-white/68 py-2 pr-3 pl-2 text-sm font-medium text-[#35414b] ring-1 ring-white/75 backdrop-blur-md outline-none hover:-translate-y-0.5 hover:bg-white active:translate-y-0 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-sky-blue-accent sm:inline-flex"
+            className={landingActionStyles.glassCompact}
           >
             <SiGithub className="size-4 shrink-0" aria-hidden="true" />
             GitHub
           </a>
           <Link
             href="/app"
-            className="inline-flex h-10 items-center justify-center rounded-full bg-[#252b31] px-5 text-sm font-semibold text-white outline-none transition-transform hover:-translate-y-0.5 active:translate-y-0 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-sky-blue-accent"
+            className={landingActionStyles.primaryCompact}
           >
             Get started
           </Link>

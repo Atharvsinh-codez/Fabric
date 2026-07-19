@@ -309,6 +309,7 @@ export function WorkspacesPage({
 
   return (
     <WorkspaceShell
+      availableWorkspaces={workspaces}
       eyebrow="Fabric"
       title="All Workspaces"
       description="Open a shared space, manage access, or create a new workspace."

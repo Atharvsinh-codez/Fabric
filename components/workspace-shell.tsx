@@ -19,6 +19,8 @@ import MembersIcon from "reicon-react/icons/People2";
 import QuickNavIcon from "reicon-react/icons/Command3";
 import SearchIcon from "reicon-react/icons/Magnifier";
 import SettingsIcon from "reicon-react/icons/Settings";
+import SidebarLeftIcon from "reicon-react/icons/SidebarLeft2";
+import SidebarRightIcon from "reicon-react/icons/SidebarRight2";
 import UserIcon from "reicon-react/icons/User";
 import CloseIcon from "reicon-react/icons/X";
 
@@ -31,7 +33,13 @@ import {
   workspaceRoutePath,
   type WorkspaceAppRoute,
 } from "@/lib/app-routes";
-import { listBoards, type BoardSummary } from "@/lib/boards/client";
+import {
+  listBoards,
+  type BoardSummary,
+  type WorkspaceSummary,
+} from "@/lib/boards/client";
+
+const DESKTOP_SIDEBAR_STORAGE_KEY = "fabric:workspace-sidebar-collapsed:v1";
 
 const workspaceNavigation: Array<{
   label: string;
@@ -53,9 +61,11 @@ function isCurrentRoute(pathname: string, href: string) {
 }
 
 function WorkspaceNav({
+  collapsed = false,
   onNavigate,
   workspaceId,
 }: {
+  collapsed?: boolean;
   onNavigate?: () => void;
   workspaceId?: string;
 }) {
@@ -73,8 +83,14 @@ function WorkspaceNav({
             href={workspaceRoutePath(item.href, workspaceId)}
             onClick={onNavigate}
             aria-current={active ? "page" : undefined}
+            aria-label={collapsed ? item.label : undefined}
+            data-tooltip={collapsed ? item.label : undefined}
+            data-tooltip-side="right"
             className={cx(
-              "relative flex h-11 items-center gap-2.5 rounded-radius-md px-2.5 font-medium outline-none focus-visible:outline-2 focus-visible:outline-sky-blue-accent sm:h-9",
+              "relative flex h-11 items-center rounded-radius-md font-medium outline-none focus-visible:outline-2 focus-visible:outline-sky-blue-accent sm:h-9",
+              collapsed
+                ? "tooltip-trigger justify-center px-0"
+                : "gap-2.5 px-2.5",
               active
                 ? "bg-sky-blue-accent/8 text-near-black-primary-text ring-1 ring-sky-blue-accent/10"
                 : "text-dark-text-alt hover:bg-surface-white/70 hover:text-near-black-primary-text",
@@ -96,7 +112,9 @@ function WorkspaceNav({
               aria-hidden="true"
               focusable="false"
             />
-            <span className="min-w-0 truncate">{item.label}</span>
+            <span className={collapsed ? "sr-only" : "min-w-0 truncate"}>
+              {item.label}
+            </span>
           </Link>
         );
       })}
@@ -104,7 +122,13 @@ function WorkspaceNav({
   );
 }
 
-function AccountLink({ onNavigate }: { onNavigate?: () => void }) {
+function AccountLink({
+  collapsed = false,
+  onNavigate,
+}: {
+  collapsed?: boolean;
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
   const user = useCurrentUser();
   const active = pathname === APP_ROUTES.account;
@@ -115,25 +139,33 @@ function AccountLink({ onNavigate }: { onNavigate?: () => void }) {
         href={APP_ROUTES.account}
         onClick={onNavigate}
         aria-current={active ? "page" : undefined}
+        aria-label={collapsed ? "Open account" : undefined}
+        data-tooltip={collapsed ? "Account" : undefined}
+        data-tooltip-side="right"
         className={cx(
-          "group flex min-w-0 items-center gap-2.5 rounded-radius-lg bg-surface-white/72 p-2 font-medium ring-1 ring-near-black-primary-text/6 outline-none motion-safe:transition-transform motion-safe:duration-200 hover:-translate-y-px focus-visible:outline-2 focus-visible:outline-sky-blue-accent",
+          "group flex min-w-0 items-center rounded-radius-lg bg-surface-white/72 p-2 font-medium ring-1 ring-near-black-primary-text/6 outline-none hover:bg-surface-white focus-visible:outline-2 focus-visible:outline-sky-blue-accent",
+          collapsed ? "tooltip-trigger justify-center" : "gap-2.5",
           active && "bg-sky-blue-accent/8 ring-sky-blue-accent/18",
         )}
       >
         <UserAvatar user={user} size="small" />
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate">{user.name || "Fabric member"}</span>
-          <span className="truncate text-[0.75rem] font-normal text-muted-gray">
-            {user.email || "Signed in"}
+        {!collapsed && (
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate">{user.name || "Fabric member"}</span>
+            <span className="truncate text-[0.75rem] font-normal text-muted-gray">
+              {user.email || "Signed in"}
+            </span>
           </span>
-        </span>
-        <ChevronRightIcon
-          size={16}
-          color="var(--color-muted-gray)"
-          className="shrink-0 motion-safe:transition-transform motion-safe:duration-200 group-hover:translate-x-0.5"
-          aria-hidden="true"
-          focusable="false"
-        />
+        )}
+        {!collapsed && (
+          <ChevronRightIcon
+            size={16}
+            color="var(--color-muted-gray)"
+            className="shrink-0 motion-safe:transition-transform motion-safe:duration-200 group-hover:translate-x-0.5"
+            aria-hidden="true"
+            focusable="false"
+          />
+        )}
       </Link>
     </div>
   );
@@ -216,36 +248,127 @@ function RecentBoardLinks({
   );
 }
 
-function WorkspaceSidebarContent({
-  onNavigate,
-  recentBoards,
-  workspaceId,
-  workspaceName,
-}: {
-  onNavigate?: () => void;
-  recentBoards?: BoardSummary[];
-  workspaceId?: string;
-  workspaceName?: string;
-}) {
-  const workspaceLabel = workspaceName ?? (workspaceId ? "Workspace" : "All Workspaces");
-  const workspaceInitials = workspaceLabel
+function workspaceInitials(name: string) {
+  return name
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
     .map((part) => part[0])
     .join("")
     .toUpperCase();
+}
+
+function AvailableWorkspaceLinks({
+  collapsed,
+  onNavigate,
+  workspaces,
+}: {
+  collapsed: boolean;
+  onNavigate?: () => void;
+  workspaces: readonly WorkspaceSummary[];
+}) {
+  return (
+    <nav
+      aria-label="Your workspaces"
+      className="flex min-h-0 flex-1 flex-col gap-2 px-3 pt-6 text-base sm:text-sm"
+    >
+      {!collapsed && (
+        <div className="flex items-center justify-between gap-2 px-1">
+          <p className="font-medium text-muted-gray">Workspaces</p>
+          <p className="text-[0.75rem] text-muted-gray tabular-nums">
+            {workspaces.length}
+          </p>
+        </div>
+      )}
+
+      {workspaces.length > 0 ? (
+        <ul
+          role="list"
+          className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain pr-0.5"
+        >
+          {workspaces.map((workspace) => (
+            <li key={workspace.id}>
+              <Link
+                href={dashboardPath({ workspaceId: workspace.id })}
+                onClick={onNavigate}
+                aria-label={collapsed ? `Open ${workspace.name}` : undefined}
+                data-tooltip={collapsed ? workspace.name : undefined}
+                data-tooltip-side="right"
+                className={cx(
+                  "flex min-h-11 min-w-0 items-center rounded-radius-lg outline-none hover:bg-surface-white/72 focus-visible:outline-2 focus-visible:outline-sky-blue-accent sm:min-h-10",
+                  collapsed
+                    ? "tooltip-trigger justify-center px-0"
+                    : "gap-2.5 px-2.5",
+                )}
+              >
+                <div
+                  aria-hidden="true"
+                  className="grid size-7 shrink-0 place-items-center rounded-radius-md bg-sky-blue-accent/10 text-[0.6875rem] font-semibold text-sky-blue-accent ring-1 ring-sky-blue-accent/12"
+                >
+                  {workspaceInitials(workspace.name) || "FW"}
+                </div>
+                {collapsed ? (
+                  <span className="sr-only">{workspace.name}</span>
+                ) : (
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium text-near-black-primary-text">
+                      {workspace.name}
+                    </p>
+                    <p className="truncate text-[0.75rem] capitalize text-muted-gray">
+                      {workspace.role}
+                    </p>
+                  </div>
+                )}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        !collapsed && (
+          <p className="px-1 text-pretty text-base text-muted-gray sm:text-sm">
+            Your shared workspaces will appear here.
+          </p>
+        )
+      )}
+    </nav>
+  );
+}
+
+function WorkspaceSidebarContent({
+  availableWorkspaces = [],
+  collapsed = false,
+  onNavigate,
+  recentBoards,
+  workspaceId,
+  workspaceName,
+}: {
+  availableWorkspaces?: readonly WorkspaceSummary[];
+  collapsed?: boolean;
+  onNavigate?: () => void;
+  recentBoards?: BoardSummary[];
+  workspaceId?: string;
+  workspaceName?: string;
+}) {
+  const workspaceLabel = workspaceName ?? (workspaceId ? "Workspace" : "All Workspaces");
+  const initials = workspaceInitials(workspaceLabel);
 
   return (
     <>
-      <div className="flex h-16 shrink-0 items-center px-4">
+      <div
+        className={cx(
+          "flex h-16 shrink-0 items-center",
+          collapsed ? "justify-center px-3" : "px-4",
+        )}
+      >
         <Link
           href="/"
           aria-label="Homepage"
           onClick={onNavigate}
+          data-tooltip={collapsed ? "Fabric home" : undefined}
+          data-tooltip-side="right"
           className="rounded-radius-sm outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent"
         >
-          <FabricLogo />
+          <FabricLogo compact={collapsed} />
         </Link>
       </div>
 
@@ -253,40 +376,58 @@ function WorkspaceSidebarContent({
         <Link
           href={APP_ROUTES.workspaces}
           onClick={onNavigate}
-          className="flex min-h-11 min-w-0 items-center gap-2.5 rounded-radius-lg bg-surface-white/72 px-2.5 font-medium ring-1 ring-near-black-primary-text/6 outline-none hover:bg-surface-white focus-visible:outline-2 focus-visible:outline-sky-blue-accent sm:min-h-10"
+          aria-label={collapsed ? "All workspaces" : undefined}
+          data-tooltip={collapsed ? "All workspaces" : undefined}
+          data-tooltip-side="right"
+          className={cx(
+            "flex min-h-11 min-w-0 items-center rounded-radius-lg bg-surface-white/72 font-medium ring-1 ring-near-black-primary-text/6 outline-none hover:bg-surface-white focus-visible:outline-2 focus-visible:outline-sky-blue-accent sm:min-h-10",
+            collapsed
+              ? "tooltip-trigger justify-center px-0"
+              : "gap-2.5 px-2.5",
+          )}
         >
-          <span
+          <div
             aria-hidden="true"
             className="grid size-7 shrink-0 place-items-center rounded-radius-md bg-sky-blue-accent text-[0.6875rem] text-surface-white shadow-sm"
           >
-            {workspaceInitials || "FW"}
+            {initials || "FW"}
+          </div>
+          <span className={collapsed ? "sr-only" : "min-w-0 flex-1 truncate"}>
+            {workspaceLabel}
           </span>
-          <span className="min-w-0 flex-1 truncate">{workspaceLabel}</span>
         </Link>
       </div>
 
       {workspaceId ? (
         <>
           <div className="px-3 pt-5">
-            <WorkspaceNav onNavigate={onNavigate} workspaceId={workspaceId} />
+            <WorkspaceNav
+              collapsed={collapsed}
+              onNavigate={onNavigate}
+              workspaceId={workspaceId}
+            />
           </div>
 
-          <RecentBoardLinks
-            workspaceId={workspaceId}
-            initialBoards={recentBoards}
-            onNavigate={onNavigate}
-          />
+          {collapsed ? (
+            <div className="flex-1" />
+          ) : (
+            <RecentBoardLinks
+              workspaceId={workspaceId}
+              initialBoards={recentBoards}
+              onNavigate={onNavigate}
+            />
+          )}
         </>
       ) : (
-        <div className="flex-1 px-4 pt-8">
-          <p className="text-pretty text-base text-muted-gray sm:text-sm">
-            Choose a workspace to open its boards, members, activity, and settings.
-          </p>
-        </div>
+        <AvailableWorkspaceLinks
+          collapsed={collapsed}
+          onNavigate={onNavigate}
+          workspaces={availableWorkspaces}
+        />
       )}
 
       <div className="border-t border-sky-blue-accent/10 p-3">
-        <AccountLink onNavigate={onNavigate} />
+        <AccountLink collapsed={collapsed} onNavigate={onNavigate} />
       </div>
     </>
   );
@@ -355,6 +496,7 @@ function useModalFocus(
 }
 
 export function WorkspaceShell({
+  availableWorkspaces,
   eyebrow,
   title,
   description,
@@ -364,6 +506,7 @@ export function WorkspaceShell({
   recentBoards,
   children,
 }: {
+  availableWorkspaces?: readonly WorkspaceSummary[];
   eyebrow?: string;
   title: string;
   description: string;
@@ -373,6 +516,9 @@ export function WorkspaceShell({
   recentBoards?: BoardSummary[];
   children: ReactNode;
 }) {
+  const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
+  const [desktopSidebarPreferenceReady, setDesktopSidebarPreferenceReady] =
+    useState(false);
   const [mobileNav, setMobileNav] = useState(false);
   const [mobileSearch, setMobileSearch] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
@@ -388,6 +534,42 @@ export function WorkspaceShell({
 
   useModalFocus(mobileNav, mobileNavRef, () => setMobileNav(false));
   useModalFocus(commandOpen, commandRef, () => setCommandOpen(false));
+
+  useEffect(() => {
+    let storedCollapsed = false;
+    try {
+      storedCollapsed =
+        window.localStorage.getItem(DESKTOP_SIDEBAR_STORAGE_KEY) === "true";
+    } catch {
+      storedCollapsed = false;
+    }
+
+    const readyFrame = window.requestAnimationFrame(() => {
+      setDesktopSidebarCollapsed(storedCollapsed);
+      setDesktopSidebarPreferenceReady(true);
+    });
+    const syncSidebarPreference = (event: StorageEvent) => {
+      if (event.key !== DESKTOP_SIDEBAR_STORAGE_KEY) return;
+      setDesktopSidebarCollapsed(event.newValue === "true");
+    };
+    window.addEventListener("storage", syncSidebarPreference);
+
+    return () => {
+      window.cancelAnimationFrame(readyFrame);
+      window.removeEventListener("storage", syncSidebarPreference);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const desktopQuery = window.matchMedia("(min-width: 1024px)");
+    const closeMobileNavigation = () => {
+      if (desktopQuery.matches) setMobileNav(false);
+    };
+    closeMobileNavigation();
+    desktopQuery.addEventListener("change", closeMobileNavigation);
+    return () => desktopQuery.removeEventListener("change", closeMobileNavigation);
+  }, []);
 
   useEffect(() => {
     const openQuickNavigation = (event: KeyboardEvent) => {
@@ -419,6 +601,19 @@ export function WorkspaceShell({
     setMobileSearch(true);
   };
 
+  const toggleDesktopSidebar = () => {
+    const nextCollapsed = !desktopSidebarCollapsed;
+    setDesktopSidebarCollapsed(nextCollapsed);
+    try {
+      window.localStorage.setItem(
+        DESKTOP_SIDEBAR_STORAGE_KEY,
+        nextCollapsed ? "true" : "false",
+      );
+    } catch {
+      // The preference is optional when browser storage is unavailable.
+    }
+  };
+
   const searchForm = (mobile = false) => (
     <form className="relative block w-full max-w-sm" role="search" onSubmit={searchWorkspace}>
       <label htmlFor={mobile ? "workspace-search-mobile" : "workspace-search"} className="sr-only">
@@ -446,13 +641,59 @@ export function WorkspaceShell({
 
   return (
     <main className="isolate flex h-dvh overflow-hidden bg-[#f7fafc] font-sans text-near-black-primary-text">
-      <aside className="hidden w-64 shrink-0 border-r border-sky-blue-accent/10 bg-linear-to-b from-[#edf8ff] via-[#f7fbfe] to-[#f3f8fb] lg:flex lg:flex-col">
-        <WorkspaceSidebarContent
-          workspaceId={activeWorkspaceId}
-          workspaceName={workspaceName}
-          recentBoards={recentBoards}
-        />
-      </aside>
+      <div
+        data-state={desktopSidebarCollapsed ? "collapsed" : "expanded"}
+        className={cx(
+          "relative hidden h-full shrink-0 lg:block",
+          desktopSidebarPreferenceReady &&
+            "motion-safe:transition-[width] motion-safe:duration-(--motion-panel) motion-safe:ease-(--ease-out-quart) motion-reduce:transition-none",
+          desktopSidebarCollapsed ? "w-18" : "w-64",
+        )}
+      >
+        <aside
+          id="workspace-desktop-sidebar"
+          aria-label="Workspace navigation"
+          className="flex h-full w-full flex-col overflow-hidden border-r border-sky-blue-accent/10 bg-linear-to-b from-[#edf8ff] via-[#f7fbfe] to-[#f3f8fb]"
+        >
+          <WorkspaceSidebarContent
+            availableWorkspaces={availableWorkspaces}
+            collapsed={desktopSidebarCollapsed}
+            workspaceId={activeWorkspaceId}
+            workspaceName={workspaceName}
+            recentBoards={recentBoards}
+          />
+        </aside>
+        <div className="absolute top-4 -right-4 z-20">
+          <IconButton
+            label={
+              desktopSidebarCollapsed
+                ? "Expand workspace sidebar"
+                : "Collapse workspace sidebar"
+            }
+            aria-controls="workspace-desktop-sidebar"
+            aria-expanded={!desktopSidebarCollapsed}
+            tooltipSide="right"
+            className="bg-surface-white shadow-[0_6px_18px_rgb(37_43_49/0.12)] ring-1 ring-near-black-primary-text/8"
+            onClick={toggleDesktopSidebar}
+          >
+            {desktopSidebarCollapsed ? (
+              <SidebarRightIcon
+                size={16}
+                className="shrink-0"
+                aria-hidden="true"
+                focusable="false"
+              />
+            ) : (
+              <SidebarLeftIcon
+                size={16}
+                className="shrink-0"
+                aria-hidden="true"
+                focusable="false"
+              />
+            )}
+          </IconButton>
+        </div>
+      </div>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border-subtle bg-surface-white/94 px-4 backdrop-blur-sm sm:px-6">
@@ -461,6 +702,7 @@ export function WorkspaceShell({
               label="Open workspace navigation"
               aria-haspopup="dialog"
               aria-expanded={mobileNav}
+              aria-controls="workspace-mobile-sidebar"
               onClick={() => {
                 setCommandOpen(false);
                 setMobileSearch(false);
@@ -549,20 +791,29 @@ export function WorkspaceShell({
         </div>
       </div>
 
-      {mobileNav && (
-        <div className="fixed inset-0 z-100 lg:hidden">
+      <div
+        data-open={mobileNav ? "" : undefined}
+        data-state={mobileNav ? "open" : "closed"}
+        aria-hidden={!mobileNav}
+        inert={!mobileNav}
+        className="pointer-events-none invisible fixed inset-0 z-100 delay-(--motion-panel) transition-[visibility] duration-0 data-open:visible data-open:pointer-events-auto data-open:delay-0 motion-reduce:delay-0 lg:hidden"
+      >
           <button
             type="button"
-            className="modal-backdrop absolute inset-0"
+            tabIndex={mobileNav ? 0 : -1}
+            className="modal-backdrop absolute inset-0 opacity-0 motion-safe:transition-opacity motion-safe:duration-200 data-open:opacity-100 motion-reduce:transition-none"
+            data-open={mobileNav ? "" : undefined}
             aria-label="Close navigation"
             onClick={() => setMobileNav(false)}
           />
           <aside
+            id="workspace-mobile-sidebar"
             ref={mobileNavRef}
             role="dialog"
             aria-modal="true"
             aria-label="Workspace navigation"
-            className="floating-shadow drawer-enter absolute inset-y-0 left-0 flex w-[min(86vw,320px)] flex-col bg-linear-to-b from-[#edf8ff] via-[#f7fbfe] to-[#f3f8fb]"
+            data-open={mobileNav ? "" : undefined}
+            className="floating-shadow absolute inset-y-0 left-0 flex w-[min(86vw,320px)] -translate-x-full flex-col bg-linear-to-b from-[#edf8ff] via-[#f7fbfe] to-[#f3f8fb] motion-safe:transition-transform motion-safe:duration-(--motion-panel) motion-safe:ease-(--ease-out-quart) data-open:translate-x-0 motion-reduce:transition-none"
           >
             <div className="absolute top-3 right-3 z-10">
               <IconButton label="Close navigation" onClick={() => setMobileNav(false)}>
@@ -570,14 +821,14 @@ export function WorkspaceShell({
               </IconButton>
             </div>
             <WorkspaceSidebarContent
+              availableWorkspaces={availableWorkspaces}
               onNavigate={() => setMobileNav(false)}
               workspaceId={activeWorkspaceId}
               workspaceName={workspaceName}
               recentBoards={recentBoards}
             />
           </aside>
-        </div>
-      )}
+      </div>
 
       {commandOpen && (
         <div className="fixed inset-0 z-110 grid place-items-start px-4 pt-[12vh]">

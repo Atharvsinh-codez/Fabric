@@ -195,9 +195,16 @@ describe("FabricWhiteboard sync recovery visibility", () => {
 
     const agent = container.querySelector('[aria-label="Open Fabric agent"]');
     const theme = container.querySelector('[aria-label="Board Theme"]');
+    const comments = container.querySelector('[aria-label="Open Comments"]');
     expect(agent).not.toBeNull();
     expect(theme).not.toBeNull();
     expect(agent?.nextElementSibling).toBe(theme);
+    expect(comments?.parentElement?.className).toContain(
+      "max-[419px]:top-11",
+    );
+    expect(comments?.parentElement?.className).toContain(
+      "max-[419px]:right-0",
+    );
 
     render(whiteboardProps({ role: "viewer", editingAuthorized: false }));
     expect(container.querySelector('[aria-label="Open Fabric agent"]')).toBeNull();

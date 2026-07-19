@@ -329,7 +329,11 @@ export function FabricBoardToolsPanel({
               </p>
             </div>
           </div>
-          <IconButton label="Close Board Tools" onClick={onClose}>
+          <IconButton
+            label="Close Board Tools"
+            tooltipAlign="end"
+            onClick={onClose}
+          >
             <XMarkIcon className="size-4 shrink-0 fill-current" aria-hidden="true" />
           </IconButton>
         </header>

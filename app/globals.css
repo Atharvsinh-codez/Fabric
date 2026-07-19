@@ -303,6 +303,10 @@ button:disabled {
   display: block;
 }
 
+.tooltip-trigger[data-suppress-tooltip-when-expanded="true"][aria-expanded="true"]::after {
+  display: none;
+}
+
 .canvas-node {
   position: absolute;
   overflow: hidden;

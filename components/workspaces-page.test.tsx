@@ -8,6 +8,7 @@ const workspaceClient = vi.hoisted(() => ({
   createWorkspace: vi.fn(),
   listWorkspaces: vi.fn(),
   push: vi.fn(),
+  shellProps: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -29,16 +30,21 @@ vi.mock("next/link", () => ({
 vi.mock("@/components/workspace-shell", () => ({
   WorkspaceShell: ({
     action,
+    availableWorkspaces,
     children,
   }: {
     action?: ReactNode;
+    availableWorkspaces?: readonly unknown[];
     children: ReactNode;
-  }) => (
-    <main>
-      {action}
-      {children}
-    </main>
-  ),
+  }) => {
+    workspaceClient.shellProps({ availableWorkspaces });
+    return (
+      <main>
+        {action}
+        {children}
+      </main>
+    );
+  },
 }));
 
 vi.mock("@/lib/boards/client", () => ({
@@ -86,6 +92,7 @@ describe("all workspaces control center", () => {
     workspaceClient.createWorkspace.mockReset();
     workspaceClient.listWorkspaces.mockReset();
     workspaceClient.push.mockReset();
+    workspaceClient.shellProps.mockReset();
   });
 
   afterEach(() => {
@@ -120,6 +127,10 @@ describe("all workspaces control center", () => {
 
   it("exposes canonical workspace and account destinations", () => {
     renderPage();
+
+    expect(workspaceClient.shellProps).toHaveBeenLastCalledWith({
+      availableWorkspaces: [existingWorkspace],
+    });
 
     const links = [...container.querySelectorAll<HTMLAnchorElement>("a")].map(
       (link) => [link.textContent?.trim(), link.getAttribute("href")],
@@ -175,6 +186,9 @@ describe("all workspaces control center", () => {
     );
     expect(container.querySelector('[role="dialog"]')).toBeNull();
     expect(container.textContent).toContain("Research Lab");
+    expect(workspaceClient.shellProps).toHaveBeenLastCalledWith({
+      availableWorkspaces: [createdWorkspace, existingWorkspace],
+    });
   });
 
   it("keeps the dialog open with a useful retryable error", async () => {

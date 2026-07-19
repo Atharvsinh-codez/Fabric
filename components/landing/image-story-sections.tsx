@@ -2,6 +2,10 @@ import { ArrowRightIcon } from "@heroicons/react/20/solid";
 import Image from "next/image";
 import Link from "next/link";
 
+import {
+  landingActionIconStyles,
+  landingActionStyles,
+} from "@/components/landing/action-styles";
 import { Reveal } from "@/components/reveal";
 
 export function ConnectedEvidenceSection() {
@@ -58,10 +62,13 @@ export function StartWorkingSection() {
           </p>
           <Link
             href="/app"
-            className="mt-8 inline-flex h-12 items-center gap-2 rounded-full bg-[#252b31] px-6 text-base font-semibold text-white outline-none transition-transform hover:-translate-y-0.5 active:translate-y-0 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[#0084d1]"
+            className={`mt-8 ${landingActionStyles.primaryLarge}`}
           >
             Get started
-            <ArrowRightIcon className="size-4" aria-hidden="true" />
+            <ArrowRightIcon
+              className={landingActionIconStyles.primary}
+              aria-hidden="true"
+            />
           </Link>
         </div>
       </Reveal>

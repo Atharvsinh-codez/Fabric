@@ -119,7 +119,18 @@ describe("whiteboard presence summary", () => {
     });
 
     expect(trigger?.getAttribute("aria-expanded")).toBe("true");
-    expect(container.querySelector('[aria-label="People online"]')).not.toBeNull();
+    const panel = container.querySelector<HTMLElement>(
+      '[aria-label="People online"]',
+    );
+    expect(panel).not.toBeNull();
+    expect(panel?.className).toContain("fixed");
+    expect(panel?.className).toContain("inset-x-2");
+    expect(panel?.className).toContain("max-[419px]:top-24");
+    expect(panel?.className).toContain("max-h-[calc(100dvh_-_4rem)]");
+    const peopleList = panel?.querySelector<HTMLElement>('ul[role="list"]');
+    expect(peopleList?.className).toContain("min-h-0");
+    expect(peopleList?.className).toContain("flex-1");
+    expect(peopleList?.className).toContain("overflow-y-auto");
     expect(container.textContent).toContain("Local Editor (You)");
     expect(container.textContent).toContain("local@example.com");
     expect(container.textContent).toContain("Ada Lovelace");

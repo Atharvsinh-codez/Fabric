@@ -224,9 +224,9 @@ export function PresenceSummary({
         <section
           id={panelId}
           aria-label="People online"
-          className="panel-enter absolute right-0 top-10 z-1100 w-[min(calc(100vw_-_1rem),20rem)] overflow-hidden rounded-radius-lg bg-surface-white shadow-xl ring-1 ring-black/5 motion-reduce:animate-none"
+          className="panel-enter fixed inset-x-2 top-14 z-1100 flex max-h-[calc(100dvh_-_4rem)] w-auto flex-col overflow-hidden rounded-radius-lg bg-surface-white shadow-xl ring-1 ring-black/5 motion-reduce:animate-none max-[419px]:top-24 sm:absolute sm:inset-x-auto sm:top-10 sm:right-0 sm:w-[min(calc(100vw_-_1rem),20rem)]"
         >
-          <header className="flex items-start justify-between gap-3 px-3.5 py-3">
+          <header className="flex shrink-0 items-start justify-between gap-3 px-3.5 py-3">
             <div className="min-w-0">
               <h2 className="font-medium text-near-black-primary-text">People Online</h2>
               <p className="text-pretty text-base text-muted-gray sm:text-sm">
@@ -240,7 +240,7 @@ export function PresenceSummary({
 
           <ul
             role="list"
-            className="max-h-[min(22rem,calc(100dvh_-_7rem))] overflow-y-auto border-t border-near-black-primary-text/10 px-2 py-1"
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain border-t border-near-black-primary-text/10 px-2 py-1"
           >
             <li className="flex min-w-0 items-start gap-2.5 rounded-radius-md px-1.5 py-2.5">
               <span

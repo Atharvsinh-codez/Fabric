@@ -110,7 +110,11 @@ export function FabricCommentsPanel({
             </p>
           </div>
         </div>
-        <IconButton label="Close Comments" onClick={onClose}>
+        <IconButton
+          label="Close Comments"
+          tooltipAlign="end"
+          onClick={onClose}
+        >
           <XMarkIcon className="size-4 shrink-0 fill-current" aria-hidden="true" />
         </IconButton>
       </header>

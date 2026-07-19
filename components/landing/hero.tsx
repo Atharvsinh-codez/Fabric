@@ -2,6 +2,11 @@ import { ArrowDownIcon, ArrowRightIcon } from "@heroicons/react/20/solid";
 import Image from "next/image";
 import Link from "next/link";
 
+import {
+  landingActionIconStyles,
+  landingActionStyles,
+} from "@/components/landing/action-styles";
+
 export function LandingHero() {
   return (
     <section
@@ -35,20 +40,25 @@ export function LandingHero() {
           <div className="mt-7 flex flex-col items-center gap-3 sm:flex-row sm:gap-4">
             <Link
               href="/app"
-              className="inline-flex h-12 items-center gap-2 rounded-full bg-[#252b31] px-6 text-base font-semibold text-white outline-none transition-transform hover:-translate-y-0.5 active:translate-y-0 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-sky-blue-accent"
+              className={landingActionStyles.primaryLarge}
             >
               Get started
-              <ArrowRightIcon className="size-4" aria-hidden="true" />
+              <ArrowRightIcon
+                className={landingActionIconStyles.primary}
+                aria-hidden="true"
+              />
             </Link>
             <Link
               href="#how-it-works"
-              className="group inline-flex h-12 items-center gap-2 rounded-full px-3 text-base font-semibold text-[#252b31] outline-none focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-sky-blue-accent"
+              className={landingActionStyles.secondaryLarge}
             >
               Explore Fabric
-              <ArrowDownIcon
-                className="size-4 transition-transform group-hover:translate-y-0.5"
+              <span
+                className={landingActionIconStyles.secondaryShell}
                 aria-hidden="true"
-              />
+              >
+                <ArrowDownIcon className="size-3.5" />
+              </span>
             </Link>
           </div>
         </div>

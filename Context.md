@@ -982,3 +982,82 @@ Rules:
   - No application behavior, dependency, database, Cloudflare resource, secret, tldraw package, patch, shape behavior, or watermark handling changed.
 - Next Steps:
   - Publish the documentation and license update to GitHub `main` when requested.
+
+### [2026-07-19 13:37 IST] - Stabilize landing-page button interactions
+- Request: Improve the landing-page buttons so hover states feel polished and no longer jump, using the requested Taste redesign guidance alongside Fabric's UI-design standards.
+- Plan: Preserve the existing landing-page visual direction and copy, remove positional hover movement, centralize the action styles, and verify responsive rendering plus accessible interaction states.
+- Actions:
+  - Replaced whole-button upward hover transforms with stable color, ring, and tinted-shadow feedback.
+  - Added restrained pressed feedback that is disabled for reduced-motion users while retaining clear keyboard focus outlines.
+  - Unified the 48px hero/final CTAs and 40px header CTAs through one landing action style contract.
+  - Reworked the Explore Fabric arrow into a stationary icon surface and added a regression test that rejects hover translation.
+- Files Changed:
+  - `components/landing/action-styles.ts` - Shared primary, secondary, compact, and icon interaction styles.
+  - `components/landing/action-styles.test.ts` - Hover-position and accessible-state regression coverage.
+  - `components/landing/hero.tsx`, `components/landing/image-story-sections.tsx`, `components/landing/site-header.tsx` - Applied the stable action variants.
+- Validation:
+  - Focused Vitest passed: 1 file / 2 tests.
+  - Application TypeScript and scoped ESLint passed.
+  - Desktop and mobile-breakpoint headless browser renders were visually checked.
+  - `npm run verify:tldraw` and `git diff --check` passed.
+- Risks/Notes:
+  - This is a preserve-mode UI refinement; landing structure, copy, destinations, dependencies, application behavior, database, Cloudflare resources, and tldraw internals remain unchanged.
+  - The requested Taste guidance directly led to stable target coordinates, one shared tactile action system, limited motion, and reduced-motion handling.
+- Next Steps:
+  - Publish the landing interaction update to GitHub `main` when requested.
+
+### [2026-07-19 13:58 IST] - Add animated collapsible workspace navigation
+- Request: Add open and close controls to the `/app` and workspace dashboard sidebars, animate both directions, and show every accessible workspace in the `/app` sidebar.
+- Plan: Extend the existing shared workspace shell so the behavior stays consistent across routes, preserve the mobile drawer's accessibility, and reuse the membership-scoped workspace data already loaded by the page.
+- Actions:
+  - Added a persistent desktop sidebar control that collapses the 256px panel into a 72px navigation rail and expands it again with the existing motion tokens.
+  - Persisted the desktop preference locally and synchronized it across tabs without changing any server or database contract.
+  - Added every accessible workspace to the global `/app` sidebar with canonical dashboard links, initials, role labels, and independent overflow scrolling.
+  - Kept the mobile drawer mounted long enough to animate both opening and closing while retaining backdrop close, Escape handling, focus trapping, and focus restoration.
+  - Added compact accessible navigation, workspace, account, and tooltip states for the collapsed rail.
+- Files Changed:
+  - `components/workspace-shell.tsx` - Shared animated desktop rail, mobile drawer transitions, persisted preference, and workspace navigation.
+  - `components/workspace-shell.test.tsx` - Desktop collapse, persistence, workspace-link, and mobile open/close coverage.
+  - `components/workspaces-page.tsx` - Supplies the live workspace list to the shared shell.
+  - `components/workspaces-page.test.tsx` - Verifies initial and newly created workspaces reach the sidebar.
+- Validation:
+  - Focused Vitest passed: 2 files / 8 tests.
+  - Application TypeScript and scoped ESLint passed.
+  - The authenticated `/app` route compiled successfully in the local Next.js runtime.
+  - `npm run verify:tldraw` and `git diff --check` passed.
+- Risks/Notes:
+  - The list remains limited to workspaces returned by the existing membership-scoped bootstrap; no cross-tenant browser filtering was added.
+  - No API, database, Cloudflare Worker, dependency, realtime, tldraw package, patch, shape, or watermark behavior changed.
+  - UI-design Build mode and responsive guidance shaped the persistent edge control, compact rail, bidirectional drawer animation, keyboard semantics, and reduced-motion behavior.
+- Next Steps:
+  - Publish the verified sidebar and landing interaction updates to GitHub `main` when requested.
+
+### [2026-07-19 14:27 IST] - Keep whiteboard floating controls inside the viewport
+- Request: Fix the clipped Board Theme chooser shown on the whiteboard and correct any closely related floating-control UI defects.
+- Plan: Preserve the shared theme and canvas behavior, move the nested chooser into a collision-aware viewport layer, then inspect the surrounding people panel, narrow header actions, and edge tooltips for the same class of overflow.
+- Actions:
+  - Portalled the Board Theme chooser above the tldraw overlay and clamped its position, width, and height to the live viewport on open, resize, zoom-viewport changes, and scroll.
+  - Added short-screen scrolling, selected-theme focus on open, Escape close with trigger focus restoration, and safe outside-click handling across the portal boundary.
+  - Prevented active disclosure tooltips from appearing behind their open panels and aligned edge/close tooltips so overflow-hidden surfaces do not clip them.
+  - Made the People Online panel use viewport insets on mobile, bounded the complete panel height, and moved list overflow into a flex-scrolling region.
+  - Stacked secondary board actions below the title controls on sub-420px canvases so every action remains available without header collision.
+- Files Changed:
+  - `components/fabric-whiteboard/board-theme-picker.tsx` and test - Viewport portal, collision positioning, focus behavior, scrolling, and narrow/right-edge regression coverage.
+  - `components/fabric-whiteboard/presence-summary.tsx` and test - Mobile viewport bounds and short-height list scrolling.
+  - `components/fabric-whiteboard.tsx` and test - Narrow action-row layout and edge-aligned board-action tooltips.
+  - `components/fabric-whiteboard/comments-panel.tsx`, `components/fabric-whiteboard/board-tools-panel.tsx`, `components/fabric-whiteboard/fabric-dialog.tsx`, and `app/globals.css` - Safe close-tooltip alignment and expanded-trigger tooltip suppression.
+- Diff Summary:
+  - Trigger-relative theme panel clipped beyond the left canvas edge -> viewport-level chooser that stays at least 8px inside every horizontal edge.
+  - Unbounded people and tooltip surfaces -> mobile-inset, height-bounded panels with contained scrolling and edge-aware tooltips.
+  - Colliding controls on narrow boards -> accessible second-row board actions below 420px.
+- Validation:
+  - Focused whiteboard verification passed: 4 files / 18 tests.
+  - Application TypeScript and scoped ESLint passed.
+  - The optimized Next.js/server production build compiled successfully.
+  - `npm run verify:tldraw` confirmed tldraw `4.2.0` and the reviewed patch remain intact; `git diff --check` passed.
+- Risks/Notes:
+  - Theme selection still writes only the existing shared document metadata and does not enable snap-to-grid or alter shape behavior.
+  - No API, database, realtime protocol, Cloudflare Worker, dependency, tldraw internals, patch, shape, or watermark behavior changed.
+  - UI-design Build and responsive guidance shaped the viewport collision bounds, compact surface hierarchy, focus handling, touch-safe controls, and reduced-motion-safe entry treatment.
+- Next Steps:
+  - Publish the accumulated verified UI changes to GitHub `main` when requested.
