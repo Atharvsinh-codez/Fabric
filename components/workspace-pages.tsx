@@ -34,6 +34,7 @@ import { updateCurrentProfile } from "@/app/actions/account";
 import { signOutCurrentSession } from "@/app/actions/auth";
 import { BoardThemeSelector } from "@/components/board-theme-selector";
 import { getUserInitials, useCurrentUser } from "@/components/current-user-provider";
+import { FabricDialog } from "@/components/fabric-whiteboard/fabric-dialog";
 import { ProjectMembersPanel } from "@/components/project-members-panel";
 import { Button, FabricLogo, IconButton, UserAvatar, cx } from "@/components/ui";
 import { WorkspaceShell as SharedWorkspaceShell } from "@/components/workspace-shell";
@@ -53,6 +54,7 @@ import type { WorkspaceActivityItem } from "@/lib/boards/activity-contracts";
 import {
   addWorkspaceMember as addWorkspaceMemberRequest,
   createBoard as createBoardRequest,
+  deleteWorkspace as deleteWorkspaceRequest,
   FabricApiError,
   listBoards,
   listWorkspaceActivity,
@@ -1776,7 +1778,89 @@ function ReadOnlySetting({
   );
 }
 
+function DeleteWorkspaceDialog({
+  workspace,
+  deleting,
+  error,
+  onClose,
+  onDelete,
+}: {
+  workspace: WorkspaceSummary | null;
+  deleting: boolean;
+  error: string | null;
+  onClose: () => void;
+  onDelete: () => void;
+}) {
+  const [confirmation, setConfirmation] = useState("");
+  if (!workspace) return null;
+
+  const confirmed = confirmation === workspace.name;
+  return (
+    <FabricDialog
+      open
+      title="Delete workspace"
+      description="Every board in this workspace will be removed for every member. This cannot be undone in Fabric."
+      onClose={() => {
+        if (!deleting) onClose();
+      }}
+    >
+      <form
+        className="flex flex-col gap-5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (confirmed && !deleting) onDelete();
+        }}
+      >
+        <div className="flex flex-col gap-2">
+          <label
+            htmlFor="delete-workspace-confirmation"
+            className="text-base font-medium sm:text-sm"
+          >
+            Type <strong className="font-semibold">{workspace.name}</strong> to confirm
+          </label>
+          <input
+            id="delete-workspace-confirmation"
+            name="delete-workspace-confirmation"
+            type="text"
+            autoComplete="off"
+            value={confirmation}
+            disabled={deleting}
+            onChange={(event) => setConfirmation(event.target.value)}
+            className="h-11 rounded-radius-md bg-surface-white px-3 text-base ring-1 ring-near-black-primary-text/10 outline-none focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-[var(--danger)] disabled:opacity-45 sm:h-9 sm:text-sm"
+          />
+        </div>
+
+        {error ? (
+          <p
+            role="alert"
+            className="rounded-radius-md bg-[var(--danger-soft)] px-3 py-2 text-base text-[var(--danger)] ring-1 ring-[var(--danger-border)] sm:text-sm"
+          >
+            {error}
+          </p>
+        ) : null}
+
+        <div className="flex items-center justify-end gap-2 border-t border-near-black-primary-text/8 pt-4">
+          <Button type="button" tone="ghost" onClick={onClose} disabled={deleting}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            tone="danger"
+            disabled={!confirmed || deleting}
+            leading={
+              <TrashIcon className="size-4 shrink-0 fill-current" aria-hidden="true" />
+            }
+          >
+            {deleting ? "Deleting…" : "Delete workspace"}
+          </Button>
+        </div>
+      </form>
+    </FabricDialog>
+  );
+}
+
 export function SettingsPage({ workspaceId }: { workspaceId?: string }) {
+  const router = useRouter();
   const {
     activeWorkspace,
     loadState,
@@ -1785,6 +1869,30 @@ export function SettingsPage({ workspaceId }: { workspaceId?: string }) {
     selectedWorkspaceId,
     workspaces,
   } = useWorkspaceSelection(workspaceId, APP_ROUTES.settings);
+  const [workspaceToDelete, setWorkspaceToDelete] =
+    useState<WorkspaceSummary | null>(null);
+  const [deletingWorkspace, setDeletingWorkspace] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const handleDeleteWorkspace = async () => {
+    if (!workspaceToDelete) return;
+    setDeletingWorkspace(true);
+    setDeleteError(null);
+    try {
+      await deleteWorkspaceRequest({
+        workspaceId: workspaceToDelete.id,
+        expectedName: workspaceToDelete.name,
+      });
+      router.replace(APP_ROUTES.workspaces);
+    } catch (error) {
+      setDeleteError(
+        error instanceof Error
+          ? error.message
+          : "The workspace could not be deleted.",
+      );
+      setDeletingWorkspace(false);
+    }
+  };
 
   return (
     <SharedWorkspaceShell
@@ -1909,8 +2017,60 @@ export function SettingsPage({ workspaceId }: { workspaceId?: string }) {
               />
             </div>
           </section>
+
+          {activeWorkspace.role === "owner" ? (
+            <section
+              aria-labelledby="danger-zone-heading"
+              className="grid gap-6 border-t border-[var(--danger-border)] pt-8 lg:grid-cols-[1fr_2fr]"
+            >
+              <div className="flex flex-col gap-1">
+                <h2 id="danger-zone-heading" className="text-base font-semibold">
+                  Danger Zone
+                </h2>
+                <p className="text-pretty text-base text-dark-text-alt sm:text-sm">
+                  Destructive workspace actions are limited to owners.
+                </p>
+              </div>
+              <div className="flex flex-col items-start gap-3 rounded-radius-xl bg-[var(--danger-soft)] p-4 ring-1 ring-[var(--danger-border)]">
+                <div className="flex flex-col gap-1">
+                  <h3 className="text-base font-semibold">Delete this workspace</h3>
+                  <p className="max-w-[62ch] text-pretty text-base text-dark-text-alt sm:text-sm">
+                    Remove this workspace and all of its boards for every member.
+                  </p>
+                </div>
+                {deleteError ? (
+                  <p role="alert" className="text-base text-[var(--danger)] sm:text-sm">
+                    {deleteError}
+                  </p>
+                ) : null}
+                <Button
+                  tone="danger"
+                  leading={
+                    <TrashIcon className="size-4 shrink-0 fill-current" aria-hidden="true" />
+                  }
+                  onClick={() => {
+                    setDeleteError(null);
+                    setWorkspaceToDelete(activeWorkspace);
+                  }}
+                >
+                  Delete workspace
+                </Button>
+              </div>
+            </section>
+          ) : null}
         </>
       )}
+      <DeleteWorkspaceDialog
+        key={workspaceToDelete?.id ?? "closed"}
+        workspace={workspaceToDelete}
+        deleting={deletingWorkspace}
+        error={deleteError}
+        onClose={() => {
+          setWorkspaceToDelete(null);
+          setDeleteError(null);
+        }}
+        onDelete={() => void handleDeleteWorkspace()}
+      />
     </SharedWorkspaceShell>
   );
 }

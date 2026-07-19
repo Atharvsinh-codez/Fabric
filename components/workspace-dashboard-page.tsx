@@ -13,6 +13,7 @@ import {
 import AddIcon from "reicon-react/icons/Add2";
 import ArrowRightIcon from "reicon-react/icons/ArrowRight";
 import RefreshIcon from "reicon-react/icons/Refresh";
+import TrashIcon from "reicon-react/icons/Trash2";
 
 import { BoardPreview } from "@/components/board-preview";
 import { BoardCoverPicker } from "@/components/board-cover-picker";
@@ -29,6 +30,7 @@ import {
   archiveBoard,
   createBoard as createBoardRequest,
   createProject,
+  deleteBoard,
   listBoardsPage,
   listProjects,
   listWorkspaces,
@@ -101,6 +103,81 @@ function CreateBoardThemeDialog({
           </Button>
           <Button type="submit" tone="primary" disabled={creating}>
             {creating ? "Creating…" : "Create board"}
+          </Button>
+        </div>
+      </form>
+    </FabricDialog>
+  );
+}
+
+function DeleteBoardDialog({
+  board,
+  deleting,
+  onClose,
+  onDelete,
+}: {
+  board: BoardSummary | null;
+  deleting: boolean;
+  onClose: () => void;
+  onDelete: () => void;
+}) {
+  const [confirmation, setConfirmation] = useState("");
+  if (!board) return null;
+
+  const confirmed = confirmation === board.title;
+  return (
+    <FabricDialog
+      open
+      title="Delete board"
+      description="This removes the board for every collaborator and cannot be undone in Fabric."
+      onClose={() => {
+        if (!deleting) onClose();
+      }}
+    >
+      <form
+        className="flex flex-col gap-5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (confirmed && !deleting) onDelete();
+        }}
+      >
+        <div className="flex flex-col gap-2">
+          <label
+            htmlFor="delete-board-confirmation"
+            className="text-base font-medium sm:text-sm"
+          >
+            Type <strong className="font-semibold">{board.title}</strong> to confirm
+          </label>
+          <input
+            id="delete-board-confirmation"
+            name="delete-board-confirmation"
+            type="text"
+            autoComplete="off"
+            value={confirmation}
+            disabled={deleting}
+            onChange={(event) => setConfirmation(event.target.value)}
+            className="h-11 rounded-radius-md bg-surface-white px-3 text-base ring-1 ring-near-black-primary-text/10 outline-none focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-[var(--danger)] disabled:opacity-45 sm:h-9 sm:text-sm"
+          />
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-near-black-primary-text/8 pt-4">
+          <Button type="button" tone="ghost" onClick={onClose} disabled={deleting}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            tone="danger"
+            disabled={!confirmed || deleting}
+            leading={
+              <TrashIcon
+                size={16}
+                className="shrink-0"
+                aria-hidden="true"
+                focusable="false"
+              />
+            }
+          >
+            {deleting ? "Deleting…" : "Delete board"}
           </Button>
         </div>
       </form>
@@ -196,6 +273,7 @@ export function WorkspaceDashboardPage({
     initialLoadError ? "error" : "ready",
   );
   const [createBoardOpen, setCreateBoardOpen] = useState(false);
+  const [boardToDelete, setBoardToDelete] = useState<BoardSummary | null>(null);
   const [selectedTheme, setSelectedTheme] =
     useState<BoardTheme>(DEFAULT_NEW_BOARD_THEME);
   const [creating, setCreating] = useState(false);
@@ -565,6 +643,29 @@ export function WorkspaceDashboardPage({
         error instanceof Error
           ? error.message
           : "The board preference could not be updated.",
+      );
+    } finally {
+      setMutatingBoardId(null);
+    }
+  };
+
+  const handleDeleteBoard = async () => {
+    if (!boardToDelete) return;
+    setMutatingBoardId(boardToDelete.id);
+    try {
+      await deleteBoard({
+        boardId: boardToDelete.id,
+        expectedTitle: boardToDelete.title,
+        expectedDocumentGenerationId: boardToDelete.documentGenerationId,
+      });
+      setBoards((current) =>
+        current.filter((board) => board.id !== boardToDelete.id),
+      );
+      setBoardToDelete(null);
+      showToast("Board deleted");
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : "The board could not be deleted.",
       );
     } finally {
       setMutatingBoardId(null);
@@ -985,115 +1086,137 @@ export function WorkspaceDashboardPage({
                             </p>
                           ) : null}
                         </div>
-                        {organizationEnabled ? (
+                        {organizationEnabled || board.role === "owner" ? (
                           <div className="flex flex-wrap items-center gap-2 border-t border-near-black-primary-text/6 pt-3">
-                          <button
-                            type="button"
-                            disabled={mutatingBoardId === board.id}
-                            onClick={() =>
-                              void toggleBoardPreference(board, "favorite")
-                            }
-                            className="relative min-h-11 rounded-radius-md px-2.5 text-base font-medium text-muted-gray outline-none hover:bg-light-surface-tint hover:text-near-black-primary-text focus-visible:outline-2 focus-visible:outline-sky-blue-accent disabled:opacity-45 sm:min-h-8 sm:text-sm"
-                          >
-                            {board.favorite ? "Unfavorite" : "Favorite"}
-                            <span
-                              className="pointer-fine:hidden absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-1/2"
-                              aria-hidden="true"
-                            />
-                          </button>
-                          <button
-                            type="button"
-                            disabled={mutatingBoardId === board.id}
-                            onClick={() =>
-                              void toggleBoardPreference(board, "pinned")
-                            }
-                            className="relative min-h-11 rounded-radius-md px-2.5 text-base font-medium text-muted-gray outline-none hover:bg-light-surface-tint hover:text-near-black-primary-text focus-visible:outline-2 focus-visible:outline-sky-blue-accent disabled:opacity-45 sm:min-h-8 sm:text-sm"
-                          >
-                            {board.pinned ? "Unpin" : "Pin"}
-                            <span
-                              className="pointer-fine:hidden absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-1/2"
-                              aria-hidden="true"
-                            />
-                          </button>
-                          {board.archivedAt && canEditBoard(board.role) ? (
-                            <button
-                              type="button"
-                              disabled={mutatingBoardId === board.id}
-                              onClick={() =>
-                                void mutateBoard(board.id, () =>
-                                  restoreBoard(board.id),
-                                )
-                              }
-                              className="relative min-h-11 rounded-radius-md px-2.5 text-base font-medium text-dark-text-alt outline-none hover:bg-light-surface-tint focus-visible:outline-2 focus-visible:outline-sky-blue-accent disabled:opacity-45 sm:min-h-8 sm:text-sm"
-                            >
-                              Restore Board
-                              <span
-                                className="pointer-fine:hidden absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-1/2"
-                                aria-hidden="true"
-                              />
-                            </button>
-                          ) : !board.archivedAt && canEditBoard(board.role) ? (
-                            <>
-                              <BoardCoverPicker
-                                board={board}
-                                disabled={mutatingBoardId === board.id}
-                                onUpdated={(updated) =>
-                                  setBoards((current) =>
-                                    current.map((candidate) =>
-                                      candidate.id === board.id
-                                        ? { ...candidate, ...updated }
-                                        : candidate,
-                                    ),
-                                  )
-                                }
-                                onError={showToast}
-                              />
-                              <label
-                                htmlFor={`status-${board.id}`}
-                                className="sr-only"
-                              >
-                                Board Status
-                              </label>
-                              <select
-                                id={`status-${board.id}`}
-                                name={`status-${board.id}`}
-                                value={board.status}
-                                disabled={mutatingBoardId === board.id}
-                                onChange={(event) =>
-                                  void mutateBoard(board.id, () =>
-                                    updateBoardMetadata({
-                                      boardId: board.id,
-                                      status: event.target
-                                        .value as (typeof BOARD_STATUSES)[number],
-                                    }),
-                                  )
-                                }
-                                className="h-9 rounded-radius-md bg-surface-white px-2 text-base capitalize ring-1 ring-near-black-primary-text/10 outline-none focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-sky-blue-accent disabled:opacity-45 sm:h-8 sm:text-sm"
-                              >
-                                {BOARD_STATUSES.map((boardStatus) => (
-                                  <option key={boardStatus} value={boardStatus}>
-                                    {boardStatus}
-                                  </option>
-                                ))}
-                              </select>
+                            {organizationEnabled ? (
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={mutatingBoardId === board.id}
+                                  onClick={() =>
+                                    void toggleBoardPreference(board, "favorite")
+                                  }
+                                  className="relative min-h-11 rounded-radius-md px-2.5 text-base font-medium text-muted-gray outline-none hover:bg-light-surface-tint hover:text-near-black-primary-text focus-visible:outline-2 focus-visible:outline-sky-blue-accent disabled:opacity-45 sm:min-h-8 sm:text-sm"
+                                >
+                                  {board.favorite ? "Unfavorite" : "Favorite"}
+                                  <span
+                                    className="pointer-fine:hidden absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-1/2"
+                                    aria-hidden="true"
+                                  />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={mutatingBoardId === board.id}
+                                  onClick={() =>
+                                    void toggleBoardPreference(board, "pinned")
+                                  }
+                                  className="relative min-h-11 rounded-radius-md px-2.5 text-base font-medium text-muted-gray outline-none hover:bg-light-surface-tint hover:text-near-black-primary-text focus-visible:outline-2 focus-visible:outline-sky-blue-accent disabled:opacity-45 sm:min-h-8 sm:text-sm"
+                                >
+                                  {board.pinned ? "Unpin" : "Pin"}
+                                  <span
+                                    className="pointer-fine:hidden absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-1/2"
+                                    aria-hidden="true"
+                                  />
+                                </button>
+                                {board.archivedAt && canEditBoard(board.role) ? (
+                                  <button
+                                    type="button"
+                                    disabled={mutatingBoardId === board.id}
+                                    onClick={() =>
+                                      void mutateBoard(board.id, () =>
+                                        restoreBoard(board.id),
+                                      )
+                                    }
+                                    className="relative min-h-11 rounded-radius-md px-2.5 text-base font-medium text-dark-text-alt outline-none hover:bg-light-surface-tint focus-visible:outline-2 focus-visible:outline-sky-blue-accent disabled:opacity-45 sm:min-h-8 sm:text-sm"
+                                  >
+                                    Restore Board
+                                    <span
+                                      className="pointer-fine:hidden absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-1/2"
+                                      aria-hidden="true"
+                                    />
+                                  </button>
+                                ) : !board.archivedAt &&
+                                  canEditBoard(board.role) ? (
+                                  <>
+                                    <BoardCoverPicker
+                                      board={board}
+                                      disabled={mutatingBoardId === board.id}
+                                      onUpdated={(updated) =>
+                                        setBoards((current) =>
+                                          current.map((candidate) =>
+                                            candidate.id === board.id
+                                              ? { ...candidate, ...updated }
+                                              : candidate,
+                                          ),
+                                        )
+                                      }
+                                      onError={showToast}
+                                    />
+                                    <label
+                                      htmlFor={`status-${board.id}`}
+                                      className="sr-only"
+                                    >
+                                      Board Status
+                                    </label>
+                                    <select
+                                      id={`status-${board.id}`}
+                                      name={`status-${board.id}`}
+                                      value={board.status}
+                                      disabled={mutatingBoardId === board.id}
+                                      onChange={(event) =>
+                                        void mutateBoard(board.id, () =>
+                                          updateBoardMetadata({
+                                            boardId: board.id,
+                                            status: event.target
+                                              .value as (typeof BOARD_STATUSES)[number],
+                                          }),
+                                        )
+                                      }
+                                      className="h-9 rounded-radius-md bg-surface-white px-2 text-base capitalize ring-1 ring-near-black-primary-text/10 outline-none focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-sky-blue-accent disabled:opacity-45 sm:h-8 sm:text-sm"
+                                    >
+                                      {BOARD_STATUSES.map((boardStatus) => (
+                                        <option
+                                          key={boardStatus}
+                                          value={boardStatus}
+                                        >
+                                          {boardStatus}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <button
+                                      type="button"
+                                      disabled={mutatingBoardId === board.id}
+                                      onClick={() =>
+                                        void mutateBoard(board.id, () =>
+                                          archiveBoard(board.id),
+                                        )
+                                      }
+                                      className="relative min-h-11 rounded-radius-md px-2.5 text-base font-medium text-[var(--danger)] outline-none hover:bg-[var(--danger-soft)] focus-visible:outline-2 focus-visible:outline-[var(--danger)] disabled:opacity-45 sm:min-h-8 sm:text-sm"
+                                    >
+                                      Archive Board
+                                      <span
+                                        className="pointer-fine:hidden absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-1/2"
+                                        aria-hidden="true"
+                                      />
+                                    </button>
+                                  </>
+                                ) : null}
+                              </>
+                            ) : null}
+                            {board.role === "owner" ? (
                               <button
                                 type="button"
                                 disabled={mutatingBoardId === board.id}
-                                onClick={() =>
-                                  void mutateBoard(board.id, () =>
-                                    archiveBoard(board.id),
-                                  )
-                                }
+                                onClick={() => setBoardToDelete(board)}
                                 className="relative min-h-11 rounded-radius-md px-2.5 text-base font-medium text-[var(--danger)] outline-none hover:bg-[var(--danger-soft)] focus-visible:outline-2 focus-visible:outline-[var(--danger)] disabled:opacity-45 sm:min-h-8 sm:text-sm"
                               >
-                                Archive Board
+                                Delete Board
                                 <span
                                   className="pointer-fine:hidden absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-1/2"
                                   aria-hidden="true"
                                 />
                               </button>
-                            </>
-                          ) : null}
+                            ) : null}
                           </div>
                         ) : null}
                       </div>
@@ -1125,6 +1248,15 @@ export function WorkspaceDashboardPage({
         onThemeChange={setSelectedTheme}
         onClose={() => setCreateBoardOpen(false)}
         onCreate={() => void handleCreateBoard()}
+      />
+      <DeleteBoardDialog
+        key={boardToDelete?.id ?? "closed"}
+        board={boardToDelete}
+        deleting={Boolean(
+          boardToDelete && mutatingBoardId === boardToDelete.id,
+        )}
+        onClose={() => setBoardToDelete(null)}
+        onDelete={() => void handleDeleteBoard()}
       />
       <DashboardToast message={toastMessage} />
     </WorkspaceShell>

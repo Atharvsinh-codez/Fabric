@@ -56,6 +56,7 @@ import {
   requireWorkspaceCapability,
 } from "@/lib/boards/authorization";
 import { BoardApiError } from "@/lib/boards/http";
+import { roleCan } from "@/lib/boards/permissions";
 import {
   type BoardTheme,
 } from "@/lib/boards/board-theme";
@@ -124,8 +125,114 @@ export async function listWorkspaces(userId: string) {
     })
     .from(workspaceMemberships)
     .innerJoin(workspaces, eq(workspaces.id, workspaceMemberships.workspaceId))
-    .where(eq(workspaceMemberships.userId, userId))
+    .where(
+      and(
+        eq(workspaceMemberships.userId, userId),
+        isNull(workspaces.deletedAt),
+      ),
+    )
     .orderBy(desc(workspaces.updatedAt));
+}
+
+export async function deleteWorkspace(input: {
+  userId: string;
+  workspaceId: string;
+  expectedName: string;
+}) {
+  return db.transaction(async (transaction) => {
+    const [workspace] = await transaction
+      .select({
+        id: workspaces.id,
+        name: workspaces.name,
+        deletedAt: workspaces.deletedAt,
+      })
+      .from(workspaces)
+      .where(eq(workspaces.id, input.workspaceId))
+      .limit(1)
+      .for("update");
+    if (!workspace || workspace.deletedAt) {
+      throw new BoardApiError(404, "not_found", "The requested workspace was not found.");
+    }
+
+    const [membership] = await transaction
+      .select({ role: workspaceMemberships.role })
+      .from(workspaceMemberships)
+      .where(
+        and(
+          eq(workspaceMemberships.workspaceId, input.workspaceId),
+          eq(workspaceMemberships.userId, input.userId),
+        ),
+      )
+      .limit(1)
+      .for("share");
+    if (!membership || !roleCan(membership.role, "delete_workspace")) {
+      throw new BoardApiError(404, "not_found", "The requested workspace was not found.");
+    }
+    if (workspace.name !== input.expectedName) {
+      throw new BoardApiError(
+        409,
+        "delete_confirmation_mismatch",
+        "The workspace name changed. Review the workspace and confirm again.",
+      );
+    }
+
+    const affectedBoards = await transaction
+      .select({
+        id: boards.id,
+        documentGenerationId: boards.documentGenerationId,
+      })
+      .from(boards)
+      .where(
+        and(
+          eq(boards.workspaceId, input.workspaceId),
+          isNull(boards.deletedAt),
+        ),
+      )
+      .orderBy(asc(boards.id))
+      .for("update");
+
+    const deletedAt = new Date();
+    await transaction
+      .update(boards)
+      .set({
+        archivedAt: sql`coalesce(${boards.archivedAt}, ${deletedAt})`,
+        deletedAt,
+        updatedAt: deletedAt,
+      })
+      .where(
+        and(
+          eq(boards.workspaceId, input.workspaceId),
+          isNull(boards.deletedAt),
+        ),
+      );
+
+    if (affectedBoards.length > 0) {
+      await transaction.insert(realtimeRevocationOutbox).values(
+        affectedBoards.map((board) =>
+          boardArchivedRevocation({
+            workspaceId: input.workspaceId,
+            boardId: board.id,
+            documentGenerationId: board.documentGenerationId,
+          }),
+        ),
+      );
+    }
+
+    const [deletedWorkspace] = await transaction
+      .update(workspaces)
+      .set({ deletedAt, updatedAt: deletedAt })
+      .where(
+        and(
+          eq(workspaces.id, input.workspaceId),
+          isNull(workspaces.deletedAt),
+        ),
+      )
+      .returning({ id: workspaces.id, deletedAt: workspaces.deletedAt });
+    if (!deletedWorkspace) {
+      throw new BoardApiError(404, "not_found", "The requested workspace was not found.");
+    }
+    return deletedWorkspace;
+  });
 }
 
 export async function createBoard(input: {
@@ -139,45 +246,64 @@ export async function createBoard(input: {
   document?: BoardDocument;
 }) {
   await requireWorkspaceCapability(input.userId, input.workspaceId, "create_board");
-  const [project] = await db
-    .select({
-      id: projects.id,
-      name: projects.name,
-      defaultSharingPolicy: projects.defaultSharingPolicy,
-    })
-    .from(projects)
-    .where(
-      and(
-        eq(projects.workspaceId, input.workspaceId),
-        input.projectId ? eq(projects.id, input.projectId) : eq(projects.isDefault, true),
-      ),
-    )
-    .limit(1);
-  if (!project) {
-    throw new BoardApiError(404, "not_found", "The requested project was not found.");
-  }
-  const [board] = await db
-    .insert(boards)
-    .values({
-      workspaceId: input.workspaceId,
-      projectId: project.id,
-      ownerId: input.userId,
-      title: input.title,
-      sharingPolicy: input.sharingPolicy ?? project.defaultSharingPolicy,
-      cover: input.cover ?? null,
-      document: prepareNewBoardDocument(input.document, input.theme),
-      createdBy: input.userId,
-    })
-    .returning();
-  if (!board) throw new Error("Board insert returned no row.");
-  return {
-    ...board,
-    projectName: project.name,
-    favorite: false,
-    pinned: false,
-    lastOpenedAt: null,
-    role: "owner" as const,
-  };
+  return db.transaction(async (transaction) => {
+    const [workspace] = await transaction
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(
+        and(
+          eq(workspaces.id, input.workspaceId),
+          isNull(workspaces.deletedAt),
+        ),
+      )
+      .limit(1)
+      .for("share");
+    if (!workspace) {
+      throw new BoardApiError(404, "not_found", "The requested workspace was not found.");
+    }
+
+    const [project] = await transaction
+      .select({
+        id: projects.id,
+        name: projects.name,
+        defaultSharingPolicy: projects.defaultSharingPolicy,
+      })
+      .from(projects)
+      .where(
+        and(
+          eq(projects.workspaceId, input.workspaceId),
+          input.projectId
+            ? eq(projects.id, input.projectId)
+            : eq(projects.isDefault, true),
+        ),
+      )
+      .limit(1);
+    if (!project) {
+      throw new BoardApiError(404, "not_found", "The requested project was not found.");
+    }
+    const [board] = await transaction
+      .insert(boards)
+      .values({
+        workspaceId: input.workspaceId,
+        projectId: project.id,
+        ownerId: input.userId,
+        title: input.title,
+        sharingPolicy: input.sharingPolicy ?? project.defaultSharingPolicy,
+        cover: input.cover ?? null,
+        document: prepareNewBoardDocument(input.document, input.theme),
+        createdBy: input.userId,
+      })
+      .returning();
+    if (!board) throw new Error("Board insert returned no row.");
+    return {
+      ...board,
+      projectName: project.name,
+      favorite: false,
+      pinned: false,
+      lastOpenedAt: null,
+      role: "owner" as const,
+    };
+  });
 }
 
 export type BoardListInput = Readonly<{
@@ -317,6 +443,7 @@ export async function listBoardsPage(input: BoardListInput) {
     .where(
       and(
         eq(boards.workspaceId, input.workspaceId),
+        isNull(boards.deletedAt),
         archived ? isNotNull(boards.archivedAt) : isNull(boards.archivedAt),
         input.projectId ? eq(boards.projectId, input.projectId) : undefined,
         input.status && input.status !== "archived"
@@ -488,7 +615,13 @@ export async function updateBoardMetadata(input: {
         archivedAt: boards.archivedAt,
       })
       .from(boards)
-      .where(and(eq(boards.id, input.boardId), eq(boards.workspaceId, workspaceId)))
+      .where(
+        and(
+          eq(boards.id, input.boardId),
+          eq(boards.workspaceId, workspaceId),
+          isNull(boards.deletedAt),
+        ),
+      )
       .limit(1)
       .for("update");
     if (!lockedBoard) {
@@ -557,7 +690,13 @@ export async function updateBoardMetadata(input: {
         ...(input.cover !== undefined ? { cover: input.cover } : {}),
         updatedAt: new Date(),
       })
-      .where(and(eq(boards.id, input.boardId), eq(boards.workspaceId, workspaceId)))
+      .where(
+        and(
+          eq(boards.id, input.boardId),
+          eq(boards.workspaceId, workspaceId),
+          isNull(boards.deletedAt),
+        ),
+      )
       .returning({
         id: boards.id,
         workspaceId: boards.workspaceId,
@@ -708,6 +847,7 @@ export async function archiveBoard(input: { userId: string; boardId: string }) {
           eq(boards.id, input.boardId),
           eq(boards.workspaceId, workspaceId),
           isNull(boards.archivedAt),
+          isNull(boards.deletedAt),
         ),
       )
       .returning();
@@ -766,6 +906,108 @@ export async function archiveBoard(input: { userId: string; boardId: string }) {
   });
 }
 
+export async function deleteBoard(input: {
+  userId: string;
+  boardId: string;
+  expectedTitle: string;
+  expectedDocumentGenerationId: string;
+}) {
+  return db.transaction(async (transaction) => {
+    const [boardScope] = await transaction
+      .select({ workspaceId: boards.workspaceId })
+      .from(boards)
+      .where(and(eq(boards.id, input.boardId), isNull(boards.deletedAt)))
+      .limit(1);
+    if (!boardScope) {
+      throw new BoardApiError(404, "not_found", "The requested board was not found.");
+    }
+
+    const [membership] = await transaction
+      .select({
+        role: workspaceMemberships.role,
+        workspaceDeletedAt: workspaces.deletedAt,
+      })
+      .from(workspaceMemberships)
+      .innerJoin(workspaces, eq(workspaces.id, workspaceMemberships.workspaceId))
+      .where(
+        and(
+          eq(workspaceMemberships.workspaceId, boardScope.workspaceId),
+          eq(workspaceMemberships.userId, input.userId),
+        ),
+      )
+      .limit(1)
+      .for("share");
+    if (!membership || membership.workspaceDeletedAt) {
+      throw new BoardApiError(404, "not_found", "The requested board was not found.");
+    }
+
+    const [board] = await transaction
+      .select({
+        id: boards.id,
+        workspaceId: boards.workspaceId,
+        ownerId: boards.ownerId,
+        title: boards.title,
+        archivedAt: boards.archivedAt,
+        documentGenerationId: boards.documentGenerationId,
+      })
+      .from(boards)
+      .where(
+        and(
+          eq(boards.id, input.boardId),
+          eq(boards.workspaceId, boardScope.workspaceId),
+          isNull(boards.deletedAt),
+        ),
+      )
+      .limit(1)
+      .for("update");
+    if (!board) {
+      throw new BoardApiError(404, "not_found", "The requested board was not found.");
+    }
+    if (
+      (membership.role !== "owner" && board.ownerId !== input.userId)
+    ) {
+      throw new BoardApiError(404, "not_found", "The requested board was not found.");
+    }
+    if (
+      board.title !== input.expectedTitle ||
+      board.documentGenerationId !== input.expectedDocumentGenerationId
+    ) {
+      throw new BoardApiError(
+        409,
+        "delete_confirmation_mismatch",
+        "The board changed. Review the board and confirm again.",
+      );
+    }
+
+    const deletedAt = new Date();
+    const [deletedBoard] = await transaction
+      .update(boards)
+      .set({
+        archivedAt: board.archivedAt ?? deletedAt,
+        deletedAt,
+        updatedAt: deletedAt,
+      })
+      .where(and(eq(boards.id, input.boardId), isNull(boards.deletedAt)))
+      .returning({
+        id: boards.id,
+        workspaceId: boards.workspaceId,
+        deletedAt: boards.deletedAt,
+      });
+    if (!deletedBoard) {
+      throw new BoardApiError(404, "not_found", "The requested board was not found.");
+    }
+
+    await transaction.insert(realtimeRevocationOutbox).values(
+      boardArchivedRevocation({
+        workspaceId: board.workspaceId,
+        boardId: board.id,
+        documentGenerationId: board.documentGenerationId,
+      }),
+    );
+    return deletedBoard;
+  });
+}
+
 export async function restoreBoard(input: { userId: string; boardId: string }) {
   const access = await resolveBoardAccess(input.userId, input.boardId);
   if (
@@ -785,6 +1027,7 @@ export async function restoreBoard(input: { userId: string; boardId: string }) {
           eq(boards.id, input.boardId),
           eq(boards.workspaceId, access.workspaceId),
           isNotNull(boards.archivedAt),
+          isNull(boards.deletedAt),
         ),
       )
       .returning();
@@ -890,6 +1133,7 @@ export async function updateBoardDocument(input: {
         eq(boards.id, input.boardId),
         eq(boards.revision, input.expectedRevision),
         eq(boards.documentGenerationId, input.expectedDocumentGenerationId),
+        isNull(boards.deletedAt),
       ),
     )
     .returning({
@@ -908,7 +1152,7 @@ export async function updateBoardDocument(input: {
       documentGenerationId: boards.documentGenerationId,
     })
     .from(boards)
-    .where(eq(boards.id, input.boardId))
+    .where(and(eq(boards.id, input.boardId), isNull(boards.deletedAt)))
     .limit(1);
   if (!current) throw new BoardApiError(404, "not_found", "The requested board was not found.");
   throw new BoardApiError(

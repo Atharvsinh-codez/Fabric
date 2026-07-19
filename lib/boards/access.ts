@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 import { db } from "@/db/clients/web";
 import {
@@ -8,6 +8,7 @@ import {
   boards,
   projectMemberships,
   workspaceMemberships,
+  workspaces,
 } from "@/db/schema/product";
 import {
   effectiveBoardAccess,
@@ -36,6 +37,7 @@ export async function resolveBoardAccess(
       projectRole: projectMemberships.role,
     })
     .from(boards)
+    .innerJoin(workspaces, eq(workspaces.id, boards.workspaceId))
     .leftJoin(
       workspaceMemberships,
       and(
@@ -59,7 +61,13 @@ export async function resolveBoardAccess(
         eq(projectMemberships.userId, userId),
       ),
     )
-    .where(eq(boards.id, boardId))
+    .where(
+      and(
+        eq(boards.id, boardId),
+        isNull(boards.deletedAt),
+        isNull(workspaces.deletedAt),
+      ),
+    )
     .limit(1);
 
   return snapshot

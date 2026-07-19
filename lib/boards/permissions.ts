@@ -7,7 +7,8 @@ export type WorkspaceCapability =
   | "comment"
   | "resolve_comment"
   | "manage_members"
-  | "manage_sharing";
+  | "manage_sharing"
+  | "delete_workspace";
 
 const CAPABILITIES: Record<WorkspaceRole, ReadonlySet<WorkspaceCapability>> = {
   owner: new Set([
@@ -18,6 +19,7 @@ const CAPABILITIES: Record<WorkspaceRole, ReadonlySet<WorkspaceCapability>> = {
     "resolve_comment",
     "manage_members",
     "manage_sharing",
+    "delete_workspace",
   ]),
   editor: new Set(["view", "create_board", "edit_board", "comment", "resolve_comment"]),
   commenter: new Set(["view", "comment"]),

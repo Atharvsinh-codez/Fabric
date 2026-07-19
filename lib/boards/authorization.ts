@@ -1,9 +1,13 @@
 import "server-only";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 import { db } from "@/db/clients/web";
-import { workspaceMemberships, type WorkspaceRole } from "@/db/schema/product";
+import {
+  workspaceMemberships,
+  workspaces,
+  type WorkspaceRole,
+} from "@/db/schema/product";
 import { resolveBoardAccess } from "@/lib/boards/access";
 import { BoardApiError } from "@/lib/boards/http";
 import { roleCan, type WorkspaceCapability } from "@/lib/boards/permissions";
@@ -16,10 +20,12 @@ export async function requireWorkspaceCapability(
   const [membership] = await db
     .select({ role: workspaceMemberships.role })
     .from(workspaceMemberships)
+    .innerJoin(workspaces, eq(workspaces.id, workspaceMemberships.workspaceId))
     .where(
       and(
         eq(workspaceMemberships.workspaceId, workspaceId),
         eq(workspaceMemberships.userId, userId),
+        isNull(workspaces.deletedAt),
       ),
     )
     .limit(1);

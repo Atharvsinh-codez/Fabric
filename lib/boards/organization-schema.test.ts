@@ -10,6 +10,7 @@ import {
   BOARD_WORKFLOW_STATUSES,
   boards,
   projectMemberships,
+  workspaces,
 } from "@/db/schema/product";
 
 function foreignKeyColumns(table: typeof boards | typeof boardMemberships | typeof projectMemberships) {
@@ -18,6 +19,14 @@ function foreignKeyColumns(table: typeof boards | typeof boardMemberships | type
     columns: foreignKey.reference().columns.map((column) => column.name),
     foreignColumns: foreignKey.reference().foreignColumns.map((column) => column.name),
   }));
+}
+
+function sourceBetween(source: string, startMarker: string, endMarker: string): string {
+  const start = source.indexOf(startMarker);
+  const end = source.indexOf(endMarker, start + startMarker.length);
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+  return source.slice(start, end);
 }
 
 describe("organization tenant constraints", () => {
@@ -106,5 +115,133 @@ describe("organization tenant constraints", () => {
     expect(projectReference).toBeGreaterThan(projectKey);
     expect(boardKey).toBeGreaterThanOrEqual(0);
     expect(boardReference).toBeGreaterThan(boardKey);
+  });
+
+  it("adds nullable deletion timestamps without destructive migration steps", async () => {
+    expect(workspaces.deletedAt.name).toBe("deleted_at");
+    expect(workspaces.deletedAt.notNull).toBe(false);
+    expect(boards.deletedAt.name).toBe("deleted_at");
+    expect(boards.deletedAt.notNull).toBe(false);
+
+    const migration = await readFile(
+      path.join(process.cwd(), "db", "migrations", "0014_nappy_photon.sql"),
+      "utf8",
+    );
+    expect(migration).toContain(
+      'ALTER TABLE "boards" ADD COLUMN "deleted_at" timestamp with time zone',
+    );
+    expect(migration).toContain(
+      'ALTER TABLE "workspaces" ADD COLUMN "deleted_at" timestamp with time zone',
+    );
+    expect(migration).not.toMatch(/\bnot\s+null\b/i);
+    expect(migration).not.toMatch(/\b(drop|truncate|delete|update)\b/i);
+  });
+
+  it("excludes soft-deleted workspaces and boards from organization lists", async () => {
+    const repository = await readFile(
+      path.join(process.cwd(), "lib", "boards", "repository.ts"),
+      "utf8",
+    );
+    const workspaceListSource = sourceBetween(
+      repository,
+      "export async function listWorkspaces",
+      "export async function deleteWorkspace",
+    );
+    const boardListSource = sourceBetween(
+      repository,
+      "export async function listBoardsPage",
+      "export async function listBoards(",
+    );
+
+    expect(workspaceListSource).toContain("isNull(workspaces.deletedAt)");
+    expect(boardListSource).toContain("isNull(boards.deletedAt)");
+  });
+
+  it("locks workspace deletion state before creating or deleting boards", async () => {
+    const repository = await readFile(
+      path.join(process.cwd(), "lib", "boards", "repository.ts"),
+      "utf8",
+    );
+    const createBoardSource = sourceBetween(
+      repository,
+      "export async function createBoard",
+      "export type BoardListInput",
+    );
+    const deleteBoardSource = sourceBetween(
+      repository,
+      "export async function deleteBoard",
+      "export async function restoreBoard",
+    );
+
+    const createWorkspaceGuard = createBoardSource.indexOf(
+      "isNull(workspaces.deletedAt)",
+    );
+    const createWorkspaceLock = createBoardSource.indexOf('.for("share")');
+    const boardInsert = createBoardSource.indexOf(".insert(boards)");
+    expect(createWorkspaceGuard).toBeGreaterThanOrEqual(0);
+    expect(createWorkspaceLock).toBeGreaterThan(createWorkspaceGuard);
+    expect(boardInsert).toBeGreaterThan(createWorkspaceLock);
+
+    const workspaceDeletedAtSelection = deleteBoardSource.indexOf(
+      "workspaceDeletedAt: workspaces.deletedAt",
+    );
+    const workspaceLock = deleteBoardSource.indexOf(
+      '.for("share")',
+      workspaceDeletedAtSelection,
+    );
+    const boardLock = deleteBoardSource.indexOf('.for("update")', workspaceLock);
+    expect(workspaceDeletedAtSelection).toBeGreaterThanOrEqual(0);
+    expect(deleteBoardSource).toContain(
+      "if (!membership || membership.workspaceDeletedAt)",
+    );
+    expect(workspaceLock).toBeGreaterThan(workspaceDeletedAtSelection);
+    expect(boardLock).toBeGreaterThan(workspaceLock);
+  });
+
+  it("keeps every board mutation guarded against soft-deleted boards", async () => {
+    const repository = await readFile(
+      path.join(process.cwd(), "lib", "boards", "repository.ts"),
+      "utf8",
+    );
+    const guardedMutations = [
+      sourceBetween(
+        repository,
+        "export async function updateBoardMetadata",
+        "export async function archiveBoard",
+      ),
+      sourceBetween(
+        repository,
+        "export async function archiveBoard",
+        "export async function deleteBoard",
+      ),
+      sourceBetween(
+        repository,
+        "export async function restoreBoard",
+        "export async function updateBoardPreference",
+      ),
+      sourceBetween(
+        repository,
+        "export async function updateBoardDocument",
+        "export async function listCommentThreads",
+      ),
+    ];
+
+    for (const mutationSource of guardedMutations) {
+      expect(mutationSource).toContain("isNull(boards.deletedAt)");
+    }
+  });
+
+  it("does not mint realtime tickets for soft-deleted boards", async () => {
+    const ticketRoute = await readFile(
+      path.join(process.cwd(), "app", "api", "realtime", "ticket", "route.ts"),
+      "utf8",
+    );
+    const ticketBoardQuery = sourceBetween(
+      ticketRoute,
+      "const [board] = await db",
+      "if (!board)",
+    );
+
+    expect(ticketBoardQuery).toContain("isNull(boards.deletedAt)");
   });
 });

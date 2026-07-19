@@ -51,6 +51,7 @@ export async function POST(request: Request): Promise<Response> {
           eq(boards.id, parsed.data.boardId),
           eq(boards.workspaceId, access.workspaceId),
           isNull(boards.archivedAt),
+          isNull(boards.deletedAt),
         ),
       )
       .limit(1);

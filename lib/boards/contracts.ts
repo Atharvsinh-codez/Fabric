@@ -115,6 +115,12 @@ export const CreateWorkspaceSchema = z.object({
   name: z.string().trim().min(1).max(120),
 });
 
+export const DeleteWorkspaceSchema = z
+  .object({
+    expectedName: z.string().min(1).max(120),
+  })
+  .strict();
+
 export const CreateBoardSchema = z.object({
   workspaceId: UuidSchema,
   projectId: UuidSchema.optional(),
@@ -165,6 +171,13 @@ export const UpdateBoardMetadataSchema = z
   .refine((value) => Object.values(value).some((item) => item !== undefined), {
     message: "At least one board field is required.",
   });
+
+export const DeleteBoardSchema = z
+  .object({
+    expectedTitle: z.string().min(1).max(160),
+    expectedDocumentGenerationId: UuidSchema,
+  })
+  .strict();
 
 export const UpdateBoardPreferenceSchema = z
   .object({

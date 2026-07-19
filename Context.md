@@ -1207,3 +1207,36 @@ Rules:
   - UI-design guidance shaped the modal surface, stable interaction states, tooltip removal, focus restoration, and background isolation.
 - Next Steps:
   - Publish the accumulated login and modal/routing changes to GitHub `main` when requested.
+
+### [2026-07-19 18:00 IST] - Add safe board and workspace deletion
+- Request: Let owners delete created whiteboards and workspaces, and add a clear workspace-dashboard sidebar path back to `/app`.
+- Plan: Add owner-only confirmed deletion APIs, retain database rows as hidden tombstones so audit/realtime/storage references remain valid, centralize deleted-state denial, and expose restrained destructive controls without changing collaboration behavior.
+- Actions:
+  - Added exact-title board deletion and exact-name workspace deletion dialogs. Delete controls are visible only to effective board owners or workspace owners, remain disabled until the confirmation matches exactly, and show stable pending/error feedback.
+  - Added same-origin, authenticated, rollout-gated board/workspace deletion routes and typed client contracts.
+  - Added nullable `deleted_at` tombstones for boards and workspaces through additive migration `0014_nappy_photon.sql`; deleted resources are excluded from workspace lists, board lists, centralized access, public shares, comments, and realtime ticket minting.
+  - Kept board/workspace tombstones, audit relationships, R2 provenance, and Durable Object identifiers intact while transactionally archiving affected boards and enqueueing realtime revocation events.
+  - Closed deletion concurrency edges: board creation now holds a nondeleted workspace share lock, board deletion uses workspace-before-board locking, and metadata/archive/restore/document writes reject tombstoned boards.
+  - Added an explicit `All workspaces` link at the top of every workspace-scoped dashboard sidebar, with expanded, collapsed, mobile, keyboard, and accessible-label coverage.
+- Files Changed:
+  - `db/schema/product.ts`, `db/migrations/0014_nappy_photon.sql`, and migration metadata - Add backward-compatible board/workspace tombstones.
+  - `lib/boards/{access,authorization,client,contracts,permissions,public-share,public-share-comments,repository}.ts` - Owner authorization, transactional deletion, access denial, race defenses, and typed requests.
+  - `app/api/boards/[boardId]/delete/route.ts`, `app/api/boards/workspaces/[workspaceId]/route.ts`, and `app/api/realtime/ticket/route.ts` - Deletion endpoints and ticket tombstone defense.
+  - `components/workspace-dashboard-page.tsx`, `components/workspace-pages.tsx`, and `components/workspace-shell.tsx` - Confirmed delete UX and the `/app` return control.
+  - Focused dashboard, settings, shell, route, schema, rollout, permission, and realtime-ticket tests - Protect owner-only visibility, exact confirmation, migration safety, rollout gates, and deleted-state guards.
+- Diff Summary:
+  - Boards/workspaces had archive or management controls but no permanent-in-Fabric removal -> owners can now confirm deletion and the resource immediately disappears for every collaborator.
+  - Deleted resources could not be represented without breaking retained cross-system references -> additive tombstones preserve audit, R2, and realtime revocation integrity while denying all normal access.
+  - Workspace dashboards had no direct top-level return path -> the sidebar now starts with `All workspaces` linking to `/app`.
+- Validation:
+  - Focused deletion/sidebar/realtime verification passed: 8 files / 39 tests.
+  - Application TypeScript, scoped ESLint for every changed source/test, database schema check, tldraw invariant check, optimized Next.js/server production build, and `git diff --check` passed.
+  - Independent authorization/concurrency review found no remaining high-severity issue after the create/delete, tombstone-write, and lock-order fixes.
+  - The complete application run passed 845/846 tests; the same unrelated pre-existing `lib/boards/use-board-document.test.tsx` authoritative-revision assertion remains reproducibly failing in isolation and was not changed here.
+- Risks/Notes:
+  - “Delete” is irreversible through Fabric UI/API but intentionally retains hidden database rows and external-storage provenance for referential, audit, and Durable Object safety; physical retention cleanup remains a separate lifecycle job.
+  - Migration `0014_nappy_photon.sql` is generated and verified but was not applied to production Neon in this change. Create a restore point and run the normal deployment migration gate before enabling the controls in production.
+  - No dependency, Cloudflare Worker, realtime protocol, rate limit, tldraw package, patch, shape, or watermark behavior changed.
+  - UI-design guidance shaped the danger-zone hierarchy, exact-confirmation forms, stable disabled/pending states, responsive touch targets, and accessible sidebar navigation.
+- Next Steps:
+  - Apply the verified additive migration during deployment, then publish the change to GitHub `main` when requested.

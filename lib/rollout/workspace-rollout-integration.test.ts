@@ -57,4 +57,13 @@ describe("workspace rollout entry-point coverage", () => {
       "requireBoardWorkspaceRollout",
     );
   });
+
+  it("gates destructive board and workspace deletion surfaces", () => {
+    expect(source("app/api/boards/[boardId]/delete/route.ts")).toContain(
+      "requireBoardWorkspaceRollout",
+    );
+    expect(
+      source("app/api/boards/workspaces/[workspaceId]/route.ts"),
+    ).toContain("requireWorkspaceRolloutForUser");
+  });
 });

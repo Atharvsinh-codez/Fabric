@@ -242,6 +242,22 @@ export async function createWorkspace(name: string): Promise<WorkspaceSummary> {
   return result.workspace;
 }
 
+export async function deleteWorkspace(input: {
+  workspaceId: string;
+  expectedName: string;
+}): Promise<{ id: string; deletedAt: string }> {
+  const result = await requestJson<{
+    deleted: { id: string; deletedAt: string };
+  }>(
+    `/api/boards/workspaces/${encodeURIComponent(input.workspaceId)}`,
+    {
+      method: "DELETE",
+      body: JSON.stringify({ expectedName: input.expectedName }),
+    },
+  );
+  return result.deleted;
+}
+
 export async function listWorkspaceMembers(
   workspaceId: string,
 ): Promise<WorkspaceMember[]> {
@@ -364,6 +380,21 @@ export async function archiveBoard(boardId: string): Promise<BoardSummary> {
     { method: "DELETE" },
   );
   return result.board;
+}
+
+export async function deleteBoard(input: {
+  boardId: string;
+  expectedTitle: string;
+  expectedDocumentGenerationId: string;
+}): Promise<{ id: string; workspaceId: string; deletedAt: string }> {
+  const { boardId, ...body } = input;
+  const result = await requestJson<{
+    deleted: { id: string; workspaceId: string; deletedAt: string };
+  }>(`/api/boards/${encodeURIComponent(boardId)}/delete`, {
+    method: "DELETE",
+    body: JSON.stringify(body),
+  });
+  return result.deleted;
 }
 
 export async function listBoardImageAssets(

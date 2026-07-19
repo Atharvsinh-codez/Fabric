@@ -13,7 +13,9 @@ describe("workspace role capabilities", () => {
   it("reserves membership and share management for owners", () => {
     expect(roleCan("owner", "manage_members")).toBe(true);
     expect(roleCan("owner", "manage_sharing")).toBe(true);
+    expect(roleCan("owner", "delete_workspace")).toBe(true);
     expect(roleCan("editor", "manage_members")).toBe(false);
     expect(roleCan("editor", "manage_sharing")).toBe(false);
+    expect(roleCan("editor", "delete_workspace")).toBe(false);
   });
 });

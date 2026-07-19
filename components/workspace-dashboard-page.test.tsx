@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   push: vi.fn(),
   createBoard: vi.fn(),
+  deleteBoard: vi.fn(),
   listBoardsPage: vi.fn(),
 }));
 
@@ -52,6 +53,7 @@ vi.mock("@/lib/boards/client", () => ({
   archiveBoard: vi.fn(),
   createBoard: mocks.createBoard,
   createProject: vi.fn(),
+  deleteBoard: mocks.deleteBoard,
   listBoardsPage: mocks.listBoardsPage,
   listProjects: vi.fn().mockResolvedValue([]),
   listWorkspaces: vi.fn().mockResolvedValue([]),
@@ -121,6 +123,11 @@ describe("WorkspaceDashboardPage board preview refresh", () => {
       nextCursor: null,
     });
     mocks.createBoard.mockResolvedValue(board(1));
+    mocks.deleteBoard.mockResolvedValue({
+      id: board(1).id,
+      workspaceId: WORKSPACE_ID,
+      deletedAt: "2026-07-19T12:00:00.000Z",
+    });
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -298,5 +305,106 @@ describe("WorkspaceDashboardPage board preview refresh", () => {
     expect(mocks.push).toHaveBeenCalledWith(
       `/app/boards/${board(1).id}`,
     );
+  });
+
+  it("lets only the board owner permanently delete after exact-title confirmation", async () => {
+    const ownedBoard = board(1);
+    const initialBoardQueryKey = dashboardBoardQueryKey(WORKSPACE_ID, {
+      q: "",
+      view: "recent",
+    });
+    await act(async () => {
+      root.render(
+        <WorkspaceDashboardPage
+          workspaceId={WORKSPACE_ID}
+          initialBoards={[ownedBoard]}
+          initialBoardQueryKey={initialBoardQueryKey}
+          initialNextBoardCursor={null}
+          organizationEnabled={false}
+          initialProjects={[]}
+          initialWorkspaces={[workspace]}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    const openDeleteButton = [...container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.trim() === "Delete Board");
+    expect(openDeleteButton).not.toBeUndefined();
+    act(() => openDeleteButton?.click());
+
+    const dialog = container.querySelector<HTMLElement>(
+      '[role="dialog"][aria-label="Delete board"]',
+    );
+    const confirmation = dialog?.querySelector<HTMLInputElement>(
+      "#delete-board-confirmation",
+    );
+    const submitButton = [...(dialog?.querySelectorAll<HTMLButtonElement>("button") ?? [])]
+      .find((button) => button.textContent?.trim() === "Delete board");
+    expect(dialog?.textContent).toContain(ownedBoard.title);
+    expect(submitButton?.disabled).toBe(true);
+
+    const valueSetter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    act(() => {
+      valueSetter?.call(confirmation, `${ownedBoard.title} `);
+      confirmation?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(submitButton?.disabled).toBe(true);
+    expect(mocks.deleteBoard).not.toHaveBeenCalled();
+
+    act(() => {
+      valueSetter?.call(confirmation, ownedBoard.title);
+      confirmation?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(submitButton?.disabled).toBe(false);
+
+    await act(async () => {
+      submitButton?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mocks.deleteBoard).toHaveBeenCalledOnce();
+    expect(mocks.deleteBoard).toHaveBeenCalledWith({
+      boardId: ownedBoard.id,
+      expectedTitle: ownedBoard.title,
+      expectedDocumentGenerationId: ownedBoard.documentGenerationId,
+    });
+    expect(container.querySelector('[role="dialog"][aria-label="Delete board"]')).toBeNull();
+    expect(container.textContent).not.toContain(ownedBoard.title);
+    expect(container.textContent).toContain("Board deleted");
+  });
+
+  it("does not expose permanent deletion to a board editor", async () => {
+    const editorBoard = { ...board(1), role: "editor" as const };
+    const initialBoardQueryKey = dashboardBoardQueryKey(WORKSPACE_ID, {
+      q: "",
+      view: "recent",
+    });
+    await act(async () => {
+      root.render(
+        <WorkspaceDashboardPage
+          workspaceId={WORKSPACE_ID}
+          initialBoards={[editorBoard]}
+          initialBoardQueryKey={initialBoardQueryKey}
+          initialNextBoardCursor={null}
+          organizationEnabled={false}
+          initialProjects={[]}
+          initialWorkspaces={[workspace]}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    expect(
+      [...container.querySelectorAll<HTMLButtonElement>("button")].some(
+        (button) => button.textContent?.trim() === "Delete Board",
+      ),
+    ).toBe(false);
+    expect(container.querySelector('[role="dialog"][aria-label="Delete board"]')).toBeNull();
+    expect(mocks.deleteBoard).not.toHaveBeenCalled();
   });
 });

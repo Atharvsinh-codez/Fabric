@@ -337,5 +337,36 @@ describe("workspace shell navigation modes", () => {
     expect(hrefs).toContain(`/app/dashboard/settings?workspaceId=${workspaceId}`);
     expect(hrefs).toContain(`/app/boards/${recentBoard.id}`);
     expect(hrefs.some((href) => href?.includes("product-studio"))).toBe(false);
+
+    const returnLinks = [
+      ...container.querySelectorAll<HTMLAnchorElement>(
+        'a[aria-label="Back to all workspaces"]',
+      ),
+    ];
+    expect(returnLinks).toHaveLength(2);
+    for (const link of returnLinks) {
+      expect(link.getAttribute("href")).toBe("/app");
+      expect(link.textContent).toContain("All workspaces");
+    }
+    expect(
+      container.querySelectorAll('[role="group"][aria-label="Current workspace: Product Studio"]'),
+    ).toHaveLength(2);
+
+    const collapseButton = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Collapse workspace sidebar"]',
+    );
+    act(() => collapseButton?.click());
+
+    const desktopSidebar = container.querySelector("#workspace-desktop-sidebar");
+    expect(
+      desktopSidebar
+        ?.querySelector('a[aria-label="Back to all workspaces"]')
+        ?.getAttribute("data-tooltip"),
+    ).toBe("Back to all workspaces");
+    expect(
+      desktopSidebar
+        ?.querySelector('[aria-label="Current workspace: Product Studio"]')
+        ?.getAttribute("data-tooltip"),
+    ).toBe("Current workspace: Product Studio");
   });
 });

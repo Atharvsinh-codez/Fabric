@@ -104,6 +104,7 @@ export const workspaces = pgTable(
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
+    deletedAt: timestampWithTimezone("deleted_at"),
     createdAt: timestampWithTimezone("created_at").defaultNow().notNull(),
     updatedAt: timestampWithTimezone("updated_at").defaultNow().notNull(),
   },
@@ -244,6 +245,7 @@ export const boards = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
     archivedAt: timestampWithTimezone("archived_at"),
+    deletedAt: timestampWithTimezone("deleted_at"),
     createdAt: timestampWithTimezone("created_at").defaultNow().notNull(),
     updatedAt: timestampWithTimezone("updated_at").defaultNow().notNull(),
   },

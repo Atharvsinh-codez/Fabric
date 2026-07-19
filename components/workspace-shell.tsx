@@ -12,6 +12,7 @@ import {
 } from "react";
 import type { IconComponent } from "reicon-react/createIcon";
 import ActivityIcon from "reicon-react/icons/Activity2";
+import ArrowLeftIcon from "reicon-react/icons/ArrowLeft";
 import BoardsIcon from "reicon-react/icons/Layers";
 import ChevronRightIcon from "reicon-react/icons/ChevronRight";
 import MenuIcon from "reicon-react/icons/Menu";
@@ -373,29 +374,78 @@ function WorkspaceSidebarContent({
       </div>
 
       <div className="px-3 text-base sm:text-sm">
-        <Link
-          href={APP_ROUTES.workspaces}
-          onClick={onNavigate}
-          aria-label={collapsed ? "All workspaces" : undefined}
-          data-tooltip={collapsed ? "All workspaces" : undefined}
-          data-tooltip-side="right"
-          className={cx(
-            "flex min-h-11 min-w-0 items-center rounded-radius-lg bg-surface-white/72 font-medium ring-1 ring-near-black-primary-text/6 outline-none hover:bg-surface-white focus-visible:outline-2 focus-visible:outline-sky-blue-accent sm:min-h-10",
-            collapsed
-              ? "tooltip-trigger justify-center px-0"
-              : "gap-2.5 px-2.5",
-          )}
-        >
-          <div
-            aria-hidden="true"
-            className="grid size-7 shrink-0 place-items-center rounded-radius-md bg-sky-blue-accent text-[0.6875rem] text-surface-white shadow-sm"
-          >
-            {initials || "FW"}
+        {workspaceId ? (
+          <div className="flex flex-col gap-2">
+            <Link
+              href={APP_ROUTES.workspaces}
+              onClick={onNavigate}
+              aria-label="Back to all workspaces"
+              data-tooltip={collapsed ? "Back to all workspaces" : undefined}
+              data-tooltip-side="right"
+              className={cx(
+                "flex min-h-9 min-w-0 items-center rounded-radius-md font-medium text-dark-text-alt outline-none hover:bg-surface-white/72 hover:text-near-black-primary-text focus-visible:outline-2 focus-visible:outline-sky-blue-accent",
+                collapsed
+                  ? "tooltip-trigger justify-center px-0"
+                  : "gap-2 px-2",
+              )}
+            >
+              <ArrowLeftIcon
+                size={16}
+                className="shrink-0"
+                aria-hidden="true"
+                focusable="false"
+              />
+              <span className={collapsed ? "sr-only" : "truncate"}>All workspaces</span>
+            </Link>
+
+            <div
+              role="group"
+              aria-label={`Current workspace: ${workspaceLabel}`}
+              data-tooltip={collapsed ? `Current workspace: ${workspaceLabel}` : undefined}
+              data-tooltip-side="right"
+              className={cx(
+                "flex min-h-11 min-w-0 items-center rounded-radius-lg bg-surface-white/72 font-medium ring-1 ring-near-black-primary-text/6 sm:min-h-10",
+                collapsed
+                  ? "tooltip-trigger justify-center px-0"
+                  : "gap-2.5 px-2.5",
+              )}
+            >
+              <div
+                aria-hidden="true"
+                className="grid size-7 shrink-0 place-items-center rounded-radius-md bg-sky-blue-accent text-[0.6875rem] text-surface-white shadow-sm"
+              >
+                {initials || "FW"}
+              </div>
+              <span className={collapsed ? "sr-only" : "min-w-0 flex-1 truncate"}>
+                {workspaceLabel}
+              </span>
+            </div>
           </div>
-          <span className={collapsed ? "sr-only" : "min-w-0 flex-1 truncate"}>
-            {workspaceLabel}
-          </span>
-        </Link>
+        ) : (
+          <Link
+            href={APP_ROUTES.workspaces}
+            onClick={onNavigate}
+            aria-label={collapsed ? "All workspaces" : undefined}
+            data-tooltip={collapsed ? "All workspaces" : undefined}
+            data-tooltip-side="right"
+            className={cx(
+              "flex min-h-11 min-w-0 items-center rounded-radius-lg bg-surface-white/72 font-medium ring-1 ring-near-black-primary-text/6 outline-none hover:bg-surface-white focus-visible:outline-2 focus-visible:outline-sky-blue-accent sm:min-h-10",
+              collapsed
+                ? "tooltip-trigger justify-center px-0"
+                : "gap-2.5 px-2.5",
+            )}
+          >
+            <div
+              aria-hidden="true"
+              className="grid size-7 shrink-0 place-items-center rounded-radius-md bg-sky-blue-accent text-[0.6875rem] text-surface-white shadow-sm"
+            >
+              {initials || "FW"}
+            </div>
+            <span className={collapsed ? "sr-only" : "min-w-0 flex-1 truncate"}>
+              {workspaceLabel}
+            </span>
+          </Link>
+        )}
       </div>
 
       {workspaceId ? (

@@ -41,6 +41,7 @@ function activeShareConditions(tokenHash: string, now: Date) {
     eq(boardShareLinks.tokenHash, tokenHash),
     isNull(boardShareLinks.revokedAt),
     isNull(boards.archivedAt),
+    isNull(boards.deletedAt),
     or(isNull(boardShareLinks.expiresAt), gt(boardShareLinks.expiresAt, now)),
   );
 }

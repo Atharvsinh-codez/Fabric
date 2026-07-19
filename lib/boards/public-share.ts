@@ -92,6 +92,8 @@ export async function resolvePublicBoardShare(token: string): Promise<PublicBoar
         eq(boardShareLinks.tokenHash, hashShareToken(parsedToken.data)),
         isNull(boardShareLinks.revokedAt),
         isNull(boards.archivedAt),
+        isNull(boards.deletedAt),
+        isNull(workspaces.deletedAt),
         or(isNull(boardShareLinks.expiresAt), gt(boardShareLinks.expiresAt, now)),
       ),
     )
