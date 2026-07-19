@@ -12,6 +12,10 @@
   <p>
     <a href="https://fabric.athrix.me"><strong>Open Fabric</strong></a>
     ·
+    <a href="https://youtu.be/OV8Jifr9VEA"><strong>Watch demo</strong></a>
+    ·
+    <a href="https://docs.google.com/presentation/d/1uej9UdK-mFa0_ofLXCFXgKAqclVT1IIoIOpb5ucU10w/edit?usp=sharing"><strong>Pitch deck</strong></a>
+    ·
     <a href="#quick-start"><strong>Quick start</strong></a>
     ·
     <a href="docs/setup.md"><strong>Full setup guide</strong></a>
@@ -48,8 +52,23 @@ The interaction stays fast and local-first in the browser. Production trust is s
 > [!TIP]
 > Want to explore before self-hosting? Open the live project at **[fabric.athrix.me](https://fabric.athrix.me)**. Want to run your own installation? Start with the [five-step local setup](#quick-start), then use the **[complete setup guide](docs/setup.md)** for OAuth, Neon roles, R2, Fabric agent, Cloudflare realtime, and production deployment.
 
+## Demo and pitch deck
+
+<p align="center">
+  <a href="https://youtu.be/OV8Jifr9VEA">
+    <img src="https://img.youtube.com/vi/OV8Jifr9VEA/hqdefault.jpg" alt="Watch the Fabric product demo on YouTube" width="720" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://youtu.be/OV8Jifr9VEA"><strong>Watch the product demo</strong></a>
+  ·
+  <a href="https://docs.google.com/presentation/d/1uej9UdK-mFa0_ofLXCFXgKAqclVT1IIoIOpb5ucU10w/edit?usp=sharing"><strong>Open the hackathon pitch deck</strong></a>
+</p>
+
 ## Contents
 
+- [Demo and pitch deck](#demo-and-pitch-deck)
 - [What Fabric gives you](#what-fabric-gives-you)
 - [Made for teams and learning](#made-for-teams-and-learning)
 - [How the collaboration model works](#how-the-collaboration-model-works)

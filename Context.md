@@ -1305,3 +1305,5 @@ Rules:
 - Risks/Notes:
   - No database migration, permission change, feature-flag change, Cloudflare Worker change, rate limit, dependency update, or tldraw change is required.
   - The fix remains inside the existing authenticated, owner-only, exact-confirmation deletion transaction.
+
+Final push commit
