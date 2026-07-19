@@ -1273,3 +1273,20 @@ Rules:
 - Risks/Notes:
   - Tooltip-enabled icon buttons retain their existing behavior; the change only removes empty tooltip decoration from tooltip-disabled controls.
   - UI-design Build guidance informed the stable hover/focus treatment and preserved control dimensions.
+
+### [2026-07-19 18:55 IST] - Name new boards and baseline confirmed deletion
+- Request: Let people name a board while creating it, retain `Untitled board` only as the blank-name fallback, and remove the workspace-rollout error from owner deletion.
+- Cause:
+  - The Create Board dialog exposed only the canvas theme and always sent the fixed title `Untitled board`.
+  - Permanent board and workspace deletion routes were coupled to the broad Track B rollout, so valid owners outside the canary received `feature_not_available` before the repository authorization ran.
+- Actions:
+  - Added an optional, focused Board Name field to the Create Board dialog with a 160-character bound, preserved theme selection, and normalized the submitted title with `trim()` plus the `Untitled board` fallback.
+  - Decoupled only confirmed board/workspace deletion from the broad rollout. Same-origin enforcement, authentication, UUID/body validation, exact confirmation, owner-only repository capabilities, locks, tombstones, audit/revocation writes, and realtime dispatch remain unchanged.
+  - Updated rollout documentation and regression coverage so confirmed owner deletion remains baseline while projects, memberships, preferences, R2 uploads, status, archive/restore, and advanced views stay gated.
+- Validation:
+  - Focused dashboard, deletion-route, rollout-integration, and workspace-settings verification passed: 4 files / 21 tests.
+  - Scoped ESLint, application TypeScript, the tldraw `4.2.0` invariant check, and `git diff --check` passed.
+- Risks/Notes:
+  - No database migration is required; the existing board title contract and schema already accept the normalized 1-160 character value.
+  - `FABRIC_WORKSPACE_ROLLOUT_MODE` was not changed to `all`; unrelated Track B and private-media capabilities retain their staged rollout protection.
+  - UI-design Build guidance shaped the labeled optional input, mobile-safe sizing, focus treatment, helper text, and stable pending state.

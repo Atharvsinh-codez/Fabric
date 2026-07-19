@@ -58,12 +58,12 @@ describe("workspace rollout entry-point coverage", () => {
     );
   });
 
-  it("gates destructive board and workspace deletion surfaces", () => {
-    expect(source("app/api/boards/[boardId]/delete/route.ts")).toContain(
-      "requireBoardWorkspaceRollout",
+  it("keeps confirmed owner deletion available as a baseline capability", () => {
+    expect(source("app/api/boards/[boardId]/delete/route.ts")).not.toContain(
+      "workspace-rollout",
     );
     expect(
       source("app/api/boards/workspaces/[workspaceId]/route.ts"),
-    ).toContain("requireWorkspaceRolloutForUser");
+    ).not.toContain("workspace-rollout");
   });
 });

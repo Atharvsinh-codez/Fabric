@@ -61,23 +61,35 @@ const BOARD_STATUSES = DASHBOARD_BOARD_STATUSES;
 function CreateBoardThemeDialog({
   open,
   creating,
+  boardTitle,
   selectedTheme,
+  onBoardTitleChange,
   onThemeChange,
   onClose,
   onCreate,
 }: {
   open: boolean;
   creating: boolean;
+  boardTitle: string;
   selectedTheme: BoardTheme;
+  onBoardTitleChange: (title: string) => void;
   onThemeChange: (theme: BoardTheme) => void;
   onClose: () => void;
   onCreate: () => void;
 }) {
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const frame = window.requestAnimationFrame(() => titleInputRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [open]);
+
   return (
     <FabricDialog
       open={open}
       title="Create board"
-      description="Choose a canvas style. You can change it later from the board."
+      description="Name your board and choose a canvas style. You can change both later."
       onClose={() => {
         if (!creating) onClose();
       }}
@@ -89,6 +101,35 @@ function CreateBoardThemeDialog({
           onCreate();
         }}
       >
+        <div className="flex flex-col gap-2">
+          <label
+            htmlFor="create-board-title"
+            className="text-base font-medium sm:text-sm"
+          >
+            Board Name
+          </label>
+          <input
+            ref={titleInputRef}
+            id="create-board-title"
+            name="board-title"
+            type="text"
+            autoComplete="off"
+            maxLength={160}
+            value={boardTitle}
+            disabled={creating}
+            placeholder="Untitled board"
+            aria-describedby="create-board-title-help"
+            onChange={(event) => onBoardTitleChange(event.target.value)}
+            className="h-11 rounded-radius-md bg-surface-white px-3 text-base text-near-black-primary-text outline-none ring-1 ring-near-black-primary-text/10 placeholder:text-muted-gray focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-sky-blue-accent disabled:opacity-45 sm:h-9 sm:text-sm"
+          />
+          <p
+            id="create-board-title-help"
+            className="text-pretty text-base font-normal text-muted-gray sm:text-sm"
+          >
+            Optional. Leave blank to use Untitled board.
+          </p>
+        </div>
+
         <BoardThemeSelector
           value={selectedTheme}
           onChange={onThemeChange}
@@ -274,6 +315,7 @@ export function WorkspaceDashboardPage({
   );
   const [createBoardOpen, setCreateBoardOpen] = useState(false);
   const [boardToDelete, setBoardToDelete] = useState<BoardSummary | null>(null);
+  const [boardTitle, setBoardTitle] = useState("");
   const [selectedTheme, setSelectedTheme] =
     useState<BoardTheme>(DEFAULT_NEW_BOARD_THEME);
   const [creating, setCreating] = useState(false);
@@ -511,6 +553,7 @@ export function WorkspaceDashboardPage({
       return;
     }
 
+    setBoardTitle("");
     setSelectedTheme(DEFAULT_NEW_BOARD_THEME);
     setCreateBoardOpen(true);
   };
@@ -522,7 +565,7 @@ export function WorkspaceDashboardPage({
       const board = await createBoardRequest({
         workspaceId: activeWorkspace.id,
         projectId: organizationEnabled ? activeProjectId : undefined,
-        title: "Untitled board",
+        title: boardTitle.trim() || "Untitled board",
         theme: selectedTheme,
       });
       setBoards((current) => [board, ...current]);
@@ -1244,7 +1287,9 @@ export function WorkspaceDashboardPage({
       <CreateBoardThemeDialog
         open={createBoardOpen}
         creating={creating}
+        boardTitle={boardTitle}
         selectedTheme={selectedTheme}
+        onBoardTitleChange={setBoardTitle}
         onThemeChange={setSelectedTheme}
         onClose={() => setCreateBoardOpen(false)}
         onCreate={() => void handleCreateBoard()}

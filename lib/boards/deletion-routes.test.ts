@@ -3,9 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   deleteBoard: vi.fn(),
   deleteWorkspace: vi.fn(),
-  requireBoardWorkspaceRollout: vi.fn(),
   requirePrincipal: vi.fn(),
-  requireWorkspaceRolloutForUser: vi.fn(),
   scheduleRealtimeRevocationDispatch: vi.fn(),
 }));
 
@@ -19,10 +17,6 @@ vi.mock("@/lib/boards/repository", () => ({
 vi.mock("@/lib/realtime/schedule-revocation-dispatch", () => ({
   scheduleRealtimeRevocationDispatch:
     mocks.scheduleRealtimeRevocationDispatch,
-}));
-vi.mock("@/lib/rollout/workspace-rollout", () => ({
-  requireBoardWorkspaceRollout: mocks.requireBoardWorkspaceRollout,
-  requireWorkspaceRolloutForUser: mocks.requireWorkspaceRolloutForUser,
 }));
 
 import { DELETE as deleteBoardRoute } from "@/app/api/boards/[boardId]/delete/route";
@@ -57,8 +51,6 @@ describe("confirmed deletion routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.requirePrincipal.mockResolvedValue({ id: USER_ID });
-    mocks.requireBoardWorkspaceRollout.mockResolvedValue(undefined);
-    mocks.requireWorkspaceRolloutForUser.mockResolvedValue(undefined);
   });
 
   it.each([
@@ -113,7 +105,6 @@ describe("confirmed deletion routes", () => {
 
     expect(invalidId.status).toBe(422);
     expect(invalidBody.status).toBe(422);
-    expect(mocks.requireBoardWorkspaceRollout).not.toHaveBeenCalled();
     expect(mocks.deleteBoard).not.toHaveBeenCalled();
     expect(mocks.scheduleRealtimeRevocationDispatch).not.toHaveBeenCalled();
   });
@@ -133,7 +124,6 @@ describe("confirmed deletion routes", () => {
 
     expect(invalidId.status).toBe(422);
     expect(invalidBody.status).toBe(422);
-    expect(mocks.requireWorkspaceRolloutForUser).not.toHaveBeenCalled();
     expect(mocks.deleteWorkspace).not.toHaveBeenCalled();
     expect(mocks.scheduleRealtimeRevocationDispatch).not.toHaveBeenCalled();
   });
@@ -217,10 +207,6 @@ describe("confirmed deletion routes", () => {
       },
     });
     expect(mocks.requirePrincipal).toHaveBeenCalledOnce();
-    expect(mocks.requireBoardWorkspaceRollout).toHaveBeenCalledWith(
-      USER_ID,
-      BOARD_ID,
-    );
     expect(mocks.deleteBoard).toHaveBeenCalledWith({
       userId: USER_ID,
       boardId: BOARD_ID,
@@ -249,10 +235,6 @@ describe("confirmed deletion routes", () => {
       },
     });
     expect(mocks.requirePrincipal).toHaveBeenCalledOnce();
-    expect(mocks.requireWorkspaceRolloutForUser).toHaveBeenCalledWith(
-      USER_ID,
-      WORKSPACE_ID,
-    );
     expect(mocks.deleteWorkspace).toHaveBeenCalledWith({
       userId: USER_ID,
       workspaceId: WORKSPACE_ID,

@@ -252,7 +252,7 @@ describe("WorkspaceDashboardPage board preview refresh", () => {
     expect(container.textContent).toContain("Load more boards");
   });
 
-  it("starts with Grid and creates a board with the chosen theme", async () => {
+  it("creates a named board with the chosen theme", async () => {
     const initialBoardQueryKey = dashboardBoardQueryKey(WORKSPACE_ID, {
       q: "",
       view: "recent",
@@ -281,6 +281,18 @@ describe("WorkspaceDashboardPage board preview refresh", () => {
       '[role="dialog"][aria-label="Create board"]',
     );
     expect(dialog).not.toBeNull();
+    const titleInput = dialog?.querySelector<HTMLInputElement>(
+      "#create-board-title",
+    );
+    expect(titleInput?.placeholder).toBe("Untitled board");
+    const valueSetter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    act(() => {
+      valueSetter?.call(titleInput, "  Launch plan  ");
+      titleInput?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
     expect(
       dialog?.querySelector<HTMLInputElement>('input[value="grid"]')?.checked,
     ).toBe(true);
@@ -299,12 +311,68 @@ describe("WorkspaceDashboardPage board preview refresh", () => {
     expect(mocks.createBoard).toHaveBeenCalledWith({
       workspaceId: WORKSPACE_ID,
       projectId: undefined,
-      title: "Untitled board",
+      title: "Launch plan",
       theme: "sage",
     });
     expect(mocks.push).toHaveBeenCalledWith(
       `/app/boards/${board(1).id}`,
     );
+  });
+
+  it("uses Untitled board when the optional name is blank", async () => {
+    const initialBoardQueryKey = dashboardBoardQueryKey(WORKSPACE_ID, {
+      q: "",
+      view: "recent",
+    });
+    await act(async () => {
+      root.render(
+        <WorkspaceDashboardPage
+          workspaceId={WORKSPACE_ID}
+          initialBoards={[board(1)]}
+          initialBoardQueryKey={initialBoardQueryKey}
+          initialNextBoardCursor={null}
+          organizationEnabled={false}
+          initialProjects={[]}
+          initialWorkspaces={[workspace]}
+        />,
+      );
+    });
+
+    const openButton = [...container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.trim() === "Create board");
+    await act(async () => {
+      openButton?.click();
+    });
+
+    const dialog = container.querySelector<HTMLElement>(
+      '[role="dialog"][aria-label="Create board"]',
+    );
+    const titleInput = dialog?.querySelector<HTMLInputElement>(
+      "#create-board-title",
+    );
+    const valueSetter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    act(() => {
+      valueSetter?.call(titleInput, "   ");
+      titleInput?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const createButton = [
+      ...(dialog?.querySelectorAll<HTMLButtonElement>("button") ?? []),
+    ].find((button) => button.textContent?.trim() === "Create board");
+    await act(async () => {
+      createButton?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mocks.createBoard).toHaveBeenCalledWith({
+      workspaceId: WORKSPACE_ID,
+      projectId: undefined,
+      title: "Untitled board",
+      theme: "grid",
+    });
   });
 
   it("lets only the board owner permanently delete after exact-title confirmation", async () => {

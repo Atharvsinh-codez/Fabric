@@ -13,7 +13,6 @@ import {
 } from "@/lib/boards/http";
 import { deleteWorkspace } from "@/lib/boards/repository";
 import { scheduleRealtimeRevocationDispatch } from "@/lib/realtime/schedule-revocation-dispatch";
-import { requireWorkspaceRolloutForUser } from "@/lib/rollout/workspace-rollout";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,7 +32,6 @@ export async function DELETE(
     );
     if (!workspaceId.success || !body.success) throw invalidRequest();
 
-    await requireWorkspaceRolloutForUser(principal.id, workspaceId.data);
     const deleted = await deleteWorkspace({
       userId: principal.id,
       workspaceId: workspaceId.data,
