@@ -310,8 +310,8 @@ button:disabled {
   transform: none;
 }
 
-.tooltip-trigger:hover::after,
-.tooltip-trigger:focus-visible::after {
+.tooltip-trigger[data-tooltip]:hover::after,
+.tooltip-trigger[data-tooltip]:focus-visible::after {
   display: block;
 }
 

@@ -86,7 +86,8 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       data-tooltip-side={tooltip ? tooltipSide : undefined}
       data-tooltip-align={tooltip ? tooltipAlign : undefined}
       className={cx(
-        "tooltip-trigger relative grid size-8 shrink-0 place-items-center rounded-radius-md outline-none transition-transform duration-150 ease-out active:scale-95 motion-reduce:transition-none",
+        "relative grid size-8 shrink-0 place-items-center rounded-radius-md outline-none transition-transform duration-150 ease-out active:scale-95 motion-reduce:transition-none",
+        tooltip && "tooltip-trigger",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-blue-accent",
         active
           ? "bg-light-surface-tint text-sky-blue-accent ring-1 ring-border-subtle"

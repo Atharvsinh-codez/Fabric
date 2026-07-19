@@ -182,6 +182,7 @@ describe("all workspaces control center", () => {
       modalOpen: true,
     });
     expect(closeButton?.hasAttribute("data-tooltip")).toBe(false);
+    expect(closeButton?.classList.contains("tooltip-trigger")).toBe(false);
 
     const cancelButton = [...document.querySelectorAll<HTMLButtonElement>("button")].find(
       (button) => button.textContent?.trim() === "Cancel",

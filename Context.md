@@ -1240,3 +1240,36 @@ Rules:
   - UI-design guidance shaped the danger-zone hierarchy, exact-confirmation forms, stable disabled/pending states, responsive touch targets, and accessible sidebar navigation.
 - Next Steps:
   - Apply the verified additive migration during deployment, then publish the change to GitHub `main` when requested.
+
+### [2026-07-19 18:22 IST] - Apply the production deletion migration
+- Request: Fix the production `GET /api/boards/workspaces` internal error and update the database required by the deletion release.
+- Cause: Vercel was already running the tombstone-aware application code, but production Neon had not applied migration `0014_nappy_photon.sql`, so the workspace query referenced a missing `workspaces.deleted_at` column.
+- Actions:
+  - Confirmed both expected `deleted_at` columns were absent before making changes.
+  - Attempted to create a named PostgreSQL restore marker; Neon rejected it for the least-privilege migration role with insufficient privilege.
+  - Applied the committed Drizzle migrations through the configured direct Neon migration connection.
+  - Verified `boards.deleted_at` and `workspaces.deleted_at` now exist as nullable columns and the workspace-membership query succeeds.
+  - Confirmed the public production endpoint no longer returns an internal error; an anonymous request now reaches the expected authentication boundary with HTTP 401.
+- Validation:
+  - `npm run db:migrate` completed successfully.
+  - Direct schema verification returned both nullable columns.
+  - A production-shaped workspace listing query completed successfully.
+- Risks/Notes:
+  - The applied migration only adds two nullable columns; it contains no backfill, row deletion, constraint tightening, or destructive DDL.
+  - No application source, Cloudflare Worker, realtime protocol, dependency, tldraw package, patch, shape, or watermark behavior changed during the database repair.
+- Next Steps:
+  - Refresh the authenticated `/app` session and confirm the workspace list renders normally.
+
+### [2026-07-19 18:31 IST] - Remove the empty modal-close hover bubble
+- Request: Fix the broken hover state on the Create a Workspace dialog close/cancel control.
+- Cause: `IconButton` always applied the tooltip trigger class even when `tooltip={false}`; the global tooltip pseudo-element therefore rendered an empty white bubble over the close icon on hover or keyboard focus.
+- Actions:
+  - Apply tooltip trigger styling only when an icon button actually has tooltip content.
+  - Guard the global tooltip reveal selector with the presence of `data-tooltip`, preventing empty tooltip surfaces even if a trigger class is applied incorrectly elsewhere.
+  - Added a workspace-dialog regression assertion that the tooltip-disabled close control cannot activate tooltip styling.
+- Validation:
+  - `npx vitest run components/workspaces-page.test.tsx` passed (4 tests).
+  - Scoped ESLint, application TypeScript, and `git diff --check` passed.
+- Risks/Notes:
+  - Tooltip-enabled icon buttons retain their existing behavior; the change only removes empty tooltip decoration from tooltip-disabled controls.
+  - UI-design Build guidance informed the stable hover/focus treatment and preserved control dimensions.
