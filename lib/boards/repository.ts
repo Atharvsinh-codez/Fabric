@@ -195,7 +195,7 @@ export async function deleteWorkspace(input: {
     await transaction
       .update(boards)
       .set({
-        archivedAt: sql`coalesce(${boards.archivedAt}, ${deletedAt})`,
+        archivedAt: sql`coalesce(${boards.archivedAt}, ${sql.param(deletedAt, boards.archivedAt)})`,
         deletedAt,
         updatedAt: deletedAt,
       })

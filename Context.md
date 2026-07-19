@@ -1290,3 +1290,18 @@ Rules:
   - No database migration is required; the existing board title contract and schema already accept the normalized 1-160 character value.
   - `FABRIC_WORKSPACE_ROLLOUT_MODE` was not changed to `all`; unrelated Track B and private-media capabilities retain their staged rollout protection.
   - UI-design Build guidance shaped the labeled optional input, mobile-safe sizing, focus treatment, helper text, and stable pending state.
+
+### [2026-07-19 19:17 IST] - Fix production workspace deletion timestamp encoding
+- Request: Fix the production `DELETE /api/boards/workspaces/[workspaceId]` internal error for a valid owner-confirmed workspace deletion.
+- Cause: The board tombstone update interpolated a JavaScript `Date` directly inside a raw Drizzle `coalesce(...)` fragment. Unlike column-bound update values, that raw parameter was not encoded for PostgreSQL, so `postgres-js` rejected it before the transaction could commit.
+- Actions:
+  - Bound the fallback archive timestamp to the `boards.archived_at` column encoder with `sql.param(...)`, preserving the existing archive time when present and encoding new timestamps as PostgreSQL-safe ISO values.
+  - Added a regression that compiles the real Drizzle update expression and asserts the database parameter is an ISO timestamp rather than a JavaScript `Date`.
+  - Reproduced the corrected transaction against the affected production workspace in forced-rollback mode; board tombstoning, realtime revocation insertion, and workspace tombstoning all completed before the intentional rollback.
+- Validation:
+  - Focused organization-schema and deletion-route verification passed: 2 files / 19 tests.
+  - Scoped ESLint, application TypeScript, and the tldraw `4.2.0` invariant check passed.
+  - Production rollback verification confirmed zero workspace, board, or revocation rows were changed.
+- Risks/Notes:
+  - No database migration, permission change, feature-flag change, Cloudflare Worker change, rate limit, dependency update, or tldraw change is required.
+  - The fix remains inside the existing authenticated, owner-only, exact-confirmation deletion transaction.

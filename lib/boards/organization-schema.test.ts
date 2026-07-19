@@ -1,7 +1,9 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+import { sql } from "drizzle-orm";
 import { getTableConfig } from "drizzle-orm/pg-core";
+import { drizzle } from "drizzle-orm/postgres-js";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -135,6 +137,31 @@ describe("organization tenant constraints", () => {
     );
     expect(migration).not.toMatch(/\bnot\s+null\b/i);
     expect(migration).not.toMatch(/\b(drop|truncate|delete|update)\b/i);
+  });
+
+  it("encodes the preserved archive timestamp before workspace deletion", async () => {
+    const deletedAt = new Date("2026-07-19T13:43:21.231Z");
+    const query = drizzle
+      .mock()
+      .update(boards)
+      .set({
+        archivedAt: sql`coalesce(${boards.archivedAt}, ${sql.param(deletedAt, boards.archivedAt)})`,
+      })
+      .toSQL();
+    expect(query.params).toEqual([deletedAt.toISOString()]);
+
+    const repository = await readFile(
+      path.join(process.cwd(), "lib", "boards", "repository.ts"),
+      "utf8",
+    );
+    const deleteWorkspaceSource = sourceBetween(
+      repository,
+      "export async function deleteWorkspace",
+      "export async function createBoard",
+    );
+    expect(deleteWorkspaceSource).toContain(
+      "sql.param(deletedAt, boards.archivedAt)",
+    );
   });
 
   it("excludes soft-deleted workspaces and boards from organization lists", async () => {
